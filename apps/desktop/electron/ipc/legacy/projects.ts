@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import slugify from "@sindresorhus/slugify";
 import { readJson, writeJson, writeJsonAtomic } from "../json-store";
+import { cleanupPartialRecordingBundles } from "../recording-bundle";
 import { discoverProjectRecordings } from "../recording-discovery";
+import { cleanupExpiredFailedRecordingBundles } from "../recording-failed-bundle-retention";
 import {
   ASSETS_DIRNAME,
   type CreateProjectArgs,
@@ -141,14 +142,7 @@ export async function openProject(id: string) {
 }
 
 export async function countRecordingFiles(exportsDir: string): Promise<number> {
-  let entries: Dirent[];
-  try {
-    entries = await fs.readdir(exportsDir, { withFileTypes: true });
-  } catch {
-    return 0;
-  }
-  return entries.filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".mp4"))
-    .length;
+  return (await discoverProjectRecordings(exportsDir)).length;
 }
 
 export async function removeProject(id: string): Promise<void> {
@@ -173,7 +167,10 @@ export async function updateProjectWorkflow(
 
 export async function listProjectRecordings(id: string) {
   const project = await findProject(id);
-  return discoverProjectRecordings(projectPaths(project.folder_path).exportsDir);
+  const exportsDir = projectPaths(project.folder_path).exportsDir;
+  await cleanupPartialRecordingBundles(exportsDir);
+  await cleanupExpiredFailedRecordingBundles(exportsDir);
+  return discoverProjectRecordings(exportsDir);
 }
 
 export async function timelineLoad(storyId: string): Promise<TimelineState | null> {

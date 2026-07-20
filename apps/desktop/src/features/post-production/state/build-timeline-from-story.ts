@@ -2,6 +2,7 @@
  * Pure producer that turns a story + recording sidecars into initial timeline clips.
  */
 
+import type { ExportRecordingSourceV2 } from "@storycapture/shared-types/recording-v2";
 import {
   calloutText,
   DEFAULT_AUTO_ZOOM_DURATION_MS,
@@ -189,6 +190,36 @@ function sourceSize(input: BuildTimelineInput): VideoClip["sourceSize"] {
   const width = positiveDimension(rect?.width);
   const height = positiveDimension(rect?.height);
   return width && height ? { width, height } : undefined;
+}
+
+function recordingSourceMetadata(recording: RecordingInfo): ExportRecordingSourceV2 | undefined {
+  if (
+    !recording.bundle_path ||
+    !recording.master_path ||
+    !recording.proxy_path ||
+    !recording.cadence_evidence_path ||
+    !recording.quality_evidence_path ||
+    !recording.exact_source_fps ||
+    !recording.source_frame_count ||
+    !recording.width ||
+    !recording.height ||
+    (recording.quality_verdict !== "passed" && recording.quality_verdict !== "degraded")
+  ) {
+    return undefined;
+  }
+  return {
+    version: 2,
+    bundle_path: recording.bundle_path,
+    master_path: recording.master_path,
+    proxy_path: recording.proxy_path,
+    cadence_evidence_path: recording.cadence_evidence_path,
+    quality_evidence_path: recording.quality_evidence_path,
+    exact_source_fps: recording.exact_source_fps,
+    source_frame_count: recording.source_frame_count,
+    master_width: recording.width,
+    master_height: recording.height,
+    quality_verdict: recording.quality_verdict,
+  };
 }
 
 function hashPath(path: string): string {
@@ -385,6 +416,7 @@ function buildActionFocusAnnotations(
 
 function cursorSidecarFor(
   recordingPath: string,
+  actionsPath: string | null | undefined,
   actions: RecordingActions | null,
   trajectory: RecordingTrajectory | null,
   durationMs: number,
@@ -393,7 +425,7 @@ function cursorSidecarFor(
     const fps = actionSidecarFps(actions);
     const durationFrameCount = Math.ceil((Math.max(0, durationMs) / 1000) * fps);
     return {
-      path: deriveActionsPath(recordingPath),
+      path: actionsPath ?? deriveActionsPath(recordingPath),
       kind: "actions",
       fps,
       frameCount: Math.max(actions.frame_count, durationFrameCount, 1),
@@ -854,6 +886,8 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
   const durationMs = Math.max(mediaEndMs, cursorSchedule?.durationMs ?? 0);
   const source = sourceSize(input);
   const sourceTimeMap = identitySourceTimelineMap(durationMs);
+  const recordingSource = recordingSourceMetadata(recording);
+  const previewPath = recording.proxy_path ?? recording.path;
 
   const baseVideo: VideoClip[] = [
     {
@@ -861,9 +895,10 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
       trackId: "video",
       startMs: 0,
       durationMs,
-      sourcePath: recording.path,
+      sourcePath: previewPath,
+      recordingSource,
       sourceSize: source,
-      label: basename(recording.path),
+      label: basename(previewPath),
       syncGroupId,
       sourceRevision,
       sourceTimeMap,
@@ -872,7 +907,13 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
   const video = applySceneTransitionIntent(baseVideo, input.story, polish);
 
   const cursor: CursorClip[] = [];
-  const cursorSidecar = cursorSidecarFor(recording.path, actions, trajectory, durationMs);
+  const cursorSidecar = cursorSidecarFor(
+    recording.path,
+    recording.actions_path,
+    actions,
+    trajectory,
+    durationMs,
+  );
   if (cursorSidecar && polish?.global.cursor !== "hidden") {
     cursor.push({
       id: `cursor-${idBase}`,
@@ -948,6 +989,34 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
           ),
         );
   const sound: SoundClip[] = [];
+  const recordingAudio = [
+    {
+      role: "microphone",
+      path: input.recording.microphone_audio_path,
+      label: "Recorded microphone",
+    },
+    {
+      role: "system",
+      path: input.recording.system_audio_path,
+      label: "Recorded system audio",
+    },
+  ] as const;
+  for (const audio of recordingAudio) {
+    if (!audio.path) continue;
+    sound.push({
+      id: `${audio.role}-${idBase}`,
+      trackId: "sound",
+      startMs: 0,
+      durationMs,
+      path: audio.path,
+      kind: "voiceover",
+      label: audio.label,
+      gain: 1,
+      syncGroupId,
+      sourceRevision,
+      sourceTimeMap,
+    });
+  }
   if (polish?.global.bgm?.path.trim()) {
     sound.push({
       id: `bgm-${idBase}`,

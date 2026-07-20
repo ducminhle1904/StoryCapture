@@ -110,10 +110,7 @@ function serializeCurrentTimelineLayout(): string {
   });
 }
 
-function timelineLayoutMatchesRecording(
-  layout: TimelineLayout,
-  recording: RecordingInfo,
-): boolean {
+function timelineLayoutMatchesRecording(layout: TimelineLayout, recording: RecordingInfo): boolean {
   return (
     layout.sourceRevision === recordingSourceRevision(recording) &&
     layout.tracks.video.some((clip) => clip.sourcePath === recording.path)
@@ -457,7 +454,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     })();
   }, [storyId, videoSrc, latestRecording, recordingsQuery.isSuccess, recordingsReady]);
 
-  const actionsQuery = useRecordingActions(latestRecording?.path);
+  const actionsQuery = useRecordingActions(latestRecording?.path, latestRecording?.actions_path);
   const recordingActions = actionsQuery.data ?? null;
   const trajectoryQuery = useRecordingTrajectory(
     latestRecording?.path,

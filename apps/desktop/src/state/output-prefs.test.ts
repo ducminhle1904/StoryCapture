@@ -12,6 +12,7 @@ import {
 function resetStore() {
   useOutputPrefsStore.setState({
     activePreset: "Standard",
+    recordingDeliveryPolicy: "best_effort",
     recordingKnobs: PRESET_BUNDLES.Standard,
     recordingPacing: DEFAULT_RECORDING_PACING,
     exportKnobs: DEFAULT_EXPORT_KNOBS,
@@ -26,6 +27,7 @@ describe("useOutputPrefsStore", () => {
   it("starts in Standard with bundled knobs + default export bag", () => {
     const s = useOutputPrefsStore.getState();
     expect(s.activePreset).toBe("Standard");
+    expect(s.recordingDeliveryPolicy).toBe("best_effort");
     expect(s.recordingKnobs).toEqual(PRESET_BUNDLES.Standard);
     expect(s.recordingPacing).toBe(DEFAULT_RECORDING_PACING);
     expect(s.exportKnobs).toEqual(DEFAULT_EXPORT_KNOBS);
@@ -34,6 +36,12 @@ describe("useOutputPrefsStore", () => {
   it("keeps recording pacing fixed at 1x", () => {
     useOutputPrefsStore.getState().setRecordingPacing("speedy" as never);
     expect(useOutputPrefsStore.getState().recordingPacing).toBe(DEFAULT_RECORDING_PACING);
+  });
+
+  it("stores the delivery policy independently from the legacy preset", () => {
+    useOutputPrefsStore.getState().setRecordingDeliveryPolicy("strict");
+    expect(useOutputPrefsStore.getState().recordingDeliveryPolicy).toBe("strict");
+    expect(useOutputPrefsStore.getState().activePreset).toBe("Standard");
   });
 
   it("applyPreset('Lossless') swaps recordingKnobs to the Lossless bundle", () => {
@@ -69,9 +77,7 @@ describe("useOutputPrefsStore", () => {
 
   it("re-applying the same value keeps the named preset", () => {
     useOutputPrefsStore.getState().applyPreset("Lossless");
-    useOutputPrefsStore
-      .getState()
-      .setRecordingKnob("quality", "lossless");
+    useOutputPrefsStore.getState().setRecordingKnob("quality", "lossless");
     const s = useOutputPrefsStore.getState();
     expect(s.activePreset).toBe("Lossless");
   });
@@ -103,20 +109,16 @@ describe("matchPreset", () => {
 
 describe("recordingOutputResolutionForStart", () => {
   it("keeps Standard and Lossless source-sized explicitly", () => {
-    expect(
-      recordingOutputResolutionForStart(PRESET_BUNDLES.Standard, "Standard"),
-    ).toEqual({
+    expect(recordingOutputResolutionForStart(PRESET_BUNDLES.Standard, "Standard")).toEqual({
       kind: "match-source",
     });
-    expect(
-      recordingOutputResolutionForStart(PRESET_BUNDLES.Lossless, "Lossless"),
-    ).toEqual({ kind: "match-source" });
+    expect(recordingOutputResolutionForStart(PRESET_BUNDLES.Lossless, "Lossless")).toEqual({
+      kind: "match-source",
+    });
   });
 
   it("keeps Custom resolution explicit", () => {
-    expect(
-      recordingOutputResolutionForStart(PRESET_BUNDLES.Standard, "Custom"),
-    ).toEqual({
+    expect(recordingOutputResolutionForStart(PRESET_BUNDLES.Standard, "Custom")).toEqual({
       kind: "match-source",
     });
   });

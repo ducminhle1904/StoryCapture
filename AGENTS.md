@@ -40,6 +40,9 @@ video.
 - Electron owns the desktop host in `apps/desktop/electron`. There is no
   packaged Rust/Tauri runtime, no `src-tauri`, and no Rust crate workspace in
   the current source tree.
+- Platform capture helpers live in `apps/desktop/native`: Swift/
+  ScreenCaptureKit on macOS and C++/WinRT Windows Graphics Capture on Windows.
+  They are Electron resources, not a Tauri or Rust runtime.
 - The renderer still imports `@tauri-apps/api` and selected Tauri plugin
   packages as a compatibility API surface. Electron preload/IPC shims implement
   those calls.
@@ -54,7 +57,9 @@ video.
   and simulator behavior is desktop IPC/host code, not a shared parser package.
 - `packages/shared-types` publicly exports browser presets, web account types,
   the checked-in IPC compatibility surface, and the JSON-safe post-production
-  composition/preflight/job contract. Electron/Node runtime consumers of
+  composition/preflight/job and Recording V2 contracts. Electron/Node runtime
+  consumers of recording values use
+  `@storycapture/shared-types/recording-v2`; consumers of
   composition values use `@storycapture/shared-types/export-composition`, not
   the package-root barrel.
   `packages/shared-types/src/generated/effects.ts` is checked-in generated
@@ -155,6 +160,18 @@ file explicitly says otherwise.
   `apps/desktop/electron/ipc/legacy/story-runner.ts`,
   `apps/desktop/src/ipc/automation.ts`, and
   `apps/desktop/src/features/recorder/recording-view.tsx`.
+- Strict Recording V2: start with
+  `packages/shared-types/src/recording-v2.ts`, then read
+  `apps/desktop/electron/ipc/recording-certification-catalog.ts`,
+  `apps/desktop/electron/ipc/capture-backend-v2-guard.ts`,
+  `apps/desktop/electron/ipc/recording-strict-browser-lifecycle.ts`,
+  `apps/desktop/electron/ipc/browser-capture-backend-v2.ts`,
+  `apps/desktop/electron/ipc/recording-master-pipeline.ts`,
+  `apps/desktop/electron/ipc/recording-bundle.ts`, and
+  `apps/desktop/electron/ipc/recording-quality-verifier.ts`. Native adapters are
+  `macos-screen-capture-backend.ts`, `windows-capture-backend.ts`, and
+  `apps/desktop/native/`; use `docs/agent/operations.md` for certification,
+  packaging, signing, and kill-switch rules.
 - Recording logs/diagnostics: read
   `apps/desktop/electron/ipc/recording-observability.ts`,
   `apps/desktop/electron/ipc/log-store.ts`, and
@@ -191,6 +208,8 @@ file explicitly says otherwise.
 - There is no root `pnpm test`; run package-scoped Vitest commands from
   `docs/agent/testing.md`.
 - Packaged post-production export parity: `pnpm --dir apps/desktop run test:e2e:export`.
+- Packaged native capture helper gate:
+  `pnpm --dir apps/desktop run test:e2e:recording-v2-helper`.
 - Web Prisma commands live in `apps/web/package.json`: `db:generate`,
   `db:migrate`, `db:push`, and `db:seed`.
 - CI is `.github/workflows/ci.yml` and runs typecheck, desktop/UI/web tests,

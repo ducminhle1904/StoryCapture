@@ -312,6 +312,49 @@ describe("computeGraph", () => {
     });
   });
 
+  it("serializes V2 bundle metadata so preview stays on proxy and export can decode master", () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [
+          {
+            id: "strict-v2",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 5_000,
+            sourcePath: "/take.sc-recording/proxy/video.mp4",
+            recordingSource: {
+              version: 2,
+              bundle_path: "/take.sc-recording",
+              master_path: "/take.sc-recording/master/video.mkv",
+              proxy_path: "/take.sc-recording/proxy/video.mp4",
+              cadence_evidence_path: "/take.sc-recording/evidence/cadence.json",
+              quality_evidence_path: "/take.sc-recording/evidence/quality.json",
+              exact_source_fps: { numerator: 60, denominator: 1 },
+              source_frame_count: 300,
+              master_width: 1920,
+              master_height: 1080,
+              quality_verdict: "passed",
+            },
+          },
+        ],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+    });
+    const source = computeGraph(useEditorStore.getState()).video.find(
+      (node) => node.type === "source",
+    );
+    expect(source).toMatchObject({
+      path: "/take.sc-recording/proxy/video.mp4",
+      recording_source: {
+        master_path: "/take.sc-recording/master/video.mkv",
+        proxy_path: "/take.sc-recording/proxy/video.mp4",
+      },
+    });
+  });
+
   it.each([
     ["720p", 1280, 720],
     ["1080p", 1920, 1080],
@@ -654,7 +697,7 @@ describe("computeGraph", () => {
     ]);
     expect(g.video.find((node) => node.type === "background")).toMatchObject({
       kind: { kind: "ambient" },
-      foreground_scale: 0.85,
+      foreground_scale: 1,
     });
 
     const transitions = g.video.filter((node) => node.type === "transition");

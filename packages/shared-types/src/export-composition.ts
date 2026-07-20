@@ -4,6 +4,8 @@
  * effects surface uses bigint timestamps and is not safe to stringify.
  */
 
+import type { ExportRecordingSourceV2 } from "./recording-v2";
+
 export const EXPORT_COMPOSITION_SCHEMA_VERSION = 5 as const;
 export const EXPORT_FOREGROUND_SCALE_MIN = 0.7;
 export const EXPORT_FOREGROUND_SCALE_MAX = 1;
@@ -243,6 +245,8 @@ export type ExportVideoNodeBase =
       source_width?: number;
       source_height?: number;
       source_time_map?: ExportSourceTimelineMap;
+      /** V2 recording bundle metadata. Missing on legacy compositions. */
+      recording_source?: ExportRecordingSourceV2 | null;
     }
   | {
       type: "zoom-pan";

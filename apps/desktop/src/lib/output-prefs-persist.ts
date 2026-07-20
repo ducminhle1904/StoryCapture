@@ -1,3 +1,7 @@
+import {
+  type RecordingDeliveryPolicy,
+  readRecordingDeliveryPolicy,
+} from "@storycapture/shared-types/recording-v2";
 import { mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { toast } from "sonner";
 
@@ -15,6 +19,7 @@ import {
 
 export interface PersistShape {
   activePreset: PresetName;
+  recordingDeliveryPolicy: RecordingDeliveryPolicy;
   recordingKnobs: RecordingKnobs;
   recordingPacing: RecordingPacingProfile;
   exportKnobs: ExportKnobs;
@@ -23,6 +28,7 @@ export interface PersistShape {
 
 const SEED: PersistShape = {
   activePreset: "Standard",
+  recordingDeliveryPolicy: "best_effort",
   recordingKnobs: PRESET_BUNDLES.Standard,
   recordingPacing: DEFAULT_RECORDING_PACING,
   exportKnobs: DEFAULT_EXPORT_KNOBS,
@@ -31,6 +37,7 @@ const SEED: PersistShape = {
 
 type PartialPersist = Partial<{
   activePreset: unknown;
+  recordingDeliveryPolicy: unknown;
   recordingKnobs: Partial<RecordingKnobs>;
   recordingPacing: unknown;
   exportKnobs: Partial<ExportKnobs> & {
@@ -128,6 +135,7 @@ export function migrate(raw: unknown): PersistShape {
   const exportKnobs = mergeExportKnobs(SEED.exportKnobs, r.exportKnobs);
   return {
     activePreset,
+    recordingDeliveryPolicy: readRecordingDeliveryPolicy(r.recordingDeliveryPolicy),
     recordingKnobs,
     recordingPacing: DEFAULT_RECORDING_PACING,
     exportKnobs,
@@ -151,6 +159,10 @@ export function resolveOverride(
   const exportKnobs = mergeExportKnobs(global.exportKnobs, project.exportKnobs);
   return {
     activePreset,
+    recordingDeliveryPolicy:
+      project.recordingDeliveryPolicy === undefined
+        ? global.recordingDeliveryPolicy
+        : readRecordingDeliveryPolicy(project.recordingDeliveryPolicy),
     recordingKnobs,
     recordingPacing: DEFAULT_RECORDING_PACING,
     exportKnobs,
@@ -176,6 +188,7 @@ export async function initOutputPrefs(): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let last = {
     activePreset: hydrated.activePreset,
+    recordingDeliveryPolicy: hydrated.recordingDeliveryPolicy,
     recordingKnobs: hydrated.recordingKnobs,
     recordingPacing: hydrated.recordingPacing,
     exportKnobs: hydrated.exportKnobs,
@@ -183,6 +196,7 @@ export async function initOutputPrefs(): Promise<void> {
   useOutputPrefsStore.subscribe((s) => {
     if (
       s.activePreset === last.activePreset &&
+      s.recordingDeliveryPolicy === last.recordingDeliveryPolicy &&
       s.recordingKnobs === last.recordingKnobs &&
       s.recordingPacing === last.recordingPacing &&
       s.exportKnobs === last.exportKnobs
@@ -191,6 +205,7 @@ export async function initOutputPrefs(): Promise<void> {
     }
     last = {
       activePreset: s.activePreset,
+      recordingDeliveryPolicy: s.recordingDeliveryPolicy,
       recordingKnobs: s.recordingKnobs,
       recordingPacing: s.recordingPacing,
       exportKnobs: s.exportKnobs,
@@ -201,6 +216,7 @@ export async function initOutputPrefs(): Promise<void> {
         const store = await getStore();
         const shape: PersistShape = {
           activePreset: s.activePreset,
+          recordingDeliveryPolicy: s.recordingDeliveryPolicy,
           recordingKnobs: s.recordingKnobs,
           recordingPacing: s.recordingPacing,
           exportKnobs: s.exportKnobs,

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { StartRecordingArgs } from "@storycapture/shared-types";
 import {
   app,
   BrowserWindow,
@@ -35,6 +36,7 @@ import {
   recordingVideoFilters,
   resolveRecordingOutput,
 } from "../recording-pipeline";
+import { startStrictBrowserRecording } from "../recording-strict-browser-lifecycle";
 import {
   AUTOMATION_RECORDING_MAX_PADDING_MS,
   recordingFrameCountForElapsedMs,
@@ -1164,11 +1166,7 @@ export async function captureAuthorPreviewNativeImage(
 
 export async function captureRecordingNativeImage(session: RecordingSession): Promise<NativeImage> {
   if (session.target.kind === "author_preview") {
-    return captureAuthorPreviewNativeImage(
-      session.target.stream_id,
-      session.width,
-      session.height,
-    );
+    return captureAuthorPreviewNativeImage(session.target.stream_id, session.width, session.height);
   }
   return captureTargetNativeImage(session.target, session.width, session.height);
 }
@@ -1863,6 +1861,10 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
     pad_color?: RecordingPadColor | null;
     quality_preset?: RecordingQualityPreset | null;
     scale_algo?: RecordingScaleAlgo | null;
+    contract_version?: 2;
+    delivery_policy?: "strict" | "best_effort";
+    certified_tier?: StartRecordingArgs["certified_tier"];
+    capture_contract?: StartRecordingArgs["capture_contract"];
   };
   if (!args.project_folder) throw new Error("project_folder required");
   const id = randomUUID();
@@ -1872,6 +1874,13 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
   const target = args.target ?? defaultCaptureTarget();
   const width = clampDimension(args.width, 1280);
   const height = clampDimension(args.height, 720);
+  if (args.delivery_policy === "strict") {
+    const url =
+      target.kind === "author_preview"
+        ? authorSession(target.stream_id).window.webContents.getURL()
+        : "";
+    return startStrictBrowserRecording(args as StartRecordingArgs, onEvent, sender, url);
+  }
   const output = resolveRecordingOutput(width, height, {
     outputResolution: args.output_resolution,
     fitMode: args.fit_mode,

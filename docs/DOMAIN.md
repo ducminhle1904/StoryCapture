@@ -142,20 +142,42 @@ Main files live under `apps/desktop/src/features/editor`.
 
 ## Automation And Recording
 
-The Electron host owns automation and capture behavior. There are no current
-Rust/native capture crates.
+The Electron host owns automation and capture behavior. Recording has two
+explicit policies:
+
+- **Standard** is `best_effort` and preserves the legacy recording path. It can
+  complete on uncertified hardware, but its result and UI must remain visibly
+  degraded rather than claiming Strict quality.
+- **Strict** requires exact nominal `60/1`, a certified platform/hardware/
+  backend tuple, successful throughput/storage/readiness preflight, zero cadence
+  loss, and exact decoded FFV1 master-frame identity. Any runtime violation ends
+  as `quality_failed`; it never silently falls back to Standard.
 
 - Automation is BrowserWindow-based in the Electron host. It can launch an
   offscreen browser window or attach to an author preview stream.
-- Recording uses Electron capture APIs such as `desktopCapturer`, `screen`, and
-  `webContents.capturePage`.
-- Frame capture writes a PNG sequence and then encodes through
-  `ffmpeg-static`.
+- Standard recording uses the existing Electron capture/encode path. Strict V2
+  has a browser backend plus native ScreenCaptureKit and Windows Graphics
+  Capture adapters/helpers. The native adapters are implemented but are not yet
+  registered in the production Strict lifecycle; the current certification
+  catalog is deliberately empty.
+- Strict writes a lossless FFV1/BGRA Matroska master, an H.264 editing proxy,
+  PCM WAV audio sidecars, action timing, cadence/quality evidence, and an exact
+  per-frame sequence ledger. Its bundle layout is
+  `master/video.mkv`, `proxy/video.mp4`, `audio/*.wav`,
+  `evidence/{cadence,quality,sequence-ledger}.json`,
+  `sidecars/actions.json`, and `manifest.json`.
 - Audio is optional and merged during encode when available. The Electron
   preload special-cases recording start/stop so renderer-side browser
   `MediaRecorder` microphone capture can be handed back to the host through
   `electron_recording_set_audio`.
 - Recording lifecycle supports start/stop and pause/resume surfaces.
+- The automation runner returns `ready_to_finalize` after writing action/step
+  sidecars. The renderer then flushes `MediaRecorder` microphone data through
+  preload before the host performs the terminal bundle verification.
+- Only a `completed` V2 bundle is discoverable as a recording source. A
+  `quality_failed` bundle remains contained for diagnostics, is not registered,
+  uploaded, or opened in post-production, and exposes retry/open/delete actions
+  with seven-day retention.
 - The legacy recorder emits privacy-safe JSONL V2 diagnostics for session,
   preview/backend, target/cursor/readiness, sidecar, cadence/audio, and terminal
   events. Process/session ordering is monotonic; logging failure falls back
@@ -188,10 +210,10 @@ Rust/native capture crates.
   existing timing fallback without inventing frame PTS or blocking valid input.
   Stop/cancel settles pending landmark waiters.
 
-Operator-gated capture work still requires real macOS Screen Recording/TCC
-verification; do not treat simulated tests as equivalent to OS-level UAT.
-The current source includes helper/test coverage for screen-capture permission
-probing, but that does not replace operating-system permission testing.
+Operator-gated capture work still requires real macOS Screen Recording/TCC and
+Windows Graphics Capture verification; do not treat simulated protocol/backend
+tests or packaged helper smoke tests as equivalent to OS-level, multi-display,
+occlusion, audio, sustained-load, or release-soak certification.
 
 ## Post-Production
 

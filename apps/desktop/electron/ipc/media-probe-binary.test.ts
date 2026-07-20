@@ -5,10 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   ffmpegExecutablePath: vi.fn(() => process.execPath),
+  ffprobeExecutablePath: vi.fn(() => process.execPath),
 }));
 
 vi.mock("./export-binaries", () => ({
   ffmpegExecutablePath: mocks.ffmpegExecutablePath,
+  ffprobeExecutablePath: mocks.ffprobeExecutablePath,
 }));
 
 import { probeRecording } from "./media-probe";
@@ -35,6 +37,7 @@ describe("recording media probe binary resolution", () => {
     const result = await probeRecording(file);
 
     expect(mocks.ffmpegExecutablePath).toHaveBeenCalledOnce();
+    expect(mocks.ffprobeExecutablePath).toHaveBeenCalledOnce();
     expect(result).toEqual({
       status: "invalid",
       reason: "unsupported_or_corrupt",

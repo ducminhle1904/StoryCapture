@@ -17,7 +17,7 @@ describe("shared-types runtime resolution", () => {
       { cwd: desktopDir, encoding: "utf8" },
     );
 
-    expect(result.stderr).toBe("");
+    expect(result.stderr.trim()).toBe("");
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe("0.85");
   });

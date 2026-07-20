@@ -56,6 +56,17 @@ Required secrets:
 There is no current GitHub release workflow. Signing scripts are standalone
 unless a future workflow wires them into CI/release.
 
+The packaged WGC helper has its own local/package signing inputs:
+
+| Env var | Purpose |
+|---|---|
+| `STORYCAPTURE_REQUIRE_SIGNED_NATIVE_HELPERS=1` | Makes the native-helper build require signing |
+| `STORYCAPTURE_WINDOWS_CERT_THUMBPRINT` | Selects the local certificate used by `native/windows-capture/build.ps1` |
+| `STORYCAPTURE_WINDOWS_CERT_PUBLISHER` | Optional expected publisher substring for packaged-helper verification |
+
+The Windows packaged-helper verifier always requires a valid Authenticode
+signature. These variables are build/release inputs and must not be committed.
+
 ## Desktop AI And TTS Keys
 
 Stored in the OS keychain at runtime, not in repo secrets.
@@ -77,6 +88,7 @@ Non-secret runtime toggles/URLs used by the Electron host:
 |---|---|
 | `STORYCAPTURE_WEB_URL` | Overrides the web companion base URL used by desktop web-sync/upload flows |
 | `STORYCAPTURE_DEBUG_UPDATER` | Enables updater debug behavior/logging in development diagnostics |
+| `STORYCAPTURE_DISABLE_RECORDING_TIER_IDS` | Comma-separated certified Recording V2 tier IDs to disable at runtime |
 
 Document any new desktop runtime env here even when it is not secret.
 

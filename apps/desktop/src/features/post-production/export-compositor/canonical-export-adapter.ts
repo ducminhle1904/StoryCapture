@@ -47,7 +47,10 @@ export class CanonicalExportCompositorAdapter {
     if (payload.durationMs != null && payload.durationMs !== graph.duration_ms) {
       throw new Error("canonical export duration must match graph.duration_ms");
     }
-    await this.engine.configure(graph, { resamplingQuality: payload.resamplingQuality });
+    await this.engine.configure(graph, {
+      resamplingQuality: payload.resamplingQuality,
+      sourceMode: "export",
+    });
     this.graph = graph;
     return { ok: true };
   }

@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   publishCompletedRecording: vi.fn(),
   acquireRecordingPreview: vi.fn(),
   parseStory: vi.fn(),
+  deleteFailedRecordingBundle: vi.fn(),
+  openRecordingDiagnosticBundle: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
@@ -40,6 +42,10 @@ vi.mock("@/ipc/parse", () => ({
   parseStory: mocks.parseStory,
 }));
 vi.mock("@/ipc/projects", () => ({ publishCompletedRecording: mocks.publishCompletedRecording }));
+vi.mock("@/ipc/recording-failure", () => ({
+  deleteFailedRecordingBundle: mocks.deleteFailedRecordingBundle,
+  openRecordingDiagnosticBundle: mocks.openRecordingDiagnosticBundle,
+}));
 vi.mock("@/state/app-settings", () => {
   const useAppSettingsStore = (selector: (state: { settings: null }) => unknown) =>
     selector({ settings: null });
@@ -50,12 +56,19 @@ vi.mock("@/state/output-prefs", () => ({
   applyCaptureFpsDefault: vi.fn(),
   DEFAULT_RECORDING_PACING: {},
   recordingOutputResolutionForStart: vi.fn(() => null),
-  useOutputPrefsStore: {
-    getState: () => ({
-      activePreset: null,
-      recordingKnobs: { fps: 30, fit: "contain", pad: "#000000", quality: "high" },
-    }),
-  },
+  useOutputPrefsStore: Object.assign(
+    (selector: (state: unknown) => unknown) =>
+      selector({
+        recordingDeliveryPolicy: "best_effort",
+      }),
+    {
+      getState: () => ({
+        activePreset: null,
+        recordingDeliveryPolicy: "best_effort",
+        recordingKnobs: { fps: 30, fit: "contain", pad: "#000000", quality: "high" },
+      }),
+    },
+  ),
 }));
 vi.mock("./recording-preview", () => ({
   acquireRecordingPreview: mocks.acquireRecordingPreview,
@@ -70,8 +83,8 @@ vi.mock("./video-output/video-output-section", () => ({
   VideoOutputSection: () => null,
 }));
 
-import { useRecorderStore } from "@/state/recorder";
 import type { RecordingEvent } from "@/ipc/encode";
+import { useRecorderStore } from "@/state/recorder";
 
 import { RecordingView } from "./recording-view";
 
@@ -111,6 +124,8 @@ beforeEach(() => {
   mocks.getCaptureTarget.mockReset().mockResolvedValue(target);
   mocks.listCaptureTargets.mockReset().mockResolvedValue(targets);
   mocks.publishCompletedRecording.mockReset();
+  mocks.deleteFailedRecordingBundle.mockReset().mockResolvedValue(undefined);
+  mocks.openRecordingDiagnosticBundle.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -176,15 +191,15 @@ describe("RecordingView take lifecycle", () => {
   it("replays a completion event emitted before startRecording resolves", async () => {
     mocks.startRecording.mockImplementation(
       async (_args: unknown, onEvent: (event: RecordingEvent) => void) => {
-      onEvent({
-        type: "completed",
-        result: { output_path: "/tmp/early.mp4", duration_ms: 50 },
-      });
-      onEvent({
-        type: "completed",
-        result: { output_path: "/tmp/early.mp4", duration_ms: 50 },
-      });
-      return { id: "take-early" };
+        onEvent({
+          type: "completed",
+          result: { output_path: "/tmp/early.mp4", duration_ms: 50 },
+        });
+        onEvent({
+          type: "completed",
+          result: { output_path: "/tmp/early.mp4", duration_ms: 50 },
+        });
+        return { id: "take-early" };
       },
     );
 
@@ -277,6 +292,91 @@ describe("RecordingView take lifecycle", () => {
     });
     expect(mocks.publishCompletedRecording).toHaveBeenCalledTimes(1);
     expect(useRecorderStore.getState().outputPath).toBe("/tmp/stopped.mp4");
+  });
+
+  it("keeps a quality-failed Strict take out of project publication", async () => {
+    let recordingEvent!: (event: RecordingEvent) => void;
+    mocks.startRecording.mockImplementation(
+      async (_args: unknown, onEvent: (event: RecordingEvent) => void) => {
+        recordingEvent = onEvent;
+        return { id: "take-quality-failed" };
+      },
+    );
+
+    render(
+      <MemoryRouter>
+        <RecordingView
+          projectId="project-1"
+          projectName="Demo"
+          projectFolder="/tmp/demo"
+          storySource={'meta { app: "native" }'}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New take" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Start recording" }));
+    await waitFor(() => expect(useRecorderStore.getState().status).toBe("recording"));
+
+    recordingEvent({ type: "verifying", progress: 0.5 });
+    await waitFor(() => expect(useRecorderStore.getState().status).toBe("verifying"));
+    recordingEvent({
+      type: "quality-failed",
+      result: {
+        version: 2,
+        status: "quality_failed",
+        delivery_policy: "strict",
+        certified_tier: null,
+        bundle_path: "/tmp/demo/exports/failed.sc-recording",
+        output_path: null,
+        diagnostic_bundle_path: "/tmp/demo/exports/failed.sc-recording",
+        duration_ms: 50,
+        bytes: 1,
+        master_path: null,
+        proxy_path: null,
+        cadence_evidence: {
+          version: 2,
+          requested_fps: { numerator: 60, denominator: 1 },
+          source_fps: { numerator: 60, denominator: 1 },
+          stream_time_base: { numerator: 1, denominator: 60 },
+          active_duration_us: 50_000,
+          expected_slots: 3,
+          source_presentations: 3,
+          submitted_frames: 3,
+          encoder_acked_frames: 2,
+          artifact_decoded_frames: 2,
+          source_sequence_gaps: 0,
+          stale_reuses: 0,
+          skipped_slots: 0,
+          dropped_frames: 1,
+          deadline_misses: 0,
+          ring_overflows: 0,
+          backpressure_events: 0,
+          pts_gaps: 0,
+          pts_duplicates: 0,
+          full_decode_succeeded: true,
+          verdict: "failed",
+          failure_codes: ["submitted_frame_dropped"],
+        },
+        quality_evidence: {
+          version: 2,
+          evaluated_frames: 0,
+          full_frame_luma_ssim: null,
+          text_edge_roi_ssim: null,
+          p01_edge_contrast_retention: null,
+          edge_spread_increase_px: null,
+          overlay_geometry_delta_px: null,
+          color_channel_delta: null,
+          lossless_master_hashes_match: false,
+          verdict: "failed",
+          failure_codes: ["artifact_hash_mismatch"],
+        },
+      },
+    });
+
+    await waitFor(() => expect(useRecorderStore.getState().status).toBe("quality_failed"));
+    expect(mocks.publishCompletedRecording).not.toHaveBeenCalled();
+    expect(screen.getByText("Strict take was not published")).toBeInTheDocument();
   });
 
   it("finalizes from the returned automation outcome when channel events are missing", async () => {

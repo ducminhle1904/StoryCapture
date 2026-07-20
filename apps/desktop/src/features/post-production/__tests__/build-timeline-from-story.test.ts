@@ -227,6 +227,52 @@ describe("buildTimelineFromStory", () => {
     });
   });
 
+  it("uses the proxy for preview and carries the verified master into the export contract", () => {
+    const recording: RecordingInfo = {
+      ...RECORDING,
+      version: 2,
+      path: "/take.sc-recording/proxy/video.mp4",
+      bundle_path: "/take.sc-recording",
+      master_path: "/take.sc-recording/master/video.mkv",
+      proxy_path: "/take.sc-recording/proxy/video.mp4",
+      cadence_evidence_path: "/take.sc-recording/evidence/cadence.json",
+      quality_evidence_path: "/take.sc-recording/evidence/quality.json",
+      exact_source_fps: { numerator: 60, denominator: 1 },
+      source_frame_count: 300,
+      certified_tier: null,
+      quality_verdict: "passed",
+      actions_path: "/take.sc-recording/sidecars/actions.json",
+      microphone_audio_path: "/take.sc-recording/audio/microphone.wav",
+      system_audio_path: "/take.sc-recording/audio/system.wav",
+    };
+    const out = buildTimelineFromStory({ story: null, recording, trajectory: null });
+    expect(out.video[0]).toMatchObject({
+      sourcePath: recording.proxy_path,
+      recordingSource: {
+        master_path: recording.master_path,
+        proxy_path: recording.proxy_path,
+        exact_source_fps: { numerator: 60, denominator: 1 },
+        source_frame_count: 300,
+      },
+    });
+    expect(out.sound).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: expect.stringContaining("microphone-"),
+          path: recording.microphone_audio_path,
+          startMs: 0,
+          gain: 1,
+        }),
+        expect.objectContaining({
+          id: expect.stringContaining("system-"),
+          path: recording.system_audio_path,
+          startMs: 0,
+          gain: 1,
+        }),
+      ]),
+    );
+  });
+
   it("emits a cursor clip with derived trajectory path when sidecar present", () => {
     const out = buildTimelineFromStory({
       story: null,

@@ -5,6 +5,7 @@
 export * from "./browser-presets";
 export * from "./export-composition";
 export * from "./ipc";
+export * from "./recording-v2";
 
 // WebAccountInfo stays in web-account.ts to avoid colliding with IPC types.
 

@@ -45,14 +45,12 @@ export const DEFAULT_EXPORT_FORM: ExportFormState = {
   customHeight: 1080,
   fps: 60,
   quality: "high",
-  frameMode: "framed",
+  frameMode: "source",
   outFolder: null,
   baseName: "export",
 };
 
-export const createExportSlice: StateCreator<ExportSlice, [], [], ExportSlice> = (
-  set,
-) => ({
+export const createExportSlice: StateCreator<ExportSlice, [], [], ExportSlice> = (set) => ({
   exportForm: { ...DEFAULT_EXPORT_FORM },
   setExportFormats: (formats) =>
     set((s) =>

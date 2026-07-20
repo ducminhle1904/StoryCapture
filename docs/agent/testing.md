@@ -15,6 +15,11 @@
   changes.
 - Recording diagnostic tests:
   `pnpm --dir apps/desktop exec vitest run electron/ipc/recording-observability.test.ts electron/ipc/recording-diagnostic-reader.test.ts electron/ipc/recording-spike-trace.test.ts electron/ipc/logs.test.ts`.
+- Recording V2 packaged helper gate:
+  `pnpm --dir apps/desktop run test:e2e:recording-v2-helper`. This builds an
+  unpacked package and verifies the platform helper signature plus the V2 hello
+  protocol. It is separate from `test:e2e:export` and does not certify live
+  display/window capture or a sustained release soak.
 - Cursor-sync Electron E2E: `pnpm --dir apps/desktop run test:e2e:cursor-sync`.
 - Smooth document/nested-container scroll Electron E2E:
   `pnpm --dir apps/desktop run test:e2e:scroll`.
@@ -97,6 +102,20 @@
   `apps/desktop/electron/channel-sequence.test.ts`,
   `apps/desktop/electron/ipc/legacy/story-runner.test.ts`, and
   `apps/desktop/src/features/recorder/recording-view-lifecycle.test.tsx`.
+- Recording V2 contract/admission changes: focus the shared contract test,
+  `capture-backend-v2-guard.test.ts`, and
+  `recording-certification-catalog.test.ts`.
+- Browser Strict/data-plane changes: focus browser backend/lifecycle,
+  frame-ring, master pipeline/bundle, cadence, quality, discovery, retention,
+  and recorder lifecycle/contract tests before the full desktop suite.
+- macOS native capture changes: run the macOS backend tests, native helper
+  build/tests when the active Swift toolchain supplies `XCTest`, and the
+  packaged helper gate on macOS. The package gate is not a ScreenCaptureKit/TCC
+  live-capture certification.
+- Windows native capture changes: run the Windows backend, protocol, and
+  packaging tests plus the packaged helper gate on a Windows runner. Live WGC,
+  Authenticode, DPI/multi-monitor, and named-ring behavior require the actual
+  target environment.
 - Project registry/atomic persistence changes: focus
   `apps/desktop/electron/ipc/json-store.test.ts` and
   `apps/desktop/electron/ipc/legacy/projects.test.ts`.

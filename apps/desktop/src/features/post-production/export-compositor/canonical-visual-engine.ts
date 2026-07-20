@@ -26,6 +26,7 @@ import {
   type ExportResamplingQuality,
 } from "./canvas-scene-renderer";
 import { parseExportCursorSidecar } from "./cursor-sidecar";
+import type { CanonicalSourceMode } from "./media-source-pool";
 import { CanonicalMediaSourcePool, canonicalAssetUrl } from "./media-source-pool";
 import {
   type EvaluatedScene,
@@ -82,6 +83,7 @@ export interface CanonicalVisualEngineOptions {
 
 export interface CanonicalVisualEngineRuntimeConfig {
   resamplingQuality?: ExportResamplingQuality;
+  sourceMode?: CanonicalSourceMode;
 }
 
 export interface CanonicalRenderedFrame {
@@ -191,7 +193,7 @@ export class CanonicalVisualEngine implements CanonicalVisualEnginePort {
     this.renderer.setResamplingQuality(runtimeConfig.resamplingQuality ?? "high");
 
     try {
-      await this.mediaPool.configure(graph);
+      await this.mediaPool.configure(graph, runtimeConfig.sourceMode ?? "preview");
       await this.imagePool.configure(graph);
       const cursorRuntimes: CursorRuntime[] = [];
       const targetBoundsByStepId = new Map<string, ExportRect>();

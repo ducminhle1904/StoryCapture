@@ -107,6 +107,15 @@ const PERSISTED_PANEL_KEYS = ["timelineHeightPct", "previewWidthPct"] as const;
  */
 const PERSISTED_EXPORT_KEYS = ["exportForm"] as const;
 
+export function restoredExportFrameMode(
+  persisted: Partial<EditorStore["exportForm"]> | undefined,
+): EditorStore["exportForm"]["frameMode"] {
+  if (!persisted) return DEFAULT_EXPORT_FORM.frameMode;
+  return persisted.frameMode === "source" || persisted.frameMode === "framed"
+    ? persisted.frameMode
+    : "framed";
+}
+
 export const useEditorStore = create<EditorStore>()(
   persist(
     (...a) => {
@@ -159,7 +168,10 @@ export const useEditorStore = create<EditorStore>()(
           exportForm?: Partial<EditorStore["exportForm"]>;
         };
         if (p.exportForm) {
-          p.exportForm = { ...p.exportForm, frameMode: "framed" };
+          p.exportForm = {
+            ...p.exportForm,
+            frameMode: restoredExportFrameMode(p.exportForm),
+          };
         }
         return p;
       },
@@ -174,11 +186,11 @@ export const useEditorStore = create<EditorStore>()(
             ...DEFAULT_EXPORT_FORM,
             ...current.exportForm,
             ...(p.exportForm ?? {}),
-            frameMode: p.exportForm?.frameMode ?? "framed",
+            frameMode: restoredExportFrameMode(p.exportForm),
           },
         };
       },
-      version: 4,
+      version: 5,
     },
   ),
 );

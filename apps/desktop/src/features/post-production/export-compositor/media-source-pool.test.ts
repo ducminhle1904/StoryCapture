@@ -9,6 +9,20 @@ import {
 import { evaluateScene } from "./scene-evaluator";
 
 describe("canonical media source pool", () => {
+  it("selects the master-decoder loader mode only for canonical export", async () => {
+    const loader: CanonicalMediaLoader = vi.fn(async () => ({
+      source: {} as CanvasImageSource,
+      duration_us: null,
+      seek: async () => undefined,
+      dispose: vi.fn(),
+    }));
+    const graph = canonicalGraph([canonicalSource("source-a", 0, 1_000)]);
+    const pool = new CanonicalMediaSourcePool(loader);
+    await pool.configure(graph, "export");
+    expect(loader).toHaveBeenCalledWith(expect.objectContaining({ id: "source-a" }), "export");
+    pool.dispose();
+  });
+
   it("loads and seeks multiple sources in stable order, deduplicates seeks, and holds last frame", async () => {
     const events: string[] = [];
     const handles = new Map<string, CanonicalMediaHandle>();

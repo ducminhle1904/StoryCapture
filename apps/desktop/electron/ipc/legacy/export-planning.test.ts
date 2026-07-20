@@ -327,9 +327,41 @@ describe("canonical post-production export planning", () => {
     );
 
     expect(args).toContain("libvpx-vp9");
+    expect(args[args.indexOf("-b:v") + 1]).toBe("0");
+    expect(args[args.indexOf("-crf") + 1]).toBe("18");
     expect(args).toContain("libopus");
     expect(args).toContain("1.000000");
     expect(args.at(-1)).toBe("/tmp/out.webm");
+  });
+
+  it("uses CRF 16 software delivery for an exact verified Strict master", () => {
+    const graphJson = graph([
+      source({
+        recording_source: {
+          exact_source_fps: { numerator: 60, denominator: 1 },
+          quality_verdict: "passed",
+        },
+      }),
+    ]);
+    const plan = runnablePlan(graphJson, output());
+    const args = ffmpegArgsForCanonicalExportPlan(plan, audioPlanFor(graphJson), "/tmp/out.mp4");
+    expect(args[args.indexOf("-crf") + 1]).toBe("16");
+
+    const hardware = runnablePlan(
+      graphJson,
+      output({
+        encoder_options: {
+          ...output().encoder_options,
+          hw_encoder: "video-toolbox-h264",
+          rate_control: "vbr",
+          encoder_preset: "quality",
+          x264_preset: undefined,
+        },
+      }),
+    );
+    expect(() =>
+      ffmpegArgsForCanonicalExportPlan(hardware, audioPlanFor(graphJson), "/tmp/out.mp4"),
+    ).toThrow(/Strict MP4 delivery requires/);
   });
 
   it("builds animated GIF from canonical frames without any audio input", () => {

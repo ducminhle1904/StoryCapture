@@ -38,7 +38,16 @@ migrations, generated files, or release tooling.
   - `apps/desktop/scripts/build-electron.mjs`
   - `apps/desktop/scripts/start-dev-electron.mjs`
   - `apps/desktop/scripts/prepare-dev-electron-app.mjs`
+  - `apps/desktop/scripts/build-native-capture.mjs`
+  - `apps/desktop/scripts/verify-packaged-native-capture.mjs`
 - Electron package output is `apps/desktop/release-electron`.
+- Electron Builder packages the ScreenCaptureKit helper at
+  `resources/native/macos/storycapture-screen-capture-helper` and the WGC helper
+  at `resources/native/windows/${arch}/storycapture-wgc.exe`.
+- `pnpm --dir apps/desktop run test:e2e:recording-v2-helper` builds an unpacked
+  package and verifies the helper signature and V2 protocol. The macOS verifier
+  runs strict `codesign` verification; the Windows verifier requires a valid
+  Authenticode signature and optionally checks the configured publisher.
 - Packaged export verification is
   `pnpm --dir apps/desktop run test:e2e:export`; its main-process harness is
   `apps/desktop/electron/ipc/export-e2e-smoke.ts`, and its launcher is
@@ -61,6 +70,21 @@ migrations, generated files, or release tooling.
   - `scripts/release/sign-windows.ps1`
 - For signing secrets and missing-secret behavior, read `docs/CREDENTIALS.md`
   first.
+
+### Recording V2 Release Controls
+
+- `BUNDLED_RECORDING_CERTIFICATION_TIERS` is intentionally empty. Strict is
+  fail-closed until the exact platform/architecture/hardware/backend/target
+  tuple completes packaged live capture and release-soak certification.
+- `STORYCAPTURE_DISABLE_RECORDING_TIER_IDS` is a comma-separated emergency
+  kill switch. It can disable a certified tier independently; it never relabels
+  a failed/degraded take as Strict.
+- There is no automated 60-second capture or ten-minute soak command in the
+  current repo. Do not promote a tier based only on unit/protocol/package smoke
+  tests.
+- Failed Strict bundles remain inside `<project>/exports`, default to seven-day
+  retention, and may be manually deleted only after validation as a contained
+  `quality_failed` bundle.
 
 ## Web Deploy And Cron
 
@@ -113,6 +137,10 @@ migrations, generated files, or release tooling.
   `packages/shared-types/package.json`.
 - Treat `scripts/build-ffmpeg/build/` as helper-script build output unless the
   task is directly about FFmpeg dependency builds.
+- Treat `apps/desktop/native/macos-screen-capture/.build/`,
+  `apps/desktop/native/windows-capture/build/`,
+  `apps/desktop/native/windows-capture/bin/`, and
+  `apps/desktop/release-electron/` as generated/package output.
 - `STORYCAPTURE_CURSOR_SYNC_MODE=legacy|shadow|unified` is an internal rollout
   control, not a public setting or secret. Invalid/unset values resolve to
   `shadow`; promote cohorts only after local invariant counters and encoded

@@ -400,7 +400,7 @@ export interface RecordingSession {
   fps: number;
   startedAt: number;
   paused: boolean;
-  lifecycle: "recording" | "paused" | "stopping" | "finalized";
+  lifecycle: "recording" | "paused" | "stopping" | "verifying" | "finalized";
   mediaClock: RecordingMediaClock;
   actionLandmarks: RecordingActionLandmarkRecorder;
   paintSequence: number;
@@ -542,6 +542,9 @@ export interface StoryBrowserRunOptions {
   recordingClockMs?: () => number;
   actionLandmarks?: RecordingActionLandmarkRecorder;
   requestFrameCommit?: () => Promise<FrameSyncOutcome>;
+  requireRecordingReadiness?: (
+    state: "source_ready" | "first_frame_committed" | "pre_input_frame_committed",
+  ) => Promise<void>;
   frameSyncTimeoutMs?: number;
   captureStateSnapshot?: () => Record<string, unknown>;
   pauseGate?: RecordingPauseGate;

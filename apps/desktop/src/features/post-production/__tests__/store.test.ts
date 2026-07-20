@@ -9,7 +9,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { DEFAULT_BACKGROUND, useEditorStore } from "../state/store";
+import { DEFAULT_BACKGROUND, restoredExportFrameMode, useEditorStore } from "../state/store";
 import { parseTimelineLayoutJson, serializeTimelineLayout } from "../state/timeline-layout";
 import { SNAP_THRESHOLD_PX, snapToNearest } from "../state/timeline-slice";
 
@@ -33,6 +33,15 @@ function resetStore() {
     },
   });
 }
+
+describe("export frame-mode persistence", () => {
+  it("defaults new exports to source while preserving explicit saved modes", () => {
+    expect(restoredExportFrameMode(undefined)).toBe("source");
+    expect(restoredExportFrameMode({ frameMode: "source" })).toBe("source");
+    expect(restoredExportFrameMode({ frameMode: "framed" })).toBe("framed");
+    expect(restoredExportFrameMode({})).toBe("framed");
+  });
+});
 
 function findVideoClip(id: string) {
   const clip = useEditorStore.getState().tracks.video.find((c) => c.id === id);

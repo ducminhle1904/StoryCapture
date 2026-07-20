@@ -10,6 +10,10 @@ import { readRecordingActionsSidecar } from "../action-sidecar-reader";
 import { readJson, writeJson } from "../json-store";
 import { logFromFrontend } from "../log-store";
 import { userDataPath } from "../paths";
+import {
+  pauseStrictBrowserRecording,
+  resumeStrictBrowserRecording,
+} from "../recording-strict-browser-lifecycle";
 import { sessionId } from "../session";
 import type { InvokeEnvelope } from "../types";
 import { checkElectronUpdate, getPendingUpdateInfo, installElectronUpdate } from "../update-store";
@@ -184,6 +188,7 @@ export async function handleLegacyInvoke(
       );
     case "pause_recording": {
       const id = String((args as { session?: { id?: string } } | undefined)?.session?.id ?? "");
+      if (await pauseStrictBrowserRecording(id)) return { status: "paused" };
       const session = recordingSessions.get(id);
       if (!session) throw new Error(`recording session ${id} not found`);
       session.paused = true;
@@ -194,6 +199,7 @@ export async function handleLegacyInvoke(
     }
     case "resume_recording": {
       const id = String((args as { session?: { id?: string } } | undefined)?.session?.id ?? "");
+      if (await resumeStrictBrowserRecording(id)) return { status: "recording" };
       const session = recordingSessions.get(id);
       if (!session) throw new Error(`recording session ${id} not found`);
       session.paused = false;
@@ -456,6 +462,7 @@ export async function handleLegacyInvoke(
         String(
           (args as { args?: { recording_path?: string } } | undefined)?.args?.recording_path ?? "",
         ),
+        (args as { args?: { actions_path?: string | null } } | undefined)?.args?.actions_path,
       );
     case "get_recording_trajectory":
       return readRecordingSidecar(

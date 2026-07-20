@@ -83,6 +83,8 @@ Desktop build entrypoints:
   `dist-electron/preload.cjs`.
 - `apps/desktop/scripts/start-dev-electron.mjs` launches Electron after the
   Vite dev server is available.
+- `apps/desktop/scripts/build-native-capture.mjs` builds the platform capture
+  helper before package-producing scripts.
 - `.electron-dev/` is the prepared development app directory.
 - There is no `electron-builder.yml`; Electron Builder configuration is inline
   under `apps/desktop/package.json#build`.
@@ -104,9 +106,14 @@ The packaged app includes:
 - `dist/**`
 - `dist-electron/**`
 - `package.json`
+- the ScreenCaptureKit helper at
+  `resources/native/macos/storycapture-screen-capture-helper` on macOS
+- the Windows Graphics Capture helper at
+  `resources/native/windows/${arch}/storycapture-wgc.exe` on Windows
 
 No Rust workspace, Tauri host, `src-tauri`, Cargo target output, or native Rust
-crates are part of the current app.
+crates are part of the current app. Native capture helpers are Swift on macOS
+and C++/WinRT on Windows.
 
 ## Desktop Routes
 
@@ -160,7 +167,7 @@ Current non-plugin command ownership:
 | `ipc/preview.ts` | automation launch, preview stream, author preview lifecycle, viewport/url, back/forward/reload, author input, author snapshots |
 | `ipc/picker.ts` | author/general picker start, cancel, activity check, stamp step id |
 | `ipc/simulator.ts` | simulator start/step/cancel/promote fallback and dry-run start/cancel |
-| `ipc/recording.ts` | start/stop/pause/resume recording and host audio handoff |
+| `ipc/recording.ts` | start/stop/pause/resume recording, host audio handoff, and validated failed-bundle deletion |
 | `ipc/capture.ts` | capture target get/set/thumbnail and capture start/stop |
 | `ipc/post-production.ts` | workflow state, timeline load/save, recording actions/trajectory/step timing, presets, sound library |
 | `ipc/render.ts` | render cancel/list active/progress stream; direct enqueue is not a fake timer path |
@@ -173,6 +180,23 @@ Recording diagnostics are independent of recording control: the legacy host
 emits typed JSONL V2 events through `ipc/recording-observability.ts`, while
 `ipc/log-store.ts` owns redaction, rotation, and diagnostic-bundle inclusion.
 Logging is best-effort and cannot change the recording result it describes.
+
+Strict Recording V2 uses `packages/shared-types/src/recording-v2.ts` as its
+public contract. `recording-certification-catalog.ts` admits only an exact
+certified platform/hardware/backend tuple; the bundled catalog is currently
+empty, so Strict remains fail-closed. The browser lifecycle is implemented by
+`recording-strict-browser-lifecycle.ts` and
+`browser-capture-backend-v2.ts`. The shared data plane writes an FFV1/BGRA
+master, H.264 proxy, PCM sidecars, action sidecar, cadence/quality evidence,
+and a sequence ledger through `recording-master-pipeline.ts` and commits a
+validated bundle atomically through `recording-bundle.ts`.
+
+The ScreenCaptureKit and Windows Graphics Capture adapters/helpers are present,
+but production Strict lifecycle registration for display/window targets is not
+complete. The browser adapter still copies each offscreen frame through
+`image.toBitmap()`, and the Windows adapter still requires a production Node
+named-ring consumer. These paths must not be added to the certification catalog
+until packaged live capture and release-soak gates pass.
 
 Plugin shims live under `ipc/plugin/*` and cover Tauri-compatible
 dialog/event/log/resource, fs, os/process, shell, store, updater, and
@@ -241,10 +265,11 @@ host handlers.
 - `@storycapture/story-dsl`: checked-in, `ts-rs`-generated Story AST surface
   plus CodeMirror language support. Runtime parsing is reached through desktop IPC
   (`apps/desktop/src/ipc/parse.ts`) and host handlers.
-- `@storycapture/shared-types`: public package exports are `.`, `./ipc`, and
-  `./export-composition`. Electron/Node runtime consumers of composition
+- `@storycapture/shared-types`: public package exports are `.`, `./ipc`,
+  `./recording-v2`, and `./export-composition`. Electron/Node runtime consumers
+  of Recording V2 or composition
   constants or validators use the self-contained `./export-composition`
-  subpath; the root `src/index.ts` barrel contains extensionless source
+  or `./recording-v2` subpath; the root `src/index.ts` barrel contains extensionless source
   re-exports and is not directly Node ESM-safe for runtime value imports. The
   root barrel otherwise exports IPC types/commands, browser presets,
   `APP_PANIC_EVENT`, and the JSON-safe export composition/preflight/job
@@ -349,6 +374,11 @@ Relevant scripts:
 Local macOS package builds skip signing when no Developer ID certificate is
 installed. Production signing/notarization credentials are documented in
 `docs/CREDENTIALS.md`.
+- Native helper build and package verification use
+  `pnpm --dir apps/desktop native:build`,
+  `pnpm --dir apps/desktop native:verify:packaged`, and the complete
+  `pnpm --dir apps/desktop test:e2e:recording-v2-helper` gate. The current CI
+  workflow does not yet invoke the complete helper gate.
 - Recording synchronization is split between the committed-frame media clock,
   `ipc/action-landmarks.ts`, and the centralized `ipc/cursor-sync-mode.ts`
   rollout resolver. The action sidecar writer stays compatible in shadow mode

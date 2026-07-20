@@ -11,16 +11,19 @@
     "build": "pnpm electron:build",
     "renderer:dev": "vite",
     "renderer:build": "tsc -b && vite build",
-    "electron:build": "pnpm electron:build-main && pnpm renderer:build && electron-builder",
+    "electron:build": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder",
     "electron:build-main": "node scripts/build-electron.mjs",
     "electron:dev": "node scripts/dev-electron.mjs",
     "electron:start": "node scripts/start-dev-electron.mjs",
     "electron:prepare-dev-app": "node scripts/prepare-dev-electron-app.mjs",
     "diagnose:recording": "node scripts/recording-diagnostics.mjs",
+    "native:build": "node scripts/build-native-capture.mjs",
+    "native:verify:packaged": "node scripts/verify-packaged-native-capture.mjs",
     "test:e2e:cursor-sync": "pnpm electron:build-main && playwright test --config playwright.config.ts e2e/cursor-sync.spec.ts",
     "test:e2e:scroll": "pnpm electron:build-main && playwright test --config playwright.config.ts e2e/smooth-scroll.spec.ts",
     "test:e2e:media": "pnpm electron:build-main && playwright test --config playwright.config.ts e2e/media-playback.spec.ts",
-    "test:e2e:export": "pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && node scripts/export-compositor-artifact-smoke.mjs",
+    "test:e2e:export": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && node scripts/export-compositor-artifact-smoke.mjs",
+    "test:e2e:recording-v2-helper": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && pnpm native:verify:packaged",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit"
   },
@@ -117,13 +120,25 @@
     "mac": {
       "category": "public.app-category.video",
       "icon": "icons/icon.icns",
+      "extraResources": [
+        {
+          "from": "native/macos-screen-capture/.build/release/storycapture-screen-capture-helper",
+          "to": "native/macos/storycapture-screen-capture-helper"
+        }
+      ],
       "extendInfo": {
         "NSMicrophoneUsageDescription": "StoryCapture records optional voice-over audio while capturing demos."
       }
     },
     "win": {
       "target": "nsis",
-      "icon": "icons/icon.ico"
+      "icon": "icons/icon.ico",
+      "extraResources": [
+        {
+          "from": "native/windows-capture/bin/${arch}/storycapture-wgc.exe",
+          "to": "native/windows/${arch}/storycapture-wgc.exe"
+        }
+      ]
     },
     "linux": {
       "icon": "icons/icon.png"

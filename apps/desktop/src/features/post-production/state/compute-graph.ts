@@ -156,13 +156,14 @@ function videoSource(clip: VideoClip): VideoNode | null {
     type: "source",
     id: deterministicNodeId(clip.id, "source"),
     clip_id: clip.id,
-    path: clip.sourcePath,
+    path: clip.recordingSource?.proxy_path ?? clip.sourcePath,
     pts_offset_ms: safeTimelineMs(clip.startMs),
     timeline_start_ms: safeTimelineMs(clip.startMs),
     duration_ms: safeTimelineMs(clip.durationMs),
     source_width: clip.sourceSize?.width,
     source_height: clip.sourceSize?.height,
     source_time_map: clip.sourceTimeMap,
+    recording_source: clip.recordingSource ?? null,
   };
 }
 
@@ -517,6 +518,7 @@ export const EXPORT_CLIP_FIELD_COVERAGE = {
   video: {
     ...COMMON_CLIP_FIELD_COVERAGE,
     sourcePath: "graph",
+    recordingSource: "graph",
     sourceSize: "graph",
     outgoingTransition: "graph",
   } satisfies Record<keyof VideoClip, ExportFieldDisposition>,

@@ -5,6 +5,7 @@
  * `open_project` / `remove_project` host commands.
  */
 
+import type { RecordingInfoDto } from "@storycapture/shared-types";
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -26,22 +27,7 @@ export interface ProjectFolderInfo {
   session_count: number;
 }
 
-export interface RecordingInfo {
-  path: string;
-  captured_at: number;
-  duration_ms: number | null;
-  width: number | null;
-  height: number | null;
-  size?: number;
-  codec?: string | null;
-  container?: string | null;
-  validation?:
-    | { status: "unvalidated" | "valid" }
-    | {
-        status: "invalid";
-        reason: "empty" | "not_file" | "missing" | "timeout" | "unsupported_or_corrupt";
-      };
-}
+export type RecordingInfo = RecordingInfoDto;
 
 export type WorkflowType =
   | "product_demo"

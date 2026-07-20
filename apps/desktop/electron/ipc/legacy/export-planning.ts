@@ -44,6 +44,10 @@ interface ExportSourceNode {
   source_height?: number;
   source_fps?: number;
   source_time_map?: unknown;
+  recording_source?: {
+    exact_source_fps?: { numerator?: number; denominator?: number };
+    quality_verdict?: string;
+  } | null;
 }
 
 interface ExportGraph {
@@ -471,6 +475,10 @@ function sourceNodes(graph: ExportGraph): ExportSourceNode[] {
       source_height: finiteNumber(node.source_height) ?? undefined,
       source_fps: finiteNumber(node.source_fps) ?? undefined,
       source_time_map: node.source_time_map,
+      recording_source:
+        node.recording_source && typeof node.recording_source === "object"
+          ? (node.recording_source as ExportSourceNode["recording_source"])
+          : null,
     }));
 }
 
@@ -658,7 +666,7 @@ export function ffmpegArgsForCanonicalExportPlan(
   const args = [...rawInput, ...audioPlan.inputArgs];
   if (audioPlan.filterComplex) args.push("-filter_complex", audioPlan.filterComplex);
   args.push("-map", "0:v:0", ...audioPlan.mapArgs);
-  if (format === "webm") args.push(...webmVideoArgs(plan.output, plan.encoderOptions));
+  if (format === "webm") args.push(...webmVideoArgs(plan));
   else args.push(...mp4VideoArgs(plan));
   args.push(...audioPlan.encoderArgs, ...audioPlan.outputArgs, out);
   return args;
@@ -666,6 +674,10 @@ export function ffmpegArgsForCanonicalExportPlan(
 
 function mp4VideoArgs(plan: CompositedExportPlan): string[] {
   const { encoderOptions, output } = plan;
+  const strictMaster = isStrictMasterSource(plan.source);
+  if (strictMaster && encoderOptions.hwEncoder !== "libx264-software") {
+    throw new Error("Strict MP4 delivery requires the certified libx264 software profile");
+  }
   const capability = MP4_ENCODER_CAPABILITIES[encoderOptions.hwEncoder];
   if (!capability) {
     throw new Error(
@@ -676,7 +688,7 @@ function mp4VideoArgs(plan: CompositedExportPlan): string[] {
   switch (encoderOptions.hwEncoder) {
     case "libx264-software":
       args.push("-preset", encoderOptions.encoderPreset ?? "medium");
-      args.push("-crf", String(crfValue(output, encoderOptions)));
+      args.push("-crf", String(strictMaster ? 16 : crfValue(output, encoderOptions)));
       break;
     case "nvenc-h264":
       args.push(
@@ -735,17 +747,34 @@ function mp4VideoArgs(plan: CompositedExportPlan): string[] {
   return args;
 }
 
-function webmVideoArgs(
-  output: ExportOutput,
-  encoderOptions: NormalizedExportEncoderOptions,
-): string[] {
+function webmVideoArgs(plan: CompositedExportPlan): string[] {
+  const { output, encoderOptions } = plan;
+  const quality = enumValue(output.quality, QUALITIES) ?? "high";
+  const crf =
+    encoderOptions.qualityValue ?? (quality === "high" ? 18 : quality === "med" ? 26 : 34);
   return [
     "-c:v",
     "libvpx-vp9",
     "-b:v",
-    bitrateValue(output, encoderOptions),
+    "0",
+    "-crf",
+    String(Math.max(0, Math.min(63, Math.round(crf)))),
+    "-row-mt",
+    "1",
+    "-pix_fmt",
+    "yuv420p",
+    "-fps_mode",
+    "cfr",
     ...keyframeArgs(clampFpsValue(output.fps), encoderOptions),
   ];
+}
+
+function isStrictMasterSource(source: ExportSourceNode): boolean {
+  return (
+    source.recording_source?.quality_verdict === "passed" &&
+    source.recording_source.exact_source_fps?.numerator === 60 &&
+    source.recording_source.exact_source_fps?.denominator === 1
+  );
 }
 
 export function hardwareTargetBitrateMbps(
@@ -783,16 +812,6 @@ function hardwareBitrateArgs(plan: CompositedExportPlan, allowExplicitBitrate: b
 
 function bitrateArgument(mbps: number): string {
   return `${Number(mbps.toFixed(2))}M`;
-}
-
-function bitrateValue(
-  output: ExportOutput,
-  encoderOptions: NormalizedExportEncoderOptions,
-): string {
-  const mbps =
-    encoderOptions.qualityValue ??
-    (output.quality === "high" ? 8 : output.quality === "med" ? 4 : 2);
-  return `${Math.max(1, Math.round(mbps))}M`;
 }
 
 function crfValue(output: ExportOutput, encoderOptions: NormalizedExportEncoderOptions): number {

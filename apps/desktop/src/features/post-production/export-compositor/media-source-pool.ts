@@ -1,4 +1,9 @@
 import type { SupportedExportCompositionGraph } from "@storycapture/shared-types";
+import {
+  closeRecordingMasterDecoder,
+  decodeRecordingMasterFrame,
+  openRecordingMasterDecoder,
+} from "@/ipc/recording-master";
 
 import type { EvaluatedScene, ExportSourceNode } from "./scene-evaluator";
 import { nodesOf } from "./scene-evaluator";
@@ -13,7 +18,11 @@ export interface CanonicalMediaHandle {
   dispose(): void;
 }
 
-export type CanonicalMediaLoader = (node: ExportSourceNode) => Promise<CanonicalMediaHandle>;
+export type CanonicalSourceMode = "preview" | "export";
+export type CanonicalMediaLoader = (
+  node: ExportSourceNode,
+  mode?: CanonicalSourceMode,
+) => Promise<CanonicalMediaHandle>;
 
 interface PoolEntry {
   node: ExportSourceNode;
@@ -106,6 +115,64 @@ export const loadDomMediaSource: CanonicalMediaLoader = async (node) => {
   };
 };
 
+function bgraToRgba(bytes: Uint8Array): Uint8ClampedArray<ArrayBuffer> {
+  const rgba = new Uint8ClampedArray(new ArrayBuffer(bytes.byteLength));
+  for (let index = 0; index < bytes.byteLength; index += 4) {
+    rgba[index] = bytes[index + 2] ?? 0;
+    rgba[index + 1] = bytes[index + 1] ?? 0;
+    rgba[index + 2] = bytes[index] ?? 0;
+    rgba[index + 3] = bytes[index + 3] ?? 255;
+  }
+  return rgba;
+}
+
+export const loadCanonicalMediaSource: CanonicalMediaLoader = async (node, mode = "preview") => {
+  const source = node.recording_source;
+  if (mode !== "export" || !source) return loadDomMediaSource(node);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = source.master_width;
+  canvas.height = source.master_height;
+  const context = canvas.getContext("2d", { alpha: false });
+  if (!context) throw new Error("canonical master decoder canvas is unavailable");
+  const handle = await openRecordingMasterDecoder({
+    path: source.master_path,
+    width: source.master_width,
+    height: source.master_height,
+  });
+  let lastFrameIndex = -1;
+  return {
+    source: canvas,
+    duration_us: Math.round(
+      (source.source_frame_count * source.exact_source_fps.denominator * 1_000_000) /
+        source.exact_source_fps.numerator,
+    ),
+    async seek(sourcePtsUs) {
+      const frameIndex = Math.min(
+        source.source_frame_count - 1,
+        Math.max(
+          0,
+          Math.floor(
+            (sourcePtsUs * source.exact_source_fps.numerator) /
+              (source.exact_source_fps.denominator * 1_000_000),
+          ),
+        ),
+      );
+      if (frameIndex === lastFrameIndex) return;
+      const bgra = await decodeRecordingMasterFrame(handle, frameIndex);
+      context.putImageData(
+        new ImageData(bgraToRgba(bgra), source.master_width, source.master_height),
+        0,
+        0,
+      );
+      lastFrameIndex = frameIndex;
+    },
+    dispose() {
+      void closeRecordingMasterDecoder(handle);
+    },
+  };
+};
+
 /**
  * Owns every source independently. It intentionally seeks in stable graph
  * order: parallel seeks make browser completion order observable and caused
@@ -116,9 +183,12 @@ export class CanonicalMediaSourcePool {
   private generation = 0;
   private outputFps = 60;
 
-  constructor(private readonly loader: CanonicalMediaLoader = loadDomMediaSource) {}
+  constructor(private readonly loader: CanonicalMediaLoader = loadCanonicalMediaSource) {}
 
-  async configure(graph: SupportedExportCompositionGraph): Promise<void> {
+  async configure(
+    graph: SupportedExportCompositionGraph,
+    mode: CanonicalSourceMode = "preview",
+  ): Promise<void> {
     const generation = this.generation + 1;
     this.generation = generation;
     this.disposeEntries();
@@ -129,7 +199,7 @@ export class CanonicalMediaSourcePool {
         (a, b) => a.timeline_start_ms - b.timeline_start_ms || a.clip_id.localeCompare(b.clip_id),
       )) {
         if (!node.path) throw new Error(`canonical source ${node.id} has no path`);
-        const handle = await this.loader(node);
+        const handle = await this.loader(node, mode);
         if (generation !== this.generation) {
           handle.dispose();
           throw new Error("canonical media source configuration was superseded");

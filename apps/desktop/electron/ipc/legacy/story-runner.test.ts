@@ -223,6 +223,40 @@ describe("story browser cursor pacing", () => {
     expect(commandGetsPreActionPacing(textOverlay("Welcome", 2_000))).toBe(false);
   });
 
+  it("enforces source, first-frame, and pre-input recording readiness in order", async () => {
+    const contents = fakeContents([target("Sign in", { x: 460, y: 320 })]);
+    const order: string[] = [];
+    contents.sendInputEvent.mockImplementation((event) => {
+      if (event.type === "mouseDown") order.push("input");
+    });
+    const requireRecordingReadiness = vi.fn(async (state: string) => {
+      order.push(state);
+    });
+
+    const run = runStoryCommandsInBrowser({
+      contents: contents as never,
+      commands: [command("click", "Sign in")],
+      projectFolder: "/tmp/storycapture-test",
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      executionProfile: {
+        typingMode: "instant",
+        captureRecordingFrames: true,
+        settleDelayForCommand: () => 0,
+      },
+      requireRecordingReadiness,
+    });
+
+    await vi.runAllTimersAsync();
+    await expect(run).resolves.toMatchObject({ succeeded: 1, failed: 0 });
+    expect(order).toEqual([
+      "source_ready",
+      "first_frame_committed",
+      "pre_input_frame_committed",
+      "input",
+    ]);
+  });
+
   it("waits the full text overlay duration without browser or input side effects", async () => {
     const contents = fakeContents([]);
     const inputSideEffect = vi.fn();
@@ -1101,14 +1135,7 @@ describe("story browser cursor pacing", () => {
       frameCrop: null,
       requestedFps: 60,
     } as never);
-    const finalizedResult = {
-      output_path: `${outputPath}.mp4`,
-      duration_ms: 4_000,
-    } as Awaited<ReturnType<typeof stopRecording>>;
-    vi.mocked(stopRecording).mockImplementationOnce(async () => {
-      await expect(fs.stat(`${outputPath}.steps.json`)).resolves.toBeDefined();
-      return finalizedResult;
-    });
+    vi.mocked(stopRecording).mockClear();
 
     const run = launchAutomationCommand(
       {
@@ -1139,8 +1166,10 @@ scene "Login" {
         exit_reason: "completed",
         failed_ordinal: null,
       },
-      recording: { status: "finalized", result: finalizedResult },
+      recording: { status: "ready_to_finalize", result: null },
     });
+    expect(stopRecording).not.toHaveBeenCalled();
+    await expect(fs.stat(`${outputPath}.steps.json`)).resolves.toBeDefined();
 
     const sidecar = JSON.parse(await fs.readFile(actionsSidecarPath(outputPath), "utf8"));
     expect(sidecar.version).toBe(2);

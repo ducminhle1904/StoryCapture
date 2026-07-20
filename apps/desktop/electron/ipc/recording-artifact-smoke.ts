@@ -5,6 +5,7 @@ import { ffmpegExecutablePath } from "./export-binaries";
 import { startRecordingFfmpegPipe } from "./legacy/capture-preview";
 import { runFfmpeg } from "./legacy/recording";
 import { probeRecording, type RecordingProbeResult } from "./media-probe";
+import { retainRecordingVerificationEvidence } from "./recording-evidence-retention";
 
 type ValidRecordingProbe = Extract<RecordingProbeResult, { status: "valid" }>;
 
@@ -14,6 +15,7 @@ export interface PackagedRecordingSmokeEvidence {
   finalizedBytes: number;
   streamingProbe: ValidRecordingProbe;
   finalizedProbe: ValidRecordingProbe;
+  evidencePath: string;
 }
 
 function requireValidProbe(
@@ -38,85 +40,105 @@ function solidBgraFrame(width: number, height: number, red: number, green: numbe
 export async function runPackagedRecordingSmoke(
   outputDir: string,
 ): Promise<PackagedRecordingSmokeEvidence> {
-  const binary = ffmpegExecutablePath();
-  const asarSegment = `${path.sep}app.asar${path.sep}`;
-  if (binary.includes(asarSegment)) {
-    throw new Error("Packaged recording FFmpeg resolved inside app.asar");
-  }
-  const binaryLayout = binary.includes(`${path.sep}app.asar.unpacked${path.sep}`)
-    ? "app.asar.unpacked"
-    : "filesystem";
-
   await fs.mkdir(outputDir, { recursive: true });
   const streamingPath = path.join(outputDir, "streaming.mp4");
   const finalizedPath = path.join(outputDir, "finalized.mp4");
-  const width = 16;
-  const height = 16;
-  const fps = 2;
-  const { child, done } = startRecordingFfmpegPipe([
-    "-y",
-    "-f",
-    "rawvideo",
-    "-pix_fmt",
-    "bgra",
-    "-video_size",
-    `${width}x${height}`,
-    "-framerate",
-    String(fps),
-    "-i",
-    "pipe:0",
-    "-frames:v",
-    "2",
-    "-an",
-    "-c:v",
-    "libx264",
-    "-preset",
-    "ultrafast",
-    "-pix_fmt",
-    "yuv420p",
-    "-movflags",
-    "+faststart",
-    streamingPath,
-  ]);
-  void done.catch(() => undefined);
-  if (!child.stdin) {
-    child.kill("SIGKILL");
-    await done.catch(() => undefined);
-    throw new Error("Packaged recording smoke encoder stdin is unavailable");
+  const artifactPaths = [streamingPath, finalizedPath];
+  try {
+    const binary = ffmpegExecutablePath();
+    const asarSegment = `${path.sep}app.asar${path.sep}`;
+    if (binary.includes(asarSegment)) {
+      throw new Error("Packaged recording FFmpeg resolved inside app.asar");
+    }
+    const binaryLayout: PackagedRecordingSmokeEvidence["binaryLayout"] = binary.includes(
+      `${path.sep}app.asar.unpacked${path.sep}`,
+    )
+      ? "app.asar.unpacked"
+      : "filesystem";
+    const width = 16;
+    const height = 16;
+    const fps = 2;
+    const { child, done } = startRecordingFfmpegPipe([
+      "-y",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "bgra",
+      "-video_size",
+      `${width}x${height}`,
+      "-framerate",
+      String(fps),
+      "-i",
+      "pipe:0",
+      "-frames:v",
+      "2",
+      "-an",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      streamingPath,
+    ]);
+    void done.catch(() => undefined);
+    if (!child.stdin) {
+      child.kill("SIGKILL");
+      await done.catch(() => undefined);
+      throw new Error("Packaged recording smoke encoder stdin is unavailable");
+    }
+    child.stdin.write(solidBgraFrame(width, height, 220, 48));
+    child.stdin.end(solidBgraFrame(width, height, 48, 220));
+    await done;
+
+    await runFfmpeg([
+      "-y",
+      "-i",
+      streamingPath,
+      "-an",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      "-pix_fmt",
+      "yuv420p",
+      finalizedPath,
+    ]);
+
+    const [streamingStat, finalizedStat, streamingProbe, finalizedProbe] = await Promise.all([
+      fs.stat(streamingPath),
+      fs.stat(finalizedPath),
+      probeRecording(streamingPath),
+      probeRecording(finalizedPath),
+    ]);
+    if (streamingStat.size === 0 || finalizedStat.size === 0) {
+      throw new Error("Packaged recording smoke produced an empty video");
+    }
+
+    const evidence = {
+      binaryLayout,
+      streamingBytes: streamingStat.size,
+      finalizedBytes: finalizedStat.size,
+      streamingProbe: requireValidProbe(streamingProbe, "streaming"),
+      finalizedProbe: requireValidProbe(finalizedProbe, "finalized"),
+    };
+    const retained = await retainRecordingVerificationEvidence({
+      directory: outputDir,
+      artifactPaths,
+      status: "passed",
+      evidence,
+    });
+    return { ...evidence, evidencePath: retained.evidencePath };
+  } catch (error) {
+    await retainRecordingVerificationEvidence({
+      directory: outputDir,
+      artifactPaths,
+      status: "failed",
+      evidence: null,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   }
-  child.stdin.write(solidBgraFrame(width, height, 220, 48));
-  child.stdin.end(solidBgraFrame(width, height, 48, 220));
-  await done;
-
-  await runFfmpeg([
-    "-y",
-    "-i",
-    streamingPath,
-    "-an",
-    "-c:v",
-    "libx264",
-    "-preset",
-    "ultrafast",
-    "-pix_fmt",
-    "yuv420p",
-    finalizedPath,
-  ]);
-
-  const [streamingStat, finalizedStat, streamingProbe, finalizedProbe] = await Promise.all([
-    fs.stat(streamingPath),
-    fs.stat(finalizedPath),
-    probeRecording(streamingPath),
-    probeRecording(finalizedPath),
-  ]);
-  if (streamingStat.size === 0 || finalizedStat.size === 0) {
-    throw new Error("Packaged recording smoke produced an empty video");
-  }
-
-  return {
-    binaryLayout,
-    streamingBytes: streamingStat.size,
-    finalizedBytes: finalizedStat.size,
-    streamingProbe: requireValidProbe(streamingProbe, "streaming"),
-    finalizedProbe: requireValidProbe(finalizedProbe, "finalized"),
-  };
 }

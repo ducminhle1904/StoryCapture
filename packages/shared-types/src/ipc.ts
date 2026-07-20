@@ -4,6 +4,16 @@
 // The renderer still consumes these wrappers while Electron implements the
 // host side in apps/desktop/electron/ipc.ts.
 
+import type {
+  RecordingCadenceEvidenceV2,
+  RecordingCaptureContractV2,
+  RecordingCertifiedTier,
+  RecordingDeliveryPolicy,
+  RecordingResultV2,
+} from "./recording-v2";
+
+export type * from "./recording-v2";
+
 /** user-defined commands **/
 
 export const commands = {
@@ -812,7 +822,7 @@ export const commands = {
   async stopRecording(
     session: RecordingSessionId,
     onEvent: TAURI_CHANNEL<RecordingEvent>,
-  ): Promise<Result<EncodeResultDto, AppError>> {
+  ): Promise<Result<RecordingStopResult, AppError>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("stop_recording", { session, onEvent }) };
     } catch (e) {
@@ -1846,7 +1856,7 @@ export type AutomationEvent = {
 };
 export type BrowserLanguageOptionDto = { value: string; label: string };
 export type CaptureConfigDto = {
-  display_id: bigint;
+  display_id: bigint | number | string;
   include_cursor: boolean;
   fps_target: number;
   pixel_format: PixelFormatDto;
@@ -1876,11 +1886,11 @@ export type CaptureStatsDto = {
  * Tagged `CaptureTarget` DTO.
  */
 export type CaptureTargetDto =
-  | { kind: "display"; display_id: bigint }
-  | { kind: "window"; window_id: bigint }
+  | { kind: "display"; display_id: bigint | number | string }
+  | { kind: "window"; window_id: bigint | number | string }
   | { kind: "window_by_pid"; pid: number; title_hint: string | null }
   | { kind: "author_preview"; stream_id: string }
-  | { kind: "display_region"; display_id: bigint; rect: RegionRectDto };
+  | { kind: "display_region"; display_id: bigint | number | string; rect: RegionRectDto };
 export type CaptureTargetsDto = {
   displays: DisplayInfoDto[];
   windows: WindowInfoDto[];
@@ -2009,11 +2019,47 @@ export type EncodeProgressDto = {
 };
 export type EncodeResultDto = {
   output_path: string;
-  duration_ms: bigint;
-  bytes: bigint;
-  frames_written: bigint;
-  frames_dropped: bigint;
+  duration_ms: number;
+  frame_count?: number;
+  duration_us?: number;
+  media_clock?: {
+    clock: "encoded_video_pts";
+    unit: "us";
+    fps_num: number;
+    fps_den: number;
+    origin_frame: 0;
+    frame_count: number;
+    duration_us: number;
+  };
+  bytes?: number;
+  frames_written?: number;
+  frames_encoded?: number;
+  frames_dropped?: number;
+  requested_fps?: number;
+  effective_fps?: number;
+  actual_capture_fps?: number;
+  encoded_fps?: number;
+  source_capture_fps?: number;
+  source_frames_received?: number;
+  skipped_ticks?: number;
+  encoder_backpressure_events?: number;
+  late_frames?: number;
+  capture_duration_ms_p50?: number | null;
+  capture_duration_ms_p95?: number | null;
+  cadence_warning?: string | null;
+  cadence_warning_message?: string | null;
+  output_width?: number;
+  output_height?: number;
+  fit_mode?: FitModeDto;
+  quality_preset?: QualityPresetDto;
+  encoder_input?: "author_preview_raw_bgra_pipe" | "png_sequence";
 };
+export type RecordingCompletedResult =
+  | EncodeResultDto
+  | (RecordingResultV2 & { status: "completed" });
+export type RecordingStopResult =
+  | RecordingCompletedResult
+  | (RecordingResultV2 & { status: "quality_failed" });
 export type EncoderOptionsDto = {
   container?: ContainerDto | null;
   codec?: CodecDto | null;
@@ -2386,8 +2432,16 @@ export type RecordingEvent =
    * count for this session; `delta` is the count since the last
    * event (always >= 1 when an event fires).
    */
-  | { type: "frames-dropped"; total: bigint; delta: bigint }
-  | { type: "completed"; result: EncodeResultDto }
+  | { type: "frames-dropped"; total: number; delta: number }
+  | { type: "completed"; result: RecordingCompletedResult }
+  | { type: "preflight"; result: import("./recording-v2").RecordingPreflightV2Dto }
+  | {
+      type: "readiness";
+      state: "source_ready" | "first_frame_committed" | "pre_input_frame_committed";
+    }
+  | { type: "live-evidence"; evidence: RecordingCadenceEvidenceV2 }
+  | { type: "verifying"; progress: number }
+  | { type: "quality-failed"; result: RecordingResultV2 & { status: "quality_failed" } }
   | { type: "failed"; message: string }
   /**
    * Mic/audio negotiation failed or the device vanished mid-session.
@@ -2398,18 +2452,40 @@ export type RecordingEvent =
    * Periodic liveness signal from the host so the renderer can detect
    * state-sync drift (>5s missed => offer Force Stop).
    */
-  | { type: "heartbeat"; seq: bigint };
+  | { type: "heartbeat"; seq: number | bigint };
 /**
  * File-system metadata for a single `.mp4` under `<project>/exports/`.
  */
 export type RecordingInfoDto = {
   path: string;
-  captured_at: bigint;
-  duration_ms: bigint | null;
+  captured_at: number;
+  duration_ms: number | null;
   width: number | null;
   height: number | null;
+  size?: number;
+  codec?: string | null;
+  container?: string | null;
+  validation?:
+    | { status: "unvalidated" | "valid" }
+    | {
+        status: "invalid";
+        reason: "empty" | "not_file" | "missing" | "timeout" | "unsupported_or_corrupt";
+      };
+  version?: 2;
+  master_path?: string | null;
+  proxy_path?: string | null;
+  cadence_evidence_path?: string | null;
+  quality_evidence_path?: string | null;
+  actions_path?: string | null;
+  microphone_audio_path?: string | null;
+  system_audio_path?: string | null;
+  exact_source_fps?: import("./recording-v2").RecordingRational | null;
+  source_frame_count?: number | null;
+  certified_tier?: RecordingCertifiedTier | null;
+  quality_verdict?: import("./recording-v2").RecordingQualityVerdict;
+  bundle_path?: string | null;
 };
-export type RecordingSessionId = string;
+export type RecordingSessionId = { id: string };
 export type RecordingStepTimingDto = {
   ordinal: number;
   stepId: string | null;
@@ -2584,6 +2660,11 @@ export type StartRecordingArgs = {
   width: number;
   height: number;
   fps: number;
+  /** Missing on legacy callers and therefore interpreted as best-effort. */
+  contract_version?: 2;
+  delivery_policy?: RecordingDeliveryPolicy;
+  certified_tier?: RecordingCertifiedTier | null;
+  capture_contract?: RecordingCaptureContractV2 | null;
   /**
    * Optional mic device.
    */
@@ -2631,7 +2712,7 @@ export type SyncResult = { synced: boolean; lastSyncedAt: string };
  * Current sync status.
  */
 export type SyncStatusDto = { connected: boolean; pendingCount: number; lastSync: string | null };
-export type TAURI_CHANNEL<TSend> = null;
+export type TAURI_CHANNEL<_TSend> = null;
 /**
  * Typed target-record shape. Each kind
  * fully specifies its `value` shape (string for most, `{ role, name }`
@@ -2818,7 +2899,7 @@ export type X264PresetDto =
 
 /** Tauri-compatible globals used by the Electron preload bridge. **/
 
-import { type Channel as TAURI_CHANNEL, invoke as TAURI_INVOKE } from "@tauri-apps/api/core";
+import { invoke as TAURI_INVOKE } from "@tauri-apps/api/core";
 import * as TAURI_API_EVENT from "@tauri-apps/api/event";
 import type { WebviewWindow as __WebviewWindow__ } from "@tauri-apps/api/webviewWindow";
 

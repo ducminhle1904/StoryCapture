@@ -1,7 +1,8 @@
 /** Automation IPC wrappers. */
 
+import type { AutomationRecordingOutcomeV2 } from "@storycapture/shared-types/recording-v2";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import type { EncodeResultDto } from "@/ipc/encode";
+import type { RecordingCompletedResult } from "@/ipc/encode";
 import { DEFAULT_RECORDING_PACING, type RecordingPacingProfile } from "@/state/output-prefs";
 
 /**
@@ -120,10 +121,7 @@ export interface AutomationStoryOutcome {
   failed_ordinal: number | null;
 }
 
-export type AutomationRecordingOutcome =
-  | { status: "finalized"; result: EncodeResultDto }
-  | { status: "already_finalized"; result: null }
-  | { status: "not_requested"; result: null };
+export type AutomationRecordingOutcome = AutomationRecordingOutcomeV2<RecordingCompletedResult>;
 
 export interface AutomationRunOutcome {
   story: AutomationStoryOutcome;

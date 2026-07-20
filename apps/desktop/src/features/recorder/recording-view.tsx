@@ -34,9 +34,10 @@ import {
 } from "@/ipc/capture";
 import {
   pauseRecording,
-  type EncodeResultDto,
+  type RecordingCompletedResult,
   type RecordingEvent,
   type RecordingSessionId,
+  type RecordingStopResult,
   resumeRecording,
   startRecording,
   stopRecording,
@@ -44,6 +45,10 @@ import {
 import { parseStory } from "@/ipc/parse";
 import { publishCompletedRecording } from "@/ipc/projects";
 import { queryClient } from "@/ipc/query-client";
+import {
+  deleteFailedRecordingBundle,
+  openRecordingDiagnosticBundle,
+} from "@/ipc/recording-failure";
 import { frontendLog } from "@/lib/log";
 import { useAppSettingsStore } from "@/state/app-settings";
 import {
@@ -129,6 +134,10 @@ export function RecordingView({
     error,
     outputPath,
     elapsedMs,
+    preflight,
+    liveEvidence,
+    verificationProgress,
+    qualityFailure,
     captureTarget,
     availableTargets,
     audioDeviceId,
@@ -145,6 +154,11 @@ export function RecordingView({
     setError,
     setOutputPath,
     setElapsed,
+    setPreflight,
+    setReadiness,
+    setLiveEvidence,
+    setVerificationProgress,
+    setQualityFailure,
     resetTake,
     reset,
     loadCaptureTargets,
@@ -168,6 +182,7 @@ export function RecordingView({
   // Mirror the active browser preset for ChromeHidingToggle.
   const [browserPreset, setBrowserPreset] = useState<string | null>(null);
   const appSettings = useAppSettingsStore((s) => s.settings);
+  const recordingDeliveryPolicy = useOutputPrefsStore((s) => s.recordingDeliveryPolicy);
 
   const applyRecorderDefaults = () => {
     const capture = useAppSettingsStore.getState().settings?.capture;
@@ -209,6 +224,8 @@ export function RecordingView({
   const automationOwnsStopRef = useRef(false);
   const automationSessionRef = useRef<string | null>(null);
   const automationFailedOrdinalRef = useRef<number | null>(null);
+  const handleRecordRef = useRef<(() => Promise<void>) | null>(null);
+  const handleStopRef = useRef<((expectedSessionId?: string) => Promise<void>) | null>(null);
   const videoOutputSectionRef = useRef<HTMLDivElement | null>(null);
   const isOutputBlocked = useIsRecordingBlocked();
 
@@ -410,7 +427,7 @@ export function RecordingView({
     return () => window.clearInterval(handle);
   }, [status]);
 
-  const finalizeRecording = (ownerSessionId: string, result: EncodeResultDto) => {
+  const finalizeRecording = (ownerSessionId: string, result: RecordingCompletedResult) => {
     if (
       !canFinalizeOwnedRecording({
         ownerSessionId,
@@ -433,11 +450,11 @@ export function RecordingView({
         path: result.output_path,
         captured_at: Date.now(),
         duration_ms: result.duration_ms,
-        width: result.output_width ?? null,
-        height: result.output_height ?? null,
+        width: "output_width" in result ? (result.output_width ?? null) : null,
+        height: "output_height" in result ? (result.output_height ?? null) : null,
       });
     }
-    if (result.cadence_warning) {
+    if (!("status" in result) && result.cadence_warning) {
       const cadence =
         typeof result.actual_capture_fps === "number" && typeof result.requested_fps === "number"
           ? `${result.actual_capture_fps} / ${result.requested_fps} fps`
@@ -456,7 +473,8 @@ export function RecordingView({
   };
 
   const failRecording = (ownerSessionId: string, message: string) => {
-    if (!ownsActiveSession(ownerSessionId) || completedSessionRef.current === ownerSessionId) return;
+    if (!ownsActiveSession(ownerSessionId) || completedSessionRef.current === ownerSessionId)
+      return;
     cleanupSessionResources(ownerSessionId);
     sessionRef.current = null;
     startedAtRef.current = null;
@@ -467,12 +485,55 @@ export function RecordingView({
     toast.error(`Recording failed: ${message}`);
   };
 
+  const failQualityRecording = (
+    ownerSessionId: string,
+    result: Extract<RecordingStopResult, { status: "quality_failed" }>,
+  ) => {
+    if (completedSessionRef.current === ownerSessionId) return;
+    completedSessionRef.current = ownerSessionId;
+    cleanupSessionResources(ownerSessionId);
+    sessionRef.current = null;
+    startedAtRef.current = null;
+    pausedAtRef.current = null;
+    setSession(null);
+    setStatus("quality_failed");
+    setQualityFailure(result);
+    setOutputPath(result.diagnostic_bundle_path);
+    const message = result.cadence_evidence.failure_codes
+      .concat(result.quality_evidence.failure_codes)
+      .join(", ");
+    setError(message || "Strict verification failed");
+    toast.error("Strict verification failed", {
+      description: message || result.diagnostic_bundle_path || undefined,
+    });
+  };
+
   const dispatch = (ownerSessionId: string, event: RecordingEvent) => {
     if (!ownsActiveSession(ownerSessionId)) return;
     switch (event.type) {
       case "completed":
         finalizeRecording(ownerSessionId, event.result);
         break;
+      case "preflight":
+        setPreflight(event.result);
+        if (!event.result.strict_eligible) {
+          setError(`Strict preflight blocked: ${event.result.failure_codes.join(", ")}`);
+        }
+        break;
+      case "readiness":
+        setReadiness(event.state);
+        break;
+      case "live-evidence":
+        setLiveEvidence(event.evidence);
+        break;
+      case "verifying":
+        setStatus("verifying");
+        setVerificationProgress(Math.max(0, Math.min(1, event.progress)));
+        break;
+      case "quality-failed": {
+        failQualityRecording(ownerSessionId, event.result);
+        break;
+      }
       case "failed":
         failRecording(ownerSessionId, event.message);
         break;
@@ -484,7 +545,7 @@ export function RecordingView({
       case "heartbeat":
         // Host liveness signal; watchdog clears any desync banner.
         lastHeartbeatRef.current = Date.now();
-        if (desynced) setDesynced(false);
+        setDesynced(false);
         break;
       default:
         break;
@@ -526,7 +587,11 @@ export function RecordingView({
       const recordingDisplay = display ? { x: display.x, y: display.y } : null;
       const recordingViewport = storyHasBrowser ? storyViewport : null;
       // Output knobs from useOutputPrefsStore (one-shot read).
-      const { activePreset, recordingKnobs: prefs } = useOutputPrefsStore.getState();
+      const {
+        activePreset,
+        recordingDeliveryPolicy,
+        recordingKnobs: prefs,
+      } = useOutputPrefsStore.getState();
       if (storyHasBrowser) {
         frontendLog.info("RecordingView", "browser recording viewport plan", {
           fields: {
@@ -594,6 +659,8 @@ export function RecordingView({
           width,
           height,
           fps: prefs.fps,
+          contract_version: 2,
+          delivery_policy: recordingDeliveryPolicy,
           audio_device_id: audioDeviceId ?? undefined,
           include_cursor: includeCursor,
           output_resolution: recordingOutputResolutionForStart(prefs, activePreset),
@@ -659,7 +726,12 @@ export function RecordingView({
           automationOwnsStopRef.current = false;
           if (outcome.recording.status === "finalized") {
             finalizeRecording(ownerSessionId, outcome.recording.result);
-          } else if (outcome.recording.status === "not_requested") {
+          } else if (outcome.recording.status === "quality_failed") {
+            failQualityRecording(ownerSessionId, outcome.recording.result);
+          } else if (
+            outcome.recording.status === "ready_to_finalize" ||
+            outcome.recording.status === "not_requested"
+          ) {
             void handleStop(ownerSessionId);
           }
         })
@@ -760,8 +832,12 @@ export function RecordingView({
     stopInFlightRef.current = ownerSessionId;
     setStatus("stopping");
     try {
-      const result = await stopRecording(session);
-      finalizeRecording(ownerSessionId, result);
+      const result = await stopRecording(session, (event) => dispatch(ownerSessionId, event));
+      if ("status" in result && result.status === "quality_failed") {
+        failQualityRecording(ownerSessionId, result);
+      } else {
+        finalizeRecording(ownerSessionId, result);
+      }
     } catch (e) {
       if (!ownsActiveSession(ownerSessionId)) return;
       if (isNotFoundIpcError(e) && automationOwnsStopRef.current) return;
@@ -839,19 +915,23 @@ export function RecordingView({
     }
   };
 
+  handleRecordRef.current = handleRecord;
+  handleStopRef.current = handleStop;
+
   // ⌘R / Ctrl+R toggles recording.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "r") {
         e.preventDefault();
-        if (status === "idle") void handleRecord();
-        else if (status === "recording" || status === "paused") void handleStop();
+        if (status === "idle") void handleRecordRef.current?.();
+        else if (status === "recording" || status === "paused") {
+          void handleStopRef.current?.();
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, permission, selectedDisplay]);
+  }, [status]);
 
   const canRecord = permission === "granted" && captureTarget != null;
   // Display-only code path for `handleRecord`.
@@ -860,7 +940,8 @@ export function RecordingView({
     permission !== "granted" ||
     status === "recording" ||
     status === "paused" ||
-    status === "stopping";
+    status === "stopping" ||
+    status === "verifying";
   const permissionDenied = permission === "denied";
   const permissionPending = permission === "undetermined";
 
@@ -870,7 +951,10 @@ export function RecordingView({
       <header className="sc-window-chrome flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1.5">
         <div className="flex min-w-0 items-center gap-3">
           {/* Back to editor (falls back to dashboard). Blocked while recording. */}
-          {status === "recording" || status === "paused" || status === "stopping" ? (
+          {status === "recording" ||
+          status === "paused" ||
+          status === "stopping" ||
+          status === "verifying" ? (
             <span
               aria-label="Back button disabled during recording"
               className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-1 text-[var(--color-fg-muted)] opacity-50"
@@ -909,6 +993,12 @@ export function RecordingView({
           {(status === "recording" || status === "paused") && (
             <LiveRecordingBadge paused={status === "paused"} reduceMotion={!!reduceMotion} />
           )}
+          {status === "verifying" && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-accent)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--color-accent)]">
+              <Loader2 size={11} className="animate-spin" aria-hidden="true" />
+              Verifying {Math.round((verificationProgress ?? 0) * 100)}%
+            </span>
+          )}
           {/* Persistent badge while a mic failure is active. */}
           {audioUnavailable && (
             <span
@@ -921,6 +1011,16 @@ export function RecordingView({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--color-fg-muted)]">
+          <span
+            className="rounded-full border border-[var(--color-border-subtle)] px-2 py-0.5 font-medium text-[var(--color-fg-secondary)]"
+            title={
+              recordingDeliveryPolicy === "strict"
+                ? "Publishes only after exact 1080p60 verification passes"
+                : "Completes with truthful degraded evidence when Strict is unavailable"
+            }
+          >
+            {recordingDeliveryPolicy === "strict" ? "Strict" : "Standard"}
+          </span>
           {sessionId ? <span className="font-mono">session · {sessionId.slice(0, 8)}</span> : null}
         </div>
       </header>
@@ -985,6 +1085,94 @@ export function RecordingView({
               : undefined
           }
         />
+      ) : null}
+
+      {recordingDeliveryPolicy === "strict" && preflight ? (
+        <div
+          role="status"
+          className={`flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2 text-xs ${
+            preflight.strict_eligible
+              ? "border-[var(--color-success)]/30 bg-[var(--color-success)]/10"
+              : "border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10"
+          }`}
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            {preflight.strict_eligible ? (
+              <CheckCircle2 size={13} className="text-[var(--color-success)]" aria-hidden="true" />
+            ) : (
+              <AlertTriangle size={13} className="text-[var(--color-danger)]" aria-hidden="true" />
+            )}
+            <span className="font-medium text-[var(--color-fg-primary)]">
+              {preflight.strict_eligible ? "Strict preflight passed" : "Strict preflight blocked"}
+            </span>
+            <span className="text-[var(--color-fg-secondary)]">
+              {preflight.backend_id} {preflight.backend_version}
+              {preflight.certification ? ` · ${preflight.certification.id}` : " · uncertified"}
+            </span>
+          </div>
+          <span className="font-mono text-[11px] text-[var(--color-fg-secondary)]">
+            {liveEvidence
+              ? `${liveEvidence.encoder_acked_frames}/${liveEvidence.expected_slots} committed`
+              : preflight.failure_codes.join(", ") || "60/1 · 1920×1080"}
+          </span>
+        </div>
+      ) : null}
+
+      {qualityFailure ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-2 text-xs">
+          <div className="min-w-0">
+            <div className="font-medium text-[var(--color-fg-primary)]">
+              Strict take was not published
+            </div>
+            <div className="truncate text-[var(--color-fg-secondary)]">
+              {qualityFailure.cadence_evidence.failure_codes
+                .concat(qualityFailure.quality_evidence.failure_codes)
+                .join(", ") || "Verification failed"}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => resetTake()}
+              className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)]"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              disabled={!qualityFailure.diagnostic_bundle_path}
+              onClick={() => {
+                if (qualityFailure.diagnostic_bundle_path) {
+                  void openRecordingDiagnosticBundle(qualityFailure.diagnostic_bundle_path);
+                }
+              }}
+              className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] disabled:opacity-40"
+            >
+              Open diagnostics
+            </button>
+            <button
+              type="button"
+              disabled={!qualityFailure.diagnostic_bundle_path}
+              onClick={() => {
+                const bundlePath = qualityFailure.diagnostic_bundle_path;
+                if (!bundlePath) return;
+                void deleteFailedRecordingBundle(projectFolder, bundlePath)
+                  .then(() => {
+                    resetTake();
+                    toast.success("Failed take deleted");
+                  })
+                  .catch((deleteError) => {
+                    toast.error("Could not delete failed take", {
+                      description: formatIpcError(deleteError),
+                    });
+                  });
+              }}
+              className="rounded-[var(--radius-sm)] bg-[var(--color-danger)] px-2.5 py-1 text-[11px] font-medium text-white disabled:opacity-40"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
       ) : null}
 
       {/* ─── Stage Manager warning (inline, dismissible) ─── */}
@@ -1063,8 +1251,12 @@ export function RecordingView({
                 <span>Recording in progress</span>
               ) : status === "paused" ? (
                 <span>Recording paused</span>
+              ) : status === "verifying" ? (
+                <span>Verifying exact cadence and master hashes</span>
               ) : status === "completed" ? (
                 <span className="text-[var(--color-success)]">Recording complete</span>
+              ) : status === "quality_failed" ? (
+                <span className="text-[var(--color-danger)]">Strict verification failed</span>
               ) : status === "failed" ? (
                 <span className="text-[var(--color-danger)]">Recording failed</span>
               ) : null}
@@ -1175,7 +1367,12 @@ export function RecordingView({
             <AudioDevicePicker
               value={audioDeviceId}
               onValueChange={setAudioDeviceId}
-              disabled={status === "recording" || status === "paused" || status === "stopping"}
+              disabled={
+                status === "recording" ||
+                status === "paused" ||
+                status === "stopping" ||
+                status === "verifying"
+              }
             />
             <p className="mt-1.5 text-[10px] text-[var(--color-fg-muted)]">
               Default is off; choose "System default" to include voice-over. Resets every recording.
@@ -1196,14 +1393,24 @@ export function RecordingView({
               <CursorToggle
                 checked={includeCursor}
                 onChange={setIncludeCursor}
-                disabled={status === "recording" || status === "paused" || status === "stopping"}
+                disabled={
+                  status === "recording" ||
+                  status === "paused" ||
+                  status === "stopping" ||
+                  status === "verifying"
+                }
               />
               {/* Chrome-hiding toggle (non-sticky, defaults OFF). */}
               <ChromeHidingToggle
                 checked={chromeHiding}
                 onChange={setChromeHiding}
                 browserPreset={browserPreset}
-                disabled={status === "recording" || status === "paused" || status === "stopping"}
+                disabled={
+                  status === "recording" ||
+                  status === "paused" ||
+                  status === "stopping" ||
+                  status === "verifying"
+                }
               />
               <Toggle label="3s countdown" checked={useCountdown} onChange={setUseCountdown} />
             </div>
@@ -1211,7 +1418,12 @@ export function RecordingView({
 
           <VideoOutputSection
             ref={videoOutputSectionRef}
-            disabled={status === "recording" || status === "paused" || status === "stopping"}
+            disabled={
+              status === "recording" ||
+              status === "paused" ||
+              status === "stopping" ||
+              status === "verifying"
+            }
             captureDims={selectedCaptureDims}
           />
 
@@ -1404,6 +1616,28 @@ function PreviewStage({
           </motion.div>
         )}
 
+        {status === "verifying" && (
+          <motion.div
+            key="verifying"
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={reduceMotion ? undefined : { opacity: 0 }}
+            className="relative flex flex-col items-center text-center"
+          >
+            <Loader2
+              size={30}
+              className="animate-spin text-[var(--color-accent)]"
+              aria-hidden="true"
+            />
+            <p className="mt-4 text-sm font-medium text-[var(--color-fg-primary)]">
+              Verifying lossless master
+            </p>
+            <p className="mt-1 text-xs text-[var(--color-fg-secondary)]">
+              Checking every frame hash and exact 60/1 cadence before publishing.
+            </p>
+          </motion.div>
+        )}
+
         {status === "completed" && (
           <motion.div
             key="completed"
@@ -1427,7 +1661,7 @@ function PreviewStage({
           </motion.div>
         )}
 
-        {status === "failed" && error && (
+        {(status === "failed" || status === "quality_failed") && error && (
           <motion.div
             key="failed"
             initial={reduceMotion ? false : { opacity: 0 }}
@@ -1437,7 +1671,7 @@ function PreviewStage({
           >
             <AlertTriangle size={26} className="text-[var(--color-danger)]" aria-hidden="true" />
             <p className="mt-3 text-sm font-medium text-[var(--color-fg-primary)]">
-              Recording failed
+              {status === "quality_failed" ? "Strict verification failed" : "Recording failed"}
             </p>
             <p className="font-mono mt-1 text-[11px] text-[var(--color-fg-secondary)]">{error}</p>
           </motion.div>

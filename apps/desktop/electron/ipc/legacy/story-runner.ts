@@ -43,6 +43,13 @@ import { userDataPath } from "../paths";
 import { recordEngineLog } from "../recording-observability";
 import { RecordingPauseCancelledError } from "../recording-pause-gate";
 import {
+  requireStrictBrowserRecordingReadiness,
+  setStrictBrowserRecordingActions,
+  strictBrowserRecordingClockMs,
+  strictBrowserRecordingContents,
+  strictBrowserRecordingSession,
+} from "../recording-strict-browser-lifecycle";
+import {
   setSimulatorTargetValueIncrementalScript,
   setSimulatorTargetValueScript,
   simulatorTypeProbeScript,
@@ -66,7 +73,6 @@ import {
   targetsPathFor,
 } from "./capture-preview";
 import { sidecarPath } from "./post-production";
-import { stopRecording } from "./recording";
 import {
   authorPreviewSessions,
   channelIdFrom,
@@ -102,8 +108,7 @@ const TYPE_PROBE_HASH_SALT = randomUUID();
 
 function typeProbeEnabled(executionProfile: StoryBrowserExecutionProfile): boolean {
   return (
-    executionProfile.captureRecordingFrames &&
-    process.env.STORYCAPTURE_DEBUG_TYPE_PROBE === "1"
+    executionProfile.captureRecordingFrames && process.env.STORYCAPTURE_DEBUG_TYPE_PROBE === "1"
   );
 }
 
@@ -593,7 +598,8 @@ async function recoverDetachedCommandTarget(
       }
       return resolved;
     } catch (error) {
-      if (!(error instanceof TargetVisibilityPhaseError) || error.reason !== "detached") throw error;
+      if (!(error instanceof TargetVisibilityPhaseError) || error.reason !== "detached")
+        throw error;
       lastError = error;
       if (options.recordingSessionId) {
         void recordEngineLog({
@@ -831,6 +837,10 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
   let lastOrdinal = 0;
   let exitReason: StoryBrowserRunExitReason = "completed";
   await ensureStoryInitialUrl(options.contents, options.storySource);
+  if (executionProfile.captureRecordingFrames && options.requireRecordingReadiness) {
+    await options.requireRecordingReadiness("source_ready");
+    await options.requireRecordingReadiness("first_frame_committed");
+  }
 
   for (let index = 0; index < limit; index += 1) {
     const ordinal = index + 1;
@@ -971,6 +981,9 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
         }
       }
       await waitForRecordingDelay(options.pauseGate, 0);
+      if (executionProfile.captureRecordingFrames && options.requireRecordingReadiness) {
+        await options.requireRecordingReadiness("pre_input_frame_committed");
+      }
       const actionStartedAt = Date.now();
       const actionStartedClockMs = recordingClockMs();
       const result = await executeParsedCommand(options.contents, command, options.projectFolder, {
@@ -1259,6 +1272,9 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
   const streamId = typeof args.streamId === "string" ? args.streamId : null;
   const recordingSessionId =
     typeof args.recordingSessionId === "string" ? args.recordingSessionId : null;
+  const strictSessionAtLaunch = recordingSessionId
+    ? strictBrowserRecordingSession(recordingSessionId)
+    : null;
   sendChannel(sender, onEvent, {
     json: JSON.stringify({
       type: "story_started",
@@ -1273,7 +1289,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
     }),
   });
   const ownedWindow =
-    streamId == null
+    streamId == null && !strictSessionAtLaunch
       ? new BrowserWindow({
           show: false,
           width: 1280,
@@ -1287,7 +1303,9 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
           },
         })
       : null;
-  const contents = streamId ? authorSession(streamId).window.webContents : ownedWindow?.webContents;
+  const contents =
+    (recordingSessionId ? strictBrowserRecordingContents(recordingSessionId) : null) ??
+    (streamId ? authorSession(streamId).window.webContents : ownedWindow?.webContents);
   if (!contents) throw new Error("browser session unavailable for automation");
   const targets = { version: 1, steps: {} };
   const recordingSessionAtLaunch = recordingSessionId
@@ -1296,15 +1314,24 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
   const actionEvents: ActionTimelineEvent[] = [];
   const stepTimings: RecordingStepTiming[] = [];
   const actionStepStartMs = new Map<number, number>();
-  const actionRunStartedAt = recordingSessionAtLaunch?.startedAt ?? Date.now();
+  const actionRunStartedAt =
+    strictSessionAtLaunch?.startedAt ?? recordingSessionAtLaunch?.startedAt ?? Date.now();
+  const currentRecordingClockMs = () =>
+    (recordingSessionId ? strictBrowserRecordingClockMs(recordingSessionId) : null) ??
+    (recordingSessionAtLaunch ? recordingFrameClockMs(recordingSessionAtLaunch) : 0);
   const executionProfile = storyBrowserExecutionProfile({
     captureRecordingFrames: Boolean(recordingSessionId),
-    captureSize: recordingSessionAtLaunch
+    captureSize: strictSessionAtLaunch
       ? {
-          width: recordingSessionAtLaunch.width,
-          height: recordingSessionAtLaunch.height,
+          width: strictSessionAtLaunch.request.dimensions.physical_width,
+          height: strictSessionAtLaunch.request.dimensions.physical_height,
         }
-      : undefined,
+      : recordingSessionAtLaunch
+        ? {
+            width: recordingSessionAtLaunch.width,
+            height: recordingSessionAtLaunch.height,
+          }
+        : undefined,
   });
   const failureFrameDir = userDataPath("automation-runs", randomUUID(), "diagnostics");
   let result: Awaited<ReturnType<typeof runStoryCommandsInBrowser>>;
@@ -1319,8 +1346,10 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       executionProfile,
       failureFrameDir,
       recordingSessionId,
-      recordingClockMs: recordingSessionAtLaunch
-        ? () => recordingFrameClockMs(recordingSessionAtLaunch)
+      recordingClockMs:
+        strictSessionAtLaunch || recordingSessionAtLaunch ? currentRecordingClockMs : undefined,
+      requireRecordingReadiness: strictSessionAtLaunch
+        ? (state) => requireStrictBrowserRecordingReadiness(strictSessionAtLaunch.id, state)
         : undefined,
       actionLandmarks: recordingSessionAtLaunch?.actionLandmarks,
       requestFrameCommit: recordingSessionAtLaunch
@@ -1332,14 +1361,16 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       captureStateSnapshot: recordingSessionAtLaunch
         ? () => recordingCaptureStateSnapshot(recordingSessionAtLaunch)
         : undefined,
-      pauseGate: recordingSessionAtLaunch?.pauseGate,
-      shouldCancel: recordingSessionAtLaunch
-        ? () => recordingSessions.get(recordingSessionAtLaunch.id) !== recordingSessionAtLaunch
-        : undefined,
+      pauseGate: strictSessionAtLaunch?.pauseGate ?? recordingSessionAtLaunch?.pauseGate,
+      shouldCancel: strictSessionAtLaunch
+        ? () => strictBrowserRecordingSession(strictSessionAtLaunch.id) !== strictSessionAtLaunch
+        : recordingSessionAtLaunch
+          ? () => recordingSessions.get(recordingSessionAtLaunch.id) !== recordingSessionAtLaunch
+          : undefined,
       hooks: {
         onStepStarted: (ordinal, command) => {
-          if (recordingSessionAtLaunch) {
-            actionStepStartMs.set(ordinal, recordingFrameClockMs(recordingSessionAtLaunch));
+          if (strictSessionAtLaunch || recordingSessionAtLaunch) {
+            actionStepStartMs.set(ordinal, currentRecordingClockMs());
           }
           sendChannel(sender, onEvent, {
             json: JSON.stringify({
@@ -1358,9 +1389,10 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
           actionDurationMs,
           timing,
         }) => {
-          const fallbackStepEndedAtMs = recordingSessionAtLaunch
-            ? recordingFrameClockMs(recordingSessionAtLaunch)
-            : Math.max(0, Date.now() - actionRunStartedAt);
+          const fallbackStepEndedAtMs =
+            strictSessionAtLaunch || recordingSessionAtLaunch
+              ? currentRecordingClockMs()
+              : Math.max(0, Date.now() - actionRunStartedAt);
           const stepEndedAtMs = timing?.stepEndedAtMs ?? fallbackStepEndedAtMs;
           const stepStartedAtMs =
             timing?.stepStartedAtMs ??
@@ -1371,7 +1403,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
             stepEndedAtMs,
             timing?.actionAtMs ?? stepStartedAtMs + Math.max(0, actionDurationMs),
           );
-          if (recordingSessionAtLaunch) {
+          if (strictSessionAtLaunch || recordingSessionAtLaunch) {
             stepTimings.push({
               ordinal,
               stepId: command.step_id ?? null,
@@ -1445,8 +1477,8 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
           const command = commands[ordinal - 1];
           const stepStartedAtMs = actionStepStartMs.get(ordinal);
           actionStepStartMs.delete(ordinal);
-          if (recordingSessionAtLaunch && stepStartedAtMs != null) {
-            const stepEndedAtMs = recordingFrameClockMs(recordingSessionAtLaunch);
+          if ((strictSessionAtLaunch || recordingSessionAtLaunch) && stepStartedAtMs != null) {
+            const stepEndedAtMs = currentRecordingClockMs();
             if (command) {
               stepTimings.push({
                 ordinal,
@@ -1480,9 +1512,12 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
   } finally {
     if (ownedWindow && !ownedWindow.isDestroyed()) ownedWindow.destroy();
   }
+  const strictRecordingSession = recordingSessionId
+    ? strictBrowserRecordingSession(recordingSessionId)
+    : null;
   const recordingSession = recordingSessionId ? recordingSessions.get(recordingSessionId) : null;
   let recordingOutcome:
-    | { status: "finalized"; result: Awaited<ReturnType<typeof stopRecording>> }
+    | { status: "ready_to_finalize"; result: null }
     | { status: "already_finalized"; result: null }
     | { status: "not_requested"; result: null } = recordingSessionId
     ? { status: "already_finalized", result: null }
@@ -1492,7 +1527,14 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
     await captureAutomationRecordingTail(recordingSession);
     await ensureRecordingFramesCoverElapsedTime(recordingSession);
   }
-  if (recordingSessionId && recordingSessions.has(recordingSessionId)) {
+  if (recordingSessionId && strictRecordingSession) {
+    setStrictBrowserRecordingActions(
+      recordingSessionId,
+      actionEvents,
+      executionProfile.cursorMotionPreset,
+    );
+    recordingOutcome = { status: "ready_to_finalize", result: null };
+  } else if (recordingSessionId && recordingSessions.has(recordingSessionId)) {
     if (recordingSession) {
       await writeRecordingStepTimingSidecarBestEffort(
         recordingSession,
@@ -1505,13 +1547,12 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
             : "partial",
       );
     }
-    const recordingResult = await stopRecording({ id: recordingSessionId });
-    recordingOutcome = { status: "finalized", result: recordingResult };
     if (recordingSession) {
       await writeRecordingActionsSidecarBestEffort(recordingSession, actionEvents, {
         cursorMotionPreset: executionProfile.cursorMotionPreset,
       });
     }
+    recordingOutcome = { status: "ready_to_finalize", result: null };
   }
   sendChannel(sender, onEvent, {
     json: JSON.stringify({

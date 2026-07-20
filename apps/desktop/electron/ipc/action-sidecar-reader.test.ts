@@ -27,6 +27,23 @@ describe("readRecordingActionsSidecar", () => {
     await expect(readRecordingActionsSidecar(recordingPath)).resolves.toEqual(v1Normalized);
   });
 
+  it("reads the explicit V2 bundle sidecar and rejects paths outside the bundle", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-action-reader-v2-"));
+    tempDirs.push(root);
+    const recordingPath = path.join(root, "take.sc-recording", "proxy", "video.mp4");
+    const actionsPath = path.join(root, "take.sc-recording", "sidecars", "actions.json");
+    await fs.mkdir(path.dirname(recordingPath), { recursive: true });
+    await fs.mkdir(path.dirname(actionsPath), { recursive: true });
+    await fs.writeFile(actionsPath, JSON.stringify(v1Raw));
+
+    await expect(readRecordingActionsSidecar(recordingPath, actionsPath)).resolves.toEqual(
+      v1Normalized,
+    );
+    await expect(
+      readRecordingActionsSidecar(recordingPath, path.join(root, "outside.actions.json")),
+    ).rejects.toThrow(/outside the V2 bundle/);
+  });
+
   it("returns null for missing, malformed, partial, and future sidecars", async () => {
     const recordingPath = await recordingFixturePath();
     const actionsPath = actionsSidecarPath(recordingPath);

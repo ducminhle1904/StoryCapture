@@ -9,6 +9,10 @@ import {
   recordingQualityArgs,
   recordingVideoFilters,
 } from "../recording-pipeline";
+import {
+  setStrictBrowserRecordingAudio,
+  stopStrictBrowserRecording,
+} from "../recording-strict-browser-lifecycle";
 import { authorSession, ffmpegCropPlan, percentile, queueRecordingFrame } from "./capture-preview";
 import { recordingEncoderFailure, recordingErrorCode } from "./recording-errors";
 import { closeChannel, type RecordingSession, recordingSessions, sendChannel } from "./shared";
@@ -47,6 +51,7 @@ function recordTerminalFailure(
 }
 
 export async function setRecordingAudio(raw: unknown): Promise<null> {
+  if (await setStrictBrowserRecordingAudio(raw)) return null;
   const payload = raw as { session?: { id?: unknown }; id?: unknown; bytes?: unknown } | undefined;
   const id = String(payload?.session?.id ?? payload?.id ?? "");
   const session = recordingSessions.get(id);
@@ -105,6 +110,8 @@ export function runFfmpeg(ffmpegArgs: string[]): Promise<void> {
 
 export async function stopRecording(raw: unknown) {
   const id = typeof raw === "string" ? raw : String((raw as { id?: string } | undefined)?.id ?? "");
+  const strictResult = await stopStrictBrowserRecording(id);
+  if (strictResult) return strictResult;
   const session = recordingSessions.get(id);
   if (!session) throw new Error(`recording session ${id} not found`);
   recordingSessions.delete(id);

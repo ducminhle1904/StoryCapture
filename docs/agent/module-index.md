@@ -90,6 +90,38 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/electron/ipc/legacy-command.ts`.
 - Renderer IPC facades: `apps/desktop/src/ipc/*.ts`.
 
+### Recording V2
+
+- Public contract: `packages/shared-types/src/recording-v2.ts`.
+- Strict admission and lifecycle:
+  `apps/desktop/electron/ipc/recording-certification-catalog.ts`,
+  `apps/desktop/electron/ipc/capture-backend-v2-guard.ts`, and
+  `apps/desktop/electron/ipc/recording-strict-browser-lifecycle.ts`.
+- Capture backends:
+  `apps/desktop/electron/ipc/browser-capture-backend-v2.ts`,
+  `apps/desktop/electron/ipc/macos-screen-capture-backend.ts`, and
+  `apps/desktop/electron/ipc/windows-capture-backend.ts`; platform protocol and
+  helper sources live in `windows-capture-protocol.ts` and
+  `apps/desktop/native/{macos-screen-capture,windows-capture}/`.
+- Frame/master data plane:
+  `apps/desktop/electron/ipc/recording-frame-ring.ts`,
+  `apps/desktop/electron/ipc/recording-master.ts`,
+  `apps/desktop/electron/ipc/recording-master-pipeline.ts`,
+  `apps/desktop/electron/ipc/recording-bundle.ts`,
+  `apps/desktop/electron/ipc/recording-cadence-verifier.ts`, and
+  `apps/desktop/electron/ipc/recording-quality-verifier.ts`.
+- Discovery, retention, and diagnostics:
+  `apps/desktop/electron/ipc/recording-discovery.ts`,
+  `apps/desktop/electron/ipc/recording-evidence-retention.ts`,
+  `apps/desktop/electron/ipc/recording-failed-bundle-retention.ts`, and
+  `apps/desktop/electron/ipc/recording-failed-bundle-actions.ts`.
+- Renderer policy/result integration:
+  `apps/desktop/src/state/output-prefs.ts`,
+  `apps/desktop/src/state/recorder.ts`,
+  `apps/desktop/src/features/recorder/recording-view.tsx`,
+  `apps/desktop/src/ipc/recording-failure.ts`, and
+  `apps/desktop/src/ipc/recording-master.ts`.
+
 ## DSL, Capture, Render, Export
 
 - DSL vocabulary and CodeMirror: `packages/story-dsl/src/ast.ts`,
@@ -190,6 +222,9 @@ Use this for task routing after reading the short root guide.
 
 - Shared package exports: `packages/shared-types/src/index.ts`.
 - IPC compatibility surface: `packages/shared-types/src/ipc.ts`.
+- Recording V2 policy, backend, evidence, bundle, result, and export-source
+  contracts: `packages/shared-types/src/recording-v2.ts`, exported as
+  `@storycapture/shared-types/recording-v2`.
 - Public `WebAccountInfo` is defined by `packages/shared-types/src/ipc.ts` and
   re-exported from `packages/shared-types/src/index.ts`;
   `packages/shared-types/src/web-account.ts` is currently not exported.

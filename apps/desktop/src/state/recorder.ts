@@ -1,13 +1,18 @@
+import type {
+  RecordingCadenceEvidenceV2,
+  RecordingPreflightV2Dto,
+  RecordingResultV2,
+} from "@storycapture/shared-types/recording-v2";
 import { create } from "zustand";
+import type { AudioPickerValue } from "@/ipc/audio";
 import {
-  getCaptureTarget,
-  listCaptureTargets,
-  setCaptureTarget as ipcSetCaptureTarget,
-  captureTargetKey,
   type CaptureTarget,
   type CaptureTargets,
+  captureTargetKey,
+  getCaptureTarget,
+  setCaptureTarget as ipcSetCaptureTarget,
+  listCaptureTargets,
 } from "@/ipc/capture";
-import type { AudioPickerValue } from "@/ipc/audio";
 import { frontendLog } from "@/lib/log";
 
 export type RecorderStatus =
@@ -17,7 +22,9 @@ export type RecorderStatus =
   | "recording"
   | "paused"
   | "stopping"
+  | "verifying"
   | "completed"
+  | "quality_failed"
   | "failed";
 
 export interface CursorPoint {
@@ -82,6 +89,11 @@ export interface RecorderData {
   error: string | null;
   outputPath: string | null;
   elapsedMs: number;
+  preflight: RecordingPreflightV2Dto | null;
+  readiness: "source_ready" | "first_frame_committed" | "pre_input_frame_committed" | null;
+  liveEvidence: RecordingCadenceEvidenceV2 | null;
+  verificationProgress: number | null;
+  qualityFailure: (RecordingResultV2 & { status: "quality_failed" }) | null;
 
   captureTarget: CaptureTarget | null;
   availableTargets: CaptureTargets | null;
@@ -116,6 +128,11 @@ export interface RecorderActions {
   setError: (e: string | null) => void;
   setOutputPath: (p: string | null) => void;
   setElapsed: (ms: number) => void;
+  setPreflight: (value: RecordingPreflightV2Dto | null) => void;
+  setReadiness: (value: RecorderData["readiness"]) => void;
+  setLiveEvidence: (value: RecordingCadenceEvidenceV2 | null) => void;
+  setVerificationProgress: (value: number | null) => void;
+  setQualityFailure: (value: RecorderData["qualityFailure"]) => void;
   resetTake: () => void;
   reset: () => void;
 
@@ -144,6 +161,11 @@ const INITIAL: RecorderData = {
   error: null,
   outputPath: null,
   elapsedMs: 0,
+  preflight: null,
+  readiness: null,
+  liveEvidence: null,
+  verificationProgress: null,
+  qualityFailure: null,
   captureTarget: null,
   availableTargets: null,
   // Non-sticky: reset() is called on recorder-view mount and recording
@@ -184,6 +206,11 @@ export const useRecorderStore = create<RecorderState>((set) => ({
   setError: (error) => set({ error }),
   setOutputPath: (outputPath) => set({ outputPath }),
   setElapsed: (elapsedMs) => set({ elapsedMs }),
+  setPreflight: (preflight) => set({ preflight }),
+  setReadiness: (readiness) => set({ readiness }),
+  setLiveEvidence: (liveEvidence) => set({ liveEvidence }),
+  setVerificationProgress: (verificationProgress) => set({ verificationProgress }),
+  setQualityFailure: (qualityFailure) => set({ qualityFailure }),
   resetTake: () =>
     set((state) => ({
       ...INITIAL,

@@ -17,6 +17,10 @@
     "./export-composition": {
       "types": "./src/export-composition.ts",
       "import": "./src/export-composition.ts"
+    },
+    "./recording-v2": {
+      "types": "./src/recording-v2.ts",
+      "import": "./src/recording-v2.ts"
     }
   },
   "dependencies": {

@@ -9,6 +9,8 @@ import { postProductionHandlers } from "./post-production";
 import { previewHandlers } from "./preview";
 import { projectsHandlers } from "./projects";
 import { recordingHandlers } from "./recording";
+import { recordingFailedBundleHandlers } from "./recording-failed-bundle-actions";
+import { recordingMasterDecoderHandlers } from "./recording-master-decoder";
 import { renderHandlers } from "./render";
 import { secretsHandlers } from "./secrets";
 import { settingsHandlers } from "./settings";
@@ -23,6 +25,8 @@ export const handlers = {
   ...logsHandlers,
   ...updatesHandlers,
   ...recordingHandlers,
+  ...recordingFailedBundleHandlers,
+  ...recordingMasterDecoderHandlers,
   ...previewHandlers,
   ...pickerHandlers,
   ...simulatorHandlers,

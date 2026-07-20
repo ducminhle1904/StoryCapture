@@ -40,6 +40,11 @@
   TypeScript setup check does not fail in CI while built-in validation is off.
 - Desktop Electron build: `pnpm --dir apps/desktop run build`.
 - Desktop renderer build: `pnpm --dir apps/desktop renderer:build`.
+- Native capture helper build: `pnpm --dir apps/desktop native:build`.
+- Verify helpers in an existing unpacked package:
+  `pnpm --dir apps/desktop native:verify:packaged`.
+- Build an unpacked package and run the native helper signature/protocol gate:
+  `pnpm --dir apps/desktop test:e2e:recording-v2-helper`.
 - Packaged recording/export parity: `pnpm --dir apps/desktop run test:e2e:export`.
 - Web build: `pnpm --dir apps/web build`.
 - Story DSL typecheck: `pnpm --dir packages/story-dsl typecheck`.
@@ -78,6 +83,9 @@
   - `pnpm --dir apps/web test`
   - `pnpm --dir apps/desktop run test:e2e:export`
 - The Windows job runs the media and packaged export smokes.
+- `electron:build` and `test:e2e:export` build the platform native helper, but
+  the current CI workflow does not run the complete
+  `test:e2e:recording-v2-helper` verification gate.
 - The Ubuntu `prisma-postgres-smoke` job bootstraps the current schema into a
   disposable PostgreSQL 17 service, then runs adapter CRUD and seed smokes.
 
@@ -92,6 +100,8 @@
 
 - Local/manual CI helpers: `scripts/ci/check-av-drift.sh`,
   `scripts/ci/generate-synthetic-recording.sh`.
+- Capture a pre-change recording baseline:
+  `node apps/desktop/scripts/capture-recording-baseline.mjs --output <json> [--browser <artifact>] [--display <artifact>] [--window <artifact>]`.
 - Benchmark helper: `scripts/benchmark/render-1min.sh`.
 - Encoded cursor/presentation ROI verifier:
   `node scripts/ci/analyze-cursor-sync-roi.mjs --video=<mp4> --roi=x:y:w:h --expected-frame=N [--tolerance=1]`.
