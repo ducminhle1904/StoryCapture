@@ -3,7 +3,7 @@
  * icon (LSP selector-fallback warning).
  */
 
-import { Button } from "@/components/ui/button";
+import { ScButton as Button } from "@storycapture/ui";
 import type { SelectorAttempt } from "./dryRunStore";
 
 export interface SelectorFallbackPopoverProps {

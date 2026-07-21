@@ -1,31 +1,34 @@
 import { ScBadge, ScButton } from "@storycapture/ui";
 import {
   ArrowRight,
+  CheckCircle2,
   ChevronLeft,
   Film,
   FolderPlus,
-  Play,
+  Loader2,
+  RotateCw,
   ShieldCheck,
   Sparkles,
   Target,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import goalLaunchArtwork from "@/assets/onboarding/goal-launch.jpg";
 import goalOnboardingArtwork from "@/assets/onboarding/goal-onboarding.jpg";
 import goalReleaseArtwork from "@/assets/onboarding/goal-release.jpg";
 import goalSupportArtwork from "@/assets/onboarding/goal-support.jpg";
-import outcomeArtwork from "@/assets/onboarding/outcome-demo.jpg";
 import permissionsArtwork from "@/assets/onboarding/permissions.jpg";
 import previewArtwork from "@/assets/onboarding/preview-run.jpg";
 import targetSampleArtwork from "@/assets/onboarding/target-sample.jpg";
 import targetUrlArtwork from "@/assets/onboarding/target-url.jpg";
+import { buildOnboardingProjectDraft } from "@/features/dashboard/project-draft";
+import { checkScreenCapturePermission, type ScreenCapturePermissionReport } from "@/ipc/capture";
 import { markOnboardingComplete } from "@/lib/onboarding";
 import { useDashboardStore } from "@/state/projects";
 
-type StepId = "outcome" | "goal" | "target" | "permissions" | "preview";
+type StepId = "goal" | "target" | "permissions" | "setup";
 
 interface Step {
   id: StepId;
@@ -35,12 +38,6 @@ interface Step {
 }
 
 const steps: Step[] = [
-  {
-    id: "outcome",
-    label: "Outcome",
-    title: "Create your first product demo",
-    eyebrow: "Start with the finished result",
-  },
   {
     id: "goal",
     label: "Goal",
@@ -60,44 +57,38 @@ const steps: Step[] = [
     eyebrow: "No surprise system prompts",
   },
   {
-    id: "preview",
-    label: "Preview",
-    title: "Watch the browser move",
-    eyebrow: "The first aha moment",
+    id: "setup",
+    label: "Project",
+    title: "Set up your first project",
+    eyebrow: "Your choices are ready to carry into Author",
   },
 ];
 
 const goals = [
   {
-    id: "launch",
-    title: "Launch demo",
-    body: "Show the product path that sells a release.",
+    id: "product_demo",
+    title: "Product Demo",
+    body: "Show one complete product path and its outcome.",
     artwork: goalLaunchArtwork,
   },
   {
-    id: "onboarding",
-    title: "Customer onboarding",
-    body: "Teach a new user the first useful action.",
+    id: "tutorial",
+    title: "Tutorial",
+    body: "Teach a user how to complete one useful task.",
     artwork: goalOnboardingArtwork,
   },
   {
     id: "support",
-    title: "Support walkthrough",
+    title: "Support",
     body: "Record the steps that solve a support ticket.",
     artwork: goalSupportArtwork,
   },
   {
-    id: "release",
-    title: "Release note",
+    id: "feature_launch",
+    title: "Feature Launch",
     body: "Turn a feature change into a short clip.",
     artwork: goalReleaseArtwork,
   },
-];
-
-const permissionRows = [
-  ["Screen Recording", "Captures crisp native pixels for the final video."],
-  ["Accessibility", "Lets StoryCapture guide browser clicks and inputs."],
-  ["Browser sidecar", "Runs preview in a controlled browser first."],
 ];
 
 const rulerTicks = ["t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8"];
@@ -107,8 +98,7 @@ export const ONBOARDING_METRICS = [
   "goal_selected",
   "target_submitted",
   "permission_primer_seen",
-  "first_preview_started",
-  "first_preview_completed",
+  "project_setup_opened",
   "onboarding_completed",
 ] as const;
 
@@ -165,8 +155,8 @@ function ArtworkPanel({ src, alt }: { src: string; alt: string }) {
 
 function MicroSequence() {
   return (
-    <div className="grid grid-cols-3 overflow-hidden rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)]">
-      {["Write", "Preview", "Record"].map((item, index) => (
+    <div className="grid grid-cols-5 overflow-hidden rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)]">
+      {["Author", "Preview", "Record", "Edit", "Export"].map((item, index) => (
         <div key={item} className="border-r border-[var(--sc-border)] px-3 py-3 last:border-r-0">
           <div className="font-mono text-[10px] text-[var(--sc-text-4)]">0{index + 1}</div>
           <div className="mt-2 text-[12px] font-semibold">{item}</div>
@@ -179,21 +169,21 @@ function MicroSequence() {
 export default function OnboardingRoute() {
   const navigate = useNavigate();
   const requestNewProject = useDashboardStore((s) => s.requestNewProject);
+  const clearNewProjectDraft = useDashboardStore((s) => s.clearNewProjectDraft);
   const [activeIndex, setActiveIndex] = useState(0);
   const [goalId, setGoalId] = useState(goals[0].id);
   const [targetUrl, setTargetUrl] = useState("");
   const [useSample, setUseSample] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [permissionReport, setPermissionReport] = useState<ScreenCapturePermissionReport | null>(
+    null,
+  );
+  const [permissionLoading, setPermissionLoading] = useState(false);
+  const [permissionChecked, setPermissionChecked] = useState(false);
 
   const activeStep = steps[activeIndex];
   const selectedGoal = goals.find((item) => item.id === goalId) ?? goals[0];
   const artwork = useMemo(() => {
-    if (activeStep.id === "outcome") {
-      return {
-        src: outcomeArtwork,
-        alt: "A finished product demo represented as a browser capture and edited video timeline.",
-      };
-    }
     if (activeStep.id === "goal") {
       return {
         src: selectedGoal.artwork,
@@ -219,7 +209,7 @@ export default function OnboardingRoute() {
     }
     return {
       src: previewArtwork,
-      alt: "A browser preview run with a cursor path and recording progress.",
+      alt: "A project ready to move through Author, Preview, Record, Edit, and Export.",
     };
   }, [activeStep.id, selectedGoal, useSample]);
   const progress = useMemo(
@@ -232,10 +222,38 @@ export default function OnboardingRoute() {
     window.localStorage.setItem("storycapture:onboarding:v1:started", "true");
   }, []);
 
+  const probePermissions = useCallback(async () => {
+    setPermissionLoading(true);
+    try {
+      setPermissionReport(await checkScreenCapturePermission());
+    } catch (probeError) {
+      setError(`Could not check screen recording access: ${String(probeError)}`);
+    } finally {
+      setPermissionChecked(true);
+      setPermissionLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeStep.id === "permissions" && !permissionChecked && !permissionLoading) {
+      void probePermissions();
+    }
+  }, [activeStep.id, permissionChecked, permissionLoading, probePermissions]);
+
   const finish = (openProjectDialog: boolean) => {
     markOnboardingComplete();
     navigate("/", { replace: true });
-    if (openProjectDialog) requestNewProject();
+    if (openProjectDialog) {
+      requestNewProject(
+        buildOnboardingProjectDraft(
+          selectedGoal.id as "product_demo" | "tutorial" | "feature_launch" | "support",
+          targetUrl,
+          useSample,
+        ),
+      );
+    } else {
+      clearNewProjectDraft();
+    }
   };
 
   const goNext = () => {
@@ -315,23 +333,6 @@ export default function OnboardingRoute() {
               </h1>
             </motion.div>
           </AnimatePresence>
-
-          {activeStep.id === "outcome" && (
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.08, type: "spring", stiffness: 120, damping: 22 }}
-              className="mt-6 max-w-[470px]"
-            >
-              <p className="text-[14px] leading-7 text-[var(--sc-text-3)]">
-                StoryCapture turns a written story into a real browser recording. First we show the
-                loop, then we ask you to create a project.
-              </p>
-              <div className="mt-5">
-                <MicroSequence />
-              </div>
-            </motion.div>
-          )}
 
           {activeStep.id === "goal" && (
             <motion.div
@@ -430,36 +431,68 @@ export default function OnboardingRoute() {
               transition={{ delay: 0.08, type: "spring", stiffness: 120, damping: 22 }}
               className="mt-7 max-w-[560px] divide-y divide-[var(--sc-border)] overflow-hidden rounded-[20px] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] shadow-[var(--sc-sh-1)]"
             >
-              {permissionRows.map(([title, body]) => (
-                <div key={title} className="grid gap-1 px-4 py-3.5">
-                  <div className="flex items-center gap-2 text-[13px] font-semibold">
+              <div className="grid gap-1 px-4 py-3.5">
+                <div className="flex items-center gap-2 text-[13px] font-semibold">
+                  {permissionLoading ? (
+                    <Loader2
+                      size={14}
+                      className="animate-spin text-[var(--sc-text-3)]"
+                      aria-hidden="true"
+                    />
+                  ) : permissionReport?.state === "granted" ? (
+                    <CheckCircle2
+                      size={14}
+                      className="text-[var(--sc-success)]"
+                      aria-hidden="true"
+                    />
+                  ) : (
                     <ShieldCheck
                       size={14}
                       className="text-[var(--sc-accent-300)]"
                       aria-hidden="true"
                     />
-                    {title}
-                  </div>
-                  <div className="text-[12px] leading-5 text-[var(--sc-text-3)]">{body}</div>
+                  )}
+                  Screen Recording
                 </div>
-              ))}
+                <div className="text-[12px] leading-5 text-[var(--sc-text-3)]">
+                  {permissionLoading
+                    ? "Checking system access…"
+                    : permissionReport?.state === "granted"
+                      ? "Granted. Native capture is ready."
+                      : (permissionReport?.reason ?? "Permission has not been granted yet.")}
+                </div>
+                <ScButton
+                  className="mt-2 w-fit"
+                  size="sm"
+                  icon={<RotateCw size={12} aria-hidden="true" />}
+                  disabled={permissionLoading}
+                  onClick={() => void probePermissions()}
+                >
+                  Recheck
+                </ScButton>
+              </div>
             </motion.div>
           )}
 
-          {activeStep.id === "preview" && (
+          {activeStep.id === "setup" && (
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.08, type: "spring", stiffness: 120, damping: 22 }}
               className="mt-7 max-w-[500px]"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--sc-text)] text-[var(--sc-text-inverse)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
-                <Play size={18} fill="currentColor" aria-hidden="true" />
+              <MicroSequence />
+              <div className="mt-4 grid gap-2 rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] p-4 text-[12px] text-[var(--sc-text-3)]">
+                <div>
+                  <span className="font-semibold text-[var(--sc-text)]">Workflow:</span>{" "}
+                  {selectedGoal.title}
+                </div>
+                <div>
+                  <span className="font-semibold text-[var(--sc-text)]">Target:</span>{" "}
+                  {useSample ? "Sample product" : targetUrl}
+                </div>
+                <div>The project dialog will open with these fields prefilled.</div>
               </div>
-              <p className="mt-4 text-[14px] leading-7 text-[var(--sc-text-3)]">
-                The preview proves the core loop before folder selection. Next, create the local
-                project and record the first clip.
-              </p>
             </motion.div>
           )}
         </div>
@@ -489,7 +522,7 @@ export default function OnboardingRoute() {
         <ScButton
           variant="primary"
           icon={
-            activeStep.id === "preview" ? (
+            activeStep.id === "setup" ? (
               <FolderPlus size={13} aria-hidden="true" />
             ) : (
               <ArrowRight size={13} aria-hidden="true" />
@@ -497,7 +530,7 @@ export default function OnboardingRoute() {
           }
           onClick={goNext}
         >
-          {activeStep.id === "preview" ? "Create project" : "Continue"}
+          {activeStep.id === "setup" ? "Set up project" : "Continue"}
         </ScButton>
       </footer>
     </main>

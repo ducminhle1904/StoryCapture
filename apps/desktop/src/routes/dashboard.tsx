@@ -1,5 +1,5 @@
-import { ScButton, ScCard, ScInput, ScSegmented } from "@storycapture/ui";
-import { AlertTriangle, File, FolderOpen, Plus, Search } from "lucide-react";
+import { ScButton, ScCard, ScInput } from "@storycapture/ui";
+import { AlertTriangle, ArrowRight, File, FolderOpen, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useNavigate } from "react-router-dom";
@@ -10,6 +10,7 @@ import { PageContentTransition } from "@/components/page-content-transition";
 import { NewProjectDialog } from "@/features/dashboard/new-project-dialog";
 import { ProjectGrid } from "@/features/dashboard/project-grid";
 import { filterAndSort, mostRecentTimestamp } from "@/features/dashboard/project-utils";
+import { useProjectDashboardSummary } from "@/features/dashboard/use-project-dashboard-summary";
 import type { Project } from "@/ipc/projects";
 import { useProjects, useRemoveProject } from "@/ipc/projects";
 import { hasCompletedOnboarding, markOnboardingComplete } from "@/lib/onboarding";
@@ -81,13 +82,58 @@ function EmptyDashboard({ onNewStory }: { onNewStory: () => void }) {
   );
 }
 
+function ContinueWorking({ project }: { project: Project }) {
+  const navigate = useNavigate();
+  const summary = useProjectDashboardSummary(project.id);
+  const hasRecording = (summary.sessionCount ?? 0) > 0;
+  const target = hasRecording
+    ? `/post-production/${encodeURIComponent(project.id)}`
+    : `/editor/${encodeURIComponent(project.id)}`;
+  const action = summary.isLoading
+    ? "Open project"
+    : hasRecording
+      ? "Review recording"
+      : "Continue authoring";
+
+  return (
+    <aside aria-labelledby="continue-working-title" className="sc-dashboard-continue">
+      <div id="continue-working-title" className="sc-h">
+        Continue working
+      </div>
+      <ScCard style={{ padding: 16 }}>
+        <div className="text-[12px] text-[var(--sc-text-3)]">Most recently opened</div>
+        <div className="mt-1 truncate text-[15px] font-semibold text-[var(--sc-text-1)]">
+          {project.name}
+        </div>
+        <div className="mt-2 text-[12px] leading-5 text-[var(--sc-text-3)]">
+          {summary.isLoading
+            ? "Checking the latest project state…"
+            : hasRecording
+              ? `${summary.sessionCount} recording${summary.sessionCount === 1 ? "" : "s"} ready to review.`
+              : "Keep shaping the story before recording."}
+        </div>
+        <ScButton
+          className="mt-4 w-full justify-center"
+          variant="primary"
+          icon={<ArrowRight size={13} aria-hidden="true" />}
+          onClick={() => navigate(target)}
+        >
+          {action}
+        </ScButton>
+      </ScCard>
+    </aside>
+  );
+}
+
 export default function DashboardRoute() {
   const navigate = useNavigate();
   const { data: projects, isLoading, error } = useProjects();
   const removeProject = useRemoveProject();
   const { searchQuery, sortMode, setSearchQuery } = useDashboardStore();
   const newProjectRequested = useDashboardStore((s) => s.newProjectRequested);
+  const newProjectDraft = useDashboardStore((s) => s.newProjectDraft);
   const consumeNewProjectRequest = useDashboardStore((s) => s.consumeNewProjectRequest);
+  const clearNewProjectDraft = useDashboardStore((s) => s.clearNewProjectDraft);
   const [dialogOpen, setDialogOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -144,6 +190,17 @@ export default function DashboardRoute() {
   const count = projects?.length ?? 0;
   const isEmpty = !isLoading && !error && count === 0;
   const lastOpened = useMemo(() => mostRecentTimestamp(projects ?? []), [projects]);
+  const mostRecentProject = useMemo(
+    () =>
+      (projects ?? []).reduce<Project | null>((latest, project) => {
+        if (!latest) return project;
+        return (project.last_opened_at ?? project.created_at) >
+          (latest.last_opened_at ?? latest.created_at)
+          ? project
+          : latest;
+      }, null),
+    [projects],
+  );
   const metaLine = isEmpty
     ? "No stories yet"
     : `${count} ${count === 1 ? "story" : "stories"} · last opened ${relativeTime(lastOpened)}`;
@@ -168,18 +225,6 @@ export default function DashboardRoute() {
           onChange={(e) => setSearchQuery(e.target.value)}
           aria-label="Search stories"
           style={{ width: 240 }}
-        />
-        <ScSegmented
-          size="sm"
-          value="all"
-          disabled
-          aria-label="Filter by status (coming soon)"
-          options={[
-            { value: "all", label: "All" },
-            { value: "ready", label: "Ready" },
-            { value: "rendering", label: "Rendering" },
-            { value: "draft", label: "Drafts" },
-          ]}
         />
         <ScButton
           variant="primary"
@@ -218,77 +263,39 @@ export default function DashboardRoute() {
         ) : isEmpty ? (
           <EmptyDashboard onNewStory={openNewStory} />
         ) : (
-          <>
-            <div
-              style={{
-                marginBottom: 10,
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-              }}
-            >
-              <div className="sc-h">Active</div>
-              <div style={{ height: 1, flex: 1, background: "var(--sc-border)" }} />
-            </div>
-            <ProjectGrid
-              projects={visible}
-              onOpen={openProject}
-              onNewStory={openNewStory}
-              onRemove={removeProjectFromDashboard}
-              removingProjectId={removeProject.isPending ? (removeProject.variables ?? null) : null}
-            />
-          </>
+          <div className="sc-dashboard-project-layout">
+            <section aria-labelledby="active-projects-title" className="min-w-0">
+              <div className="mb-[10px] flex items-center gap-[10px]">
+                <div id="active-projects-title" className="sc-h">
+                  Active projects
+                </div>
+                <div className="h-px flex-1 bg-[var(--sc-border)]" />
+              </div>
+              <ProjectGrid
+                projects={visible}
+                onOpen={openProject}
+                onNewStory={openNewStory}
+                onRemove={removeProjectFromDashboard}
+                removingProjectId={
+                  removeProject.isPending ? (removeProject.variables ?? null) : null
+                }
+                showCreateTile={false}
+              />
+            </section>
+            {mostRecentProject ? <ContinueWorking project={mostRecentProject} /> : null}
+          </div>
         )}
       </PageContentTransition>
 
-      {!isEmpty && !isLoading && !error && <RecentRenderRail />}
-
-      <NewProjectDialog open={dialogOpen} onOpenChange={setDialogOpen} onCreated={openProject} />
+      <NewProjectDialog
+        open={dialogOpen}
+        initialDraft={newProjectDraft}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) clearNewProjectDraft();
+        }}
+        onCreated={openProject}
+      />
     </main>
-  );
-}
-
-function RecentRenderRail() {
-  return (
-    <div
-      style={{
-        borderTop: "1px solid var(--sc-border)",
-        background: "var(--sc-chrome-2)",
-      }}
-    >
-      <div
-        style={{
-          padding: "12px 20px 8px",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-        }}
-      >
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-            color: "var(--sc-text-3)",
-          }}
-        >
-          Recent renders
-        </div>
-        <span style={{ flex: 1 }} />
-        <ScButton size="sm" variant="ghost" disabled title="Render history coming soon">
-          View all
-        </ScButton>
-      </div>
-      <div
-        style={{
-          padding: "0 20px 16px",
-          fontSize: 12,
-          color: "var(--sc-text-4)",
-        }}
-      >
-        No recent renders yet.
-      </div>
-    </div>
   );
 }

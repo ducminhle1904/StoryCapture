@@ -161,6 +161,7 @@ describe("StoryBuilder UI/code synchronization", () => {
   it("persists Full and Reduced Motion selection in project polish", async () => {
     const user = userEvent.setup();
     render(<StoryBuilderHarness initialStory={parseStory(SOURCE_WITH_TWO_COMMANDS)} />);
+    await user.click(screen.getByRole("button", { name: /Advanced · Motion/ }));
 
     const fullMotion = screen.getByRole("button", { name: "Full" });
     const reducedMotion = screen.getByRole("button", { name: "Reduced" });
@@ -174,6 +175,7 @@ describe("StoryBuilder UI/code synchronization", () => {
 
   it("defaults zoom duration to 1600 ms and clamps manual input to 900 ms", () => {
     render(<StoryBuilderHarness initialStory={parseStory(SOURCE_WITH_TWO_COMMANDS)} />);
+    fireEvent.click(screen.getByRole("button", { name: /Advanced · Motion/ }));
 
     const duration = screen.getByLabelText("Auto zoom duration");
     expect(duration).toHaveValue(1_600);
@@ -187,6 +189,7 @@ describe("StoryBuilder UI/code synchronization", () => {
   it("does not overwrite a manually edited duration when the auto zoom preset changes", async () => {
     const user = userEvent.setup();
     render(<StoryBuilderHarness initialStory={parseStory(SOURCE_WITH_TWO_COMMANDS)} />);
+    await user.click(screen.getByRole("button", { name: /Advanced · Motion/ }));
 
     const duration = screen.getByLabelText("Auto zoom duration");
     fireEvent.change(duration, { target: { value: "2200" } });
@@ -208,6 +211,7 @@ describe("StoryBuilder UI/code synchronization", () => {
         }}
       />,
     );
+    await user.click(screen.getByRole("button", { name: /Advanced · Motion/ }));
 
     await user.click(screen.getByLabelText("Auto zoom"));
     await user.click(screen.getByRole("option", { name: "Strong" }));
@@ -219,6 +223,7 @@ describe("StoryBuilder UI/code synchronization", () => {
     render(
       <StoryBuilderHarness initialStory={parseStory(SOURCE_WITH_TWO_COMMANDS)} simulatorActive />,
     );
+    fireEvent.click(screen.getByRole("button", { name: /Advanced · Motion/ }));
 
     expect(screen.getByLabelText("Motion mode")).toHaveAttribute("data-disabled");
     expect(screen.getByLabelText("Auto zoom duration")).toBeDisabled();

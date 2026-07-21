@@ -4,6 +4,7 @@
  */
 
 import { create } from "zustand";
+import type { OnboardingProjectDraft } from "@/features/dashboard/project-draft";
 
 export type SortMode = "recent" | "name";
 
@@ -12,13 +13,15 @@ interface DashboardState {
   filterTags: string[];
   sortMode: SortMode;
   newProjectRequested: boolean;
+  newProjectDraft: OnboardingProjectDraft | null;
   paletteOpen: boolean;
   setSearchQuery: (q: string) => void;
   toggleTag: (tag: string) => void;
   clearTags: () => void;
   setSortMode: (m: SortMode) => void;
-  requestNewProject: () => void;
+  requestNewProject: (draft?: OnboardingProjectDraft) => void;
   consumeNewProjectRequest: () => void;
+  clearNewProjectDraft: () => void;
   setPaletteOpen: (open: boolean) => void;
 }
 
@@ -27,6 +30,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   filterTags: [],
   sortMode: "recent",
   newProjectRequested: false,
+  newProjectDraft: null,
   paletteOpen: false,
   setSearchQuery: (q) => set({ searchQuery: q }),
   toggleTag: (tag) =>
@@ -37,7 +41,8 @@ export const useDashboardStore = create<DashboardState>((set) => ({
     })),
   clearTags: () => set({ filterTags: [] }),
   setSortMode: (m) => set({ sortMode: m }),
-  requestNewProject: () => set({ newProjectRequested: true }),
+  requestNewProject: (draft) => set({ newProjectRequested: true, newProjectDraft: draft ?? null }),
   consumeNewProjectRequest: () => set({ newProjectRequested: false }),
+  clearNewProjectDraft: () => set({ newProjectDraft: null }),
   setPaletteOpen: (open) => set({ paletteOpen: open }),
 }));

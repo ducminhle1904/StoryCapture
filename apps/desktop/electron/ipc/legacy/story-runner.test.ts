@@ -441,6 +441,33 @@ describe("story browser cursor pacing", () => {
     await expect(fs.stat(path.join(frameDir, "step-0001.png"))).resolves.toBeDefined();
   });
 
+  it("does not fail a completed step when the simulator frame capture is unavailable", async () => {
+    const frameDir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-frame-failure-"));
+    tempDirs.push(frameDir);
+    const contents = fakeContents([]);
+    contents.capturePage.mockRejectedValueOnce(new Error("UnknownVizError"));
+    const frames: Array<{ screenshot_path: string | null }> = [];
+
+    const run = runStoryCommandsInBrowser({
+      contents: contents as never,
+      commands: [textOverlay("Already completed", 100)],
+      projectFolder: "/tmp/storycapture-test",
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      frameDir,
+      executionProfile: {
+        typingMode: "instant",
+        captureRecordingFrames: false,
+        settleDelayForCommand: () => 0,
+      },
+      hooks: { onFrameCaptured: (_ordinal, frame) => frames.push(frame) },
+    });
+
+    await vi.runAllTimersAsync();
+    await expect(run).resolves.toMatchObject({ succeeded: 1, failed: 0 });
+    expect(frames).toMatchObject([{ screenshot_path: null }]);
+  });
+
   it("re-resolves a semantic target after the prepared target detaches", async () => {
     const replacement = target("Search Wikipedia", { x: 520, y: 240 });
     let readinessCalls = 0;

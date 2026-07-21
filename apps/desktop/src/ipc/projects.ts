@@ -95,6 +95,7 @@ const KEYS = {
   detail: (id: string) => ["projects", id] as const,
   folder: (id: string) => ["projects", id, "folder"] as const,
   recordings: (id: string) => ["projects", id, "recordings"] as const,
+  workflow: (id: string) => ["projects", id, "workflow"] as const,
 };
 
 export function projectRecordingsQueryKey(projectId: string) {
@@ -174,6 +175,14 @@ export function useProjectRecordings(projectId: string | undefined) {
 
 export async function fetchProjectWorkflow(projectId: string): Promise<WorkflowState | null> {
   return invoke<WorkflowState | null>("get_project_workflow", { args: { id: projectId } });
+}
+
+export function useProjectWorkflow(projectId: string | undefined) {
+  return useQuery({
+    queryKey: projectId ? KEYS.workflow(projectId) : ["projects", "__disabled__", "workflow"],
+    queryFn: () => fetchProjectWorkflow(projectId as string),
+    enabled: !!projectId,
+  });
 }
 
 export async function fetchProjectWorkflowSyncMetadata(projectId: string): Promise<{

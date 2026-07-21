@@ -5,13 +5,13 @@
  */
 
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  ScSelect as Select,
+  ScSelectContent as SelectContent,
+  ScSelectGroup as SelectGroup,
+  ScSelectItem as SelectItem,
+  ScSelectTrigger as SelectTrigger,
+  ScSelectValue as SelectValue,
+} from "@storycapture/ui";
 import { type PresetName, useOutputPrefsStore } from "@/state/output-prefs";
 import { LABEL_PRESET, PRESET_OPTION_LABELS } from "./copy";
 

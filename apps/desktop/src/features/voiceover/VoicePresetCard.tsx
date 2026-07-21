@@ -8,7 +8,7 @@ import { useCallback, useState } from "react";
 import { Check, Play } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 
-import { Button } from "@/components/ui/button";
+import { ScButton as Button } from "@storycapture/ui";
 import type { VoicePreset } from "./voiceoverStore";
 
 export interface VoicePresetCardProps {

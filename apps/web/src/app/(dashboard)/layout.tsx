@@ -1,4 +1,6 @@
 import { auth, signOut } from "@/lib/auth";
+import { ScButton } from "@storycapture/ui";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 
 /**
@@ -22,8 +24,9 @@ export default async function DashboardLayout({
     <div className="flex min-h-screen bg-zinc-950">
       {/* Sidebar */}
       <aside className="flex w-64 flex-col border-r border-zinc-800 bg-zinc-900">
-        <div className="flex h-14 items-center border-b border-zinc-800 px-4">
-          <span className="text-lg font-semibold text-zinc-50">
+        <div className="flex h-14 items-center gap-2.5 border-b border-zinc-800 px-4">
+          <Image src="/assets/ribbon-s-mark-product.png" alt="" width={26} height={26} />
+          <span className="text-base font-semibold tracking-[-0.02em] text-zinc-50">
             StoryCapture
           </span>
         </div>
@@ -78,12 +81,13 @@ export default async function DashboardLayout({
               await signOut({ redirectTo: "/sign-in" });
             }}
           >
-            <button
+            <ScButton
               type="submit"
-              className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+              variant="ghost"
+              className="mt-1 w-full justify-start"
             >
               Sign out
-            </button>
+            </ScButton>
           </form>
         </div>
       </aside>

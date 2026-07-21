@@ -11,14 +11,14 @@ import {
   type CaptureTargets,
 } from "@/ipc/capture";
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectGroupLabel,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  ScSelect as Select,
+  ScSelectContent as SelectContent,
+  ScSelectGroup as SelectGroup,
+  ScSelectGroupLabel as SelectGroupLabel,
+  ScSelectItem as SelectItem,
+  ScSelectTrigger as SelectTrigger,
+  ScSelectValue as SelectValue,
+} from "@storycapture/ui";
 
 interface TargetPickerProps {
   availableTargets: CaptureTargets | null;

@@ -35,11 +35,13 @@ import {
 } from "@/features/workflows/workflow-catalog";
 import { useCreateProject } from "@/ipc/projects";
 import { useAppSettingsStore } from "@/state/app-settings";
+import type { OnboardingProjectDraft } from "./project-draft";
 
 interface NewProjectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (projectId: string) => void;
+  initialDraft?: OnboardingProjectDraft | null;
 }
 
 type CreateMode = "guided" | "freestyle";
@@ -57,7 +59,12 @@ const workflowIcons = {
 
 const DEFAULT_WORKFLOW = WORKFLOW_CATALOG[0] as WorkflowCatalogEntry;
 
-export function NewProjectDialog({ open, onOpenChange, onCreated }: NewProjectDialogProps) {
+export function NewProjectDialog({
+  open,
+  onOpenChange,
+  onCreated,
+  initialDraft,
+}: NewProjectDialogProps) {
   const [name, setName] = useState("");
   const [parent, setParent] = useState("");
   const [mode, setMode] = useState<CreateMode>("guided");
@@ -85,6 +92,19 @@ export function NewProjectDialog({ open, onOpenChange, onCreated }: NewProjectDi
     const configured = settings?.general.projects_folder ?? settings?.default_projects_folder;
     if (configured) setParent(configured);
   }, [open, parent, settings]);
+
+  useEffect(() => {
+    if (!open || !initialDraft) return;
+    const workflow =
+      WORKFLOW_CATALOG.find((entry) => entry.id === initialDraft.workflowType) ?? DEFAULT_WORKFLOW;
+    const nextInputs = createWorkflowInputs(workflow);
+    for (const [key, value] of Object.entries(initialDraft.workflowInputs)) {
+      if (typeof value === "string") nextInputs[key] = value;
+    }
+    setMode("guided");
+    setSelectedWorkflowId(workflow.id);
+    setInputs(nextInputs);
+  }, [initialDraft, open]);
 
   useEffect(() => {
     setInputs((current) => {

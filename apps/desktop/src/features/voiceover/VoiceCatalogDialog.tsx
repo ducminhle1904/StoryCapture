@@ -15,7 +15,7 @@ import { useNavigate } from "react-router-dom";
 import { AudioLines, RefreshCw, Sparkles, X } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 
-import { Button } from "@/components/ui/button";
+import { ScButton as Button } from "@storycapture/ui";
 import {
   dialogBackdropMotionClassName,
   dialogCenteredPopupMotionClassName,

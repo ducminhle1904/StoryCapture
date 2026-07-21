@@ -19,11 +19,11 @@ import { ChevronRight, FolderOpen, Sparkles, TriangleAlert, X } from "lucide-rea
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+  ScAccordion as Accordion,
+  ScAccordionContent as AccordionContent,
+  ScAccordionItem as AccordionItem,
+  ScAccordionTrigger as AccordionTrigger,
+} from "@storycapture/ui";
 import {
   dialogBackdropMotionClassName,
   dialogSideSheetPopupMotionClassName,

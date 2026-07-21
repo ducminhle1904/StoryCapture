@@ -428,6 +428,23 @@ export async function captureStoryFrame(
   return framePath;
 }
 
+async function captureStoryFrameBestEffort(
+  contents: WebContents,
+  frameDir: string,
+  ordinal: number,
+  existingPath?: string | null,
+): Promise<string | null> {
+  try {
+    return await captureStoryFrame(contents, frameDir, ordinal, existingPath);
+  } catch (error) {
+    void hostLog("warn", "simulator_frame_capture_failed", {
+      ordinal,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 export function simulatorFrameFromResult(
   ordinal: number,
   command: ParsedCommand | undefined,
@@ -1041,7 +1058,7 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
         },
       });
       if (options.frameDir) {
-        const screenshotPath = await captureStoryFrame(
+        const screenshotPath = await captureStoryFrameBestEffort(
           options.contents,
           options.frameDir,
           ordinal,

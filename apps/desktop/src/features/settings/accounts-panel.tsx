@@ -10,7 +10,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { ScButton as Button } from "@storycapture/ui";
 import {
   dialogBackdropMotionClassName,
   dialogCenteredPopupMotionClassName,

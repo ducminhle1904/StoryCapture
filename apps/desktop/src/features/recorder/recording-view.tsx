@@ -1,22 +1,22 @@
 import { listen } from "@tauri-apps/api/event";
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   Circle,
   Loader2,
   Monitor,
   Pause,
-  Play,
   Settings as SettingsIcon,
   Square as StopIcon,
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { TargetPicker } from "@/features/capture/TargetPicker";
+import type { ProjectWorkflowSnapshot } from "@/features/project-workflow/project-stage";
+import { ProjectStageHeader } from "@/features/project-workflow/project-stage-header";
 import {
   type AutomationChannelHandle,
   type ExecutorEvent,
@@ -80,6 +80,7 @@ interface RecordingViewProps {
   projectName: string;
   projectFolder: string;
   storySource: string;
+  existingRecordingCount?: number;
   autoOpenPostProduction?: boolean;
 }
 
@@ -123,6 +124,7 @@ export function RecordingView({
   projectName,
   projectFolder,
   storySource,
+  existingRecordingCount = 0,
   autoOpenPostProduction = false,
 }: RecordingViewProps) {
   const navigate = useNavigate();
@@ -944,86 +946,103 @@ export function RecordingView({
     status === "verifying";
   const permissionDenied = permission === "denied";
   const permissionPending = permission === "undetermined";
+  const navigationLocked =
+    status === "recording" ||
+    status === "paused" ||
+    status === "stopping" ||
+    status === "verifying";
+  const hasValidRecording = existingRecordingCount > 0 || status === "completed";
+  const workflowSnapshot: ProjectWorkflowSnapshot = {
+    storyValid: steps.length > 0,
+    previewState: "complete",
+    hasValidRecording,
+    editState: hasValidRecording ? "review" : "unavailable",
+    exportReady: hasValidRecording,
+    exportBlockedReason: hasValidRecording
+      ? undefined
+      : "Complete a valid recording before exporting.",
+  };
+  const primaryAction = (() => {
+    if (status === "idle") {
+      return {
+        label: "Start recording",
+        onClick: () => void handleRecord(),
+        disabled: !canRecordDisplay || isOutputBlocked,
+        title: !canRecordDisplay ? "Resolve permissions and select a capture target" : undefined,
+      };
+    }
+    if (status === "recording") {
+      return {
+        label: "Stop",
+        ariaLabel: "Stop recording",
+        onClick: () => void handleStop(),
+        tone: "danger" as const,
+      };
+    }
+    if (status === "paused") {
+      return { label: "Resume", onClick: () => void handleResume() };
+    }
+    if (status === "completed") {
+      return {
+        label: "Review recording",
+        onClick: () => projectId && navigate(`/post-production/${projectId}`),
+        tone: "success" as const,
+      };
+    }
+    if (status === "failed" || status === "quality_failed") {
+      return {
+        label: "Retry recording",
+        onClick: () => {
+          resetTake();
+          applyRecorderDefaults();
+        },
+      };
+    }
+    return undefined;
+  })();
 
   return (
     <main id="main-content" className="relative flex h-full flex-col bg-[var(--color-bg-primary)]">
-      {/* ─── Header ─── */}
-      <header className="sc-window-chrome flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1.5">
-        <div className="flex min-w-0 items-center gap-3">
-          {/* Back to editor (falls back to dashboard). Blocked while recording. */}
-          {status === "recording" ||
-          status === "paused" ||
-          status === "stopping" ||
-          status === "verifying" ? (
-            <span
-              aria-label="Back button disabled during recording"
-              className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-1 text-[var(--color-fg-muted)] opacity-50"
-              title="Stop recording to go back"
-            >
-              <ArrowLeft size={14} aria-hidden="true" />
-            </span>
-          ) : (
-            <Link
-              to={projectId ? `/editor/${projectId}` : "/"}
-              aria-label={projectId ? "Back to editor" : "Back to projects"}
-              className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-1 text-[var(--color-fg-secondary)] transition-colors hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
-            >
-              <ArrowLeft size={14} aria-hidden="true" />
-            </Link>
-          )}
+      <ProjectStageHeader
+        projectId={projectId ?? ""}
+        projectName={projectName}
+        workflowLabel={`${recordingDeliveryPolicy === "strict" ? "Strict" : "Standard"} recording`}
+        currentStage="record"
+        snapshot={workflowSnapshot}
+        navigationLocked={navigationLocked}
+        primaryAction={primaryAction}
+      />
 
-          <div className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--color-fg-muted)]">
-            {projectId ? (
-              <Link
-                to={`/editor/${projectId}`}
-                className="transition-colors hover:text-[var(--color-fg-primary)]"
-              >
-                Editor
-              </Link>
-            ) : (
-              <span>Record</span>
-            )}
-            <span>/</span>
-            <span className="truncate font-medium text-[var(--color-fg-primary)]">
-              {projectName}
-            </span>
-            <span>/</span>
-            <span>Record</span>
-          </div>
-          {(status === "recording" || status === "paused") && (
+      {status === "recording" ||
+      status === "paused" ||
+      status === "verifying" ||
+      audioUnavailable ? (
+        <div className="flex min-h-9 shrink-0 items-center gap-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4">
+          {status === "recording" || status === "paused" ? (
             <LiveRecordingBadge paused={status === "paused"} reduceMotion={!!reduceMotion} />
-          )}
-          {status === "verifying" && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-accent)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--color-accent)]">
-              <Loader2 size={11} className="animate-spin" aria-hidden="true" />
+          ) : null}
+          {status === "verifying" ? (
+            <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--color-accent)]">
+              <Loader2 size={12} className="animate-spin" aria-hidden="true" />
               Verifying {Math.round((verificationProgress ?? 0) * 100)}%
             </span>
-          )}
-          {/* Persistent badge while a mic failure is active. */}
-          {audioUnavailable && (
+          ) : null}
+          {audioUnavailable ? (
             <span
               role="status"
-              className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-warning)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--color-warning)]"
+              className="inline-flex items-center gap-1.5 text-[12px] text-[var(--color-warning)]"
             >
-              <AlertTriangle size={11} aria-hidden="true" />
+              <AlertTriangle size={12} aria-hidden="true" />
               Audio unavailable — recording video only
             </span>
-          )}
+          ) : null}
+          {sessionId ? (
+            <span className="ml-auto font-mono text-[11px] text-[var(--color-fg-muted)]">
+              session · {sessionId.slice(0, 8)}
+            </span>
+          ) : null}
         </div>
-        <div className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--color-fg-muted)]">
-          <span
-            className="rounded-full border border-[var(--color-border-subtle)] px-2 py-0.5 font-medium text-[var(--color-fg-secondary)]"
-            title={
-              recordingDeliveryPolicy === "strict"
-                ? "Publishes only after exact 1080p60 verification passes"
-                : "Completes with truthful degraded evidence when Strict is unavailable"
-            }
-          >
-            {recordingDeliveryPolicy === "strict" ? "Strict" : "Standard"}
-          </span>
-          {sessionId ? <span className="font-mono">session · {sessionId.slice(0, 8)}</span> : null}
-        </div>
-      </header>
+      ) : null}
 
       {/* ─── Permission banner (inline, not modal) ─── */}
       {permissionDenied || permissionPending ? (
@@ -1264,74 +1283,54 @@ export function RecordingView({
 
             <div className="flex items-center gap-2">
               {status === "idle" && (
-                <>
-                  <OutputSummaryBadge
-                    onActivate={() => {
-                      videoOutputSectionRef.current?.scrollIntoView({
-                        behavior: reduceMotion ? "auto" : "smooth",
-                        block: "center",
-                      });
-                    }}
-                  />
-                  <RecordButton
-                    disabled={!canRecordDisplay || isOutputBlocked}
-                    onClick={handleRecord}
-                  />
-                </>
+                <OutputSummaryBadge
+                  onActivate={() => {
+                    videoOutputSectionRef.current?.scrollIntoView({
+                      behavior: reduceMotion ? "auto" : "smooth",
+                      block: "center",
+                    });
+                  }}
+                />
               )}
               {status === "recording" && (
-                <>
-                  {/* Recorder-side element picker removed; picking is
-                      exclusively author-side via PreviewPickerButton in
-                      the Preview panel. */}
-                  <button
-                    onClick={handlePause}
-                    aria-label="Pause recording"
-                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] transition-[transform,background-color] duration-150 hover:bg-[var(--color-surface-300)] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
-                  >
-                    <Pause size={13} aria-hidden="true" />
-                    Pause
-                  </button>
-                  <button
-                    onClick={() => void handleStop()}
-                    aria-label="Stop recording"
-                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--color-danger)] px-3 py-1.5 text-xs font-medium text-white transition-[transform,filter] duration-150 hover:brightness-110 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
-                  >
-                    <StopIcon size={13} aria-hidden="true" />
-                    Stop
-                  </button>
-                </>
+                <button
+                  onClick={handlePause}
+                  aria-label="Pause recording"
+                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] transition-[transform,background-color] duration-150 hover:bg-[var(--color-surface-300)] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+                >
+                  <Pause size={13} aria-hidden="true" />
+                  Pause
+                </button>
               )}
               {status === "paused" && (
-                <>
-                  <button
-                    onClick={handleResume}
-                    aria-label="Resume recording"
-                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--color-warning)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] transition-[transform,filter] duration-150 hover:brightness-105 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
-                  >
-                    <Play size={13} aria-hidden="true" />
-                    Resume
-                  </button>
-                  <button
-                    onClick={() => void handleStop()}
-                    aria-label="Stop recording"
-                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--color-danger)] px-3 py-1.5 text-xs font-medium text-white transition-[transform,filter] duration-150 hover:brightness-110 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
-                  >
-                    <StopIcon size={13} aria-hidden="true" />
-                    Stop
-                  </button>
-                </>
+                <button
+                  onClick={() => void handleStop()}
+                  aria-label="Stop recording"
+                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-danger)]/50 bg-transparent px-3 py-1.5 text-xs font-medium text-[var(--color-danger)] transition-[transform,background-color] duration-150 hover:bg-[var(--color-danger)]/10 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+                >
+                  <StopIcon size={13} aria-hidden="true" />
+                  Stop
+                </button>
               )}
               {status === "completed" && (
-                <button
-                  onClick={() => {
-                    resetTake();
-                    applyRecorderDefaults();
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-1.5 text-xs text-[var(--color-fg-primary)] hover:bg-[var(--color-surface-300)]"
-                >
-                  New take
-                </button>
+                <>
+                  <button
+                    onClick={() => projectId && navigate(`/editor/${projectId}`)}
+                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-1.5 text-xs text-[var(--color-fg-secondary)] hover:bg-[var(--color-surface-200)]"
+                  >
+                    Back to Author
+                  </button>
+                  <button
+                    aria-label="New take"
+                    onClick={() => {
+                      resetTake();
+                      applyRecorderDefaults();
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-1.5 text-xs text-[var(--color-fg-primary)] hover:bg-[var(--color-surface-300)]"
+                  >
+                    Record another take
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -1339,93 +1338,119 @@ export function RecordingView({
 
         {/* RIGHT: settings rail */}
         <aside className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto overflow-x-hidden bg-[var(--color-surface-100)] px-4 py-4">
-          <SettingsGroup label="Source" icon={<Monitor size={13} />}>
-            <label
-              htmlFor="target-select"
-              className="mb-1.5 block text-xs text-[var(--color-fg-muted)]"
+          <section aria-labelledby="recorder-readiness-title">
+            <div
+              id="recorder-readiness-title"
+              className="text-[11px] font-semibold text-[var(--color-fg-primary)]"
             >
-              Target
-            </label>
-            <TargetPicker
-              availableTargets={availableTargets}
-              value={captureTarget}
-              onValueChange={(t) => {
-                void setCaptureTarget(t);
-              }}
-              onRefresh={() => loadCaptureTargets()}
-              disabled={targetControlsLocked}
-            />
-          </SettingsGroup>
-
-          <SettingsGroup label="Microphone" icon={<SettingsIcon size={13} />}>
-            <label
-              htmlFor="audio-device-select"
-              className="mb-1.5 block text-xs text-[var(--color-fg-muted)]"
-            >
-              Audio input
-            </label>
-            <AudioDevicePicker
-              value={audioDeviceId}
-              onValueChange={setAudioDeviceId}
-              disabled={
-                status === "recording" ||
-                status === "paused" ||
-                status === "stopping" ||
-                status === "verifying"
-              }
-            />
-            <p className="mt-1.5 text-[10px] text-[var(--color-fg-muted)]">
-              Default is off; choose "System default" to include voice-over. Resets every recording.
-            </p>
-          </SettingsGroup>
-
-          <SettingsGroup label="Quality" icon={<SettingsIcon size={13} />}>
-            <dl className="space-y-1 text-xs">
-              <SettingsRow k="Resolution" v="1920×1080" />
-              <SettingsRow k="Frame rate" v="60 fps" />
-              <SettingsRow k="Codec" v="H.264" />
-            </dl>
-          </SettingsGroup>
-
-          <SettingsGroup label="Options">
-            <div className="space-y-2 text-xs">
-              {/* Real OS cursor toggle (non-sticky, defaults OFF). */}
-              <CursorToggle
-                checked={includeCursor}
-                onChange={setIncludeCursor}
-                disabled={
-                  status === "recording" ||
-                  status === "paused" ||
-                  status === "stopping" ||
-                  status === "verifying"
-                }
-              />
-              {/* Chrome-hiding toggle (non-sticky, defaults OFF). */}
-              <ChromeHidingToggle
-                checked={chromeHiding}
-                onChange={setChromeHiding}
-                browserPreset={browserPreset}
-                disabled={
-                  status === "recording" ||
-                  status === "paused" ||
-                  status === "stopping" ||
-                  status === "verifying"
-                }
-              />
-              <Toggle label="3s countdown" checked={useCountdown} onChange={setUseCountdown} />
+              Readiness
             </div>
-          </SettingsGroup>
+            <div className="mt-2 grid gap-2 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] p-3 text-[12px]">
+              <SettingsRow
+                k="Permission"
+                v={permission === "granted" ? "Ready" : "Needs attention"}
+              />
+              <SettingsRow k="Target" v={captureTarget ? "Selected" : "Choose target"} />
+              <SettingsRow k="Audio" v={audioDeviceId ? "Enabled" : "Video only"} />
+              <SettingsRow k="Output" v={isOutputBlocked ? "Needs attention" : "Ready"} />
+            </div>
+          </section>
 
-          <VideoOutputSection
-            ref={videoOutputSectionRef}
-            disabled={
-              status === "recording" ||
-              status === "paused" ||
-              status === "stopping" ||
-              status === "verifying"
-            }
-            captureDims={selectedCaptureDims}
-          />
+          <details className="group rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
+            <summary className="cursor-pointer list-none px-3 py-2.5 text-[11px] font-semibold text-[var(--color-fg-secondary)] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]">
+              Advanced settings
+            </summary>
+            <div className="flex flex-col gap-4 border-t border-[var(--color-border-subtle)] px-3 py-3">
+              <SettingsGroup label="Source" icon={<Monitor size={13} />}>
+                <label
+                  htmlFor="target-select"
+                  className="mb-1.5 block text-xs text-[var(--color-fg-muted)]"
+                >
+                  Target
+                </label>
+                <TargetPicker
+                  availableTargets={availableTargets}
+                  value={captureTarget}
+                  onValueChange={(t) => {
+                    void setCaptureTarget(t);
+                  }}
+                  onRefresh={() => loadCaptureTargets()}
+                  disabled={targetControlsLocked}
+                />
+              </SettingsGroup>
+
+              <SettingsGroup label="Microphone" icon={<SettingsIcon size={13} />}>
+                <label
+                  htmlFor="audio-device-select"
+                  className="mb-1.5 block text-xs text-[var(--color-fg-muted)]"
+                >
+                  Audio input
+                </label>
+                <AudioDevicePicker
+                  value={audioDeviceId}
+                  onValueChange={setAudioDeviceId}
+                  disabled={
+                    status === "recording" ||
+                    status === "paused" ||
+                    status === "stopping" ||
+                    status === "verifying"
+                  }
+                />
+                <p className="mt-1.5 text-[10px] text-[var(--color-fg-muted)]">
+                  Default is off; choose "System default" to include voice-over. Resets every
+                  recording.
+                </p>
+              </SettingsGroup>
+
+              <SettingsGroup label="Quality" icon={<SettingsIcon size={13} />}>
+                <dl className="space-y-1 text-xs">
+                  <SettingsRow k="Resolution" v="1920×1080" />
+                  <SettingsRow k="Frame rate" v="60 fps" />
+                  <SettingsRow k="Codec" v="H.264" />
+                </dl>
+              </SettingsGroup>
+
+              <SettingsGroup label="Options">
+                <div className="space-y-2 text-xs">
+                  {/* Real OS cursor toggle (non-sticky, defaults OFF). */}
+                  <CursorToggle
+                    checked={includeCursor}
+                    onChange={setIncludeCursor}
+                    disabled={
+                      status === "recording" ||
+                      status === "paused" ||
+                      status === "stopping" ||
+                      status === "verifying"
+                    }
+                  />
+                  {/* Chrome-hiding toggle (non-sticky, defaults OFF). */}
+                  <ChromeHidingToggle
+                    checked={chromeHiding}
+                    onChange={setChromeHiding}
+                    browserPreset={browserPreset}
+                    disabled={
+                      status === "recording" ||
+                      status === "paused" ||
+                      status === "stopping" ||
+                      status === "verifying"
+                    }
+                  />
+                  <Toggle label="3s countdown" checked={useCountdown} onChange={setUseCountdown} />
+                </div>
+              </SettingsGroup>
+
+              <VideoOutputSection
+                ref={videoOutputSectionRef}
+                disabled={
+                  status === "recording" ||
+                  status === "paused" ||
+                  status === "stopping" ||
+                  status === "verifying"
+                }
+                captureDims={selectedCaptureDims}
+              />
+            </div>
+          </details>
 
           <div className="mt-auto rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-2.5">
             <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
@@ -1796,25 +1821,6 @@ function StepRail({ steps, currentStep, completedSteps }: StepRailProps) {
         })}
       </div>
     </div>
-  );
-}
-
-function RecordButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      aria-label="Start recording"
-      className="group inline-flex items-center gap-2 rounded-[var(--radius-pill)] bg-[var(--color-danger)] px-4 py-1.5 text-xs font-medium text-white shadow-[0_6px_20px_-8px_rgba(207,45,86,0.55)] transition-[transform,filter,box-shadow] duration-150 hover:brightness-110 hover:shadow-[0_10px_24px_-8px_rgba(207,45,86,0.65)] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
-    >
-      <span className="grid h-4 w-4 place-items-center">
-        <span className="h-2 w-2 rounded-full bg-white" />
-      </span>
-      Start recording
-      <kbd className="font-mono ml-1 rounded-[var(--radius-xs)] bg-white/15 px-1 py-0.5 text-[9px] tabular-nums">
-        ⌘R
-      </kbd>
-    </button>
   );
 }
 

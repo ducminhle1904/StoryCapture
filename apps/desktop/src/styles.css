@@ -4,13 +4,9 @@
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
 
-/* Canonical Claude Design tokens + primitive CSS. */
-@import "@storycapture/ui/claude-design/tokens.css";
-@import "@storycapture/ui/claude-design/app.css";
-
-/* TRANSITIONAL alias layer — maps legacy --color-* onto --sc-* for
-   existing routes/features not yet ported to sc-* directly. */
 @import "@storycapture/ui/tokens.css";
+@import "@storycapture/ui/primitives.css";
+@import "@storycapture/ui/desktop-shell.css";
 
 :root {
   color-scheme: dark;
@@ -128,6 +124,23 @@ select {
   background: var(--sc-bg);
 }
 
+.sc-editor-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1024px) {
+  .sc-editor-workspace[data-editor-mode="code"] {
+    grid-template-columns: var(--sc-editor-code-width) minmax(0, 1fr);
+  }
+
+  .sc-editor-workspace[data-editor-mode="ui"] {
+    grid-template-columns:
+      minmax(var(--sc-editor-form-min-width), 0.9fr)
+      minmax(var(--sc-editor-preview-min-width), 1.1fr);
+  }
+}
+
 /* Elevated card panels (legacy utility — retained for un-ported features). */
 .brand-panel {
   background: var(--sc-surface);
@@ -146,4 +159,28 @@ select {
 
 .brand-button:hover {
   color: var(--sc-accent-400);
+}
+
+.sc-dashboard-project-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 20px;
+  align-items: start;
+}
+
+.sc-dashboard-continue {
+  display: grid;
+  gap: 10px;
+  position: sticky;
+  top: 0;
+}
+
+@media (max-width: 1100px) {
+  .sc-dashboard-project-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sc-dashboard-continue {
+    position: static;
+  }
 }

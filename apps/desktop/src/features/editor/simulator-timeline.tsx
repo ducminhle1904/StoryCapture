@@ -19,6 +19,8 @@ interface SimulatorTimelineProps {
   streamId: string | null;
   appUrlValid: boolean;
   disabled?: boolean;
+  expanded?: boolean;
+  runRequestId?: number;
 }
 
 function stringifySelectorOrText(s: SelectorOrText): string {
@@ -77,6 +79,8 @@ export function SimulatorTimeline({
   streamId,
   appUrlValid,
   disabled = false,
+  expanded = false,
+  runRequestId,
 }: SimulatorTimelineProps) {
   const frames = useSimulatorStore((s) => s.frames);
   const runState = useSimulatorStore((s) => s.runState);
@@ -169,6 +173,15 @@ export function SimulatorTimeline({
     }
   };
 
+  const handleRunRef = useRef(handleRun);
+  handleRunRef.current = handleRun;
+  const lastRunRequestRef = useRef(runRequestId);
+  useEffect(() => {
+    if (runRequestId == null || runRequestId === lastRunRequestRef.current) return;
+    lastRunRequestRef.current = runRequestId;
+    void handleRunRef.current();
+  }, [runRequestId]);
+
   const handleCancel = async () => {
     if (!sessionId) return;
     try {
@@ -219,7 +232,7 @@ export function SimulatorTimeline({
     <section
       aria-labelledby="simulator-panel-title"
       className="flex flex-col overflow-hidden border-t border-[var(--sc-border-2)] bg-[var(--sc-surface)]"
-      style={{ minHeight: 128, maxHeight: "30vh" }}
+      style={{ minHeight: expanded ? 220 : 128, maxHeight: expanded ? "44vh" : "30vh" }}
     >
       <header className="flex items-center justify-between border-b border-[var(--sc-border-2)] px-3 py-1.5">
         <h3 id="simulator-panel-title" className="sr-only">

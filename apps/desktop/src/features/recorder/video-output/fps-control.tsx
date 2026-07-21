@@ -2,7 +2,7 @@
  * FPS knob — 24 / 30 / 60 options as a horizontal RadioGroup.
  */
 
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { ScRadioGroup as RadioGroup, ScRadioGroupItem as RadioGroupItem } from "@storycapture/ui";
 import { useOutputPrefsStore } from "@/state/output-prefs";
 import { LABEL_FPS } from "./copy";
 

@@ -1,7 +1,15 @@
 import { Dialog } from "@base-ui/react/dialog";
-import { ScBadge, ScButton, ScCard } from "@storycapture/ui";
+import {
+  ScBadge,
+  ScButton,
+  ScCard,
+  ScPopover,
+  ScPopoverContent,
+  ScPopoverTitle,
+  ScPopoverTrigger,
+} from "@storycapture/ui";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { Clock, MoreHorizontal, Play, Trash2 } from "lucide-react";
+import { Clock, MoreHorizontal, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -9,17 +17,30 @@ import {
   dialogCenteredPopupMotionClassName,
   dialogViewportClassName,
 } from "@/components/ui/dialog-motion";
-import type { Project } from "@/ipc/projects";
+import type { Project, WorkflowType } from "@/ipc/projects";
 import { relativeTime } from "@/lib/utils";
 import { projectAccent } from "./hash-accent";
 
 interface ProjectCardProps {
   project: Project;
   sessionCount?: number;
+  workflowType?: WorkflowType;
   onOpen: (id: string) => void;
   onRemove?: (project: Project) => Promise<void> | void;
   removePending?: boolean;
 }
+
+const WORKFLOW_LABELS: Record<WorkflowType, string> = {
+  product_demo: "Product demo",
+  tutorial: "Tutorial",
+  feature_launch: "Feature launch",
+  sales_marketing: "Sales & marketing",
+  support: "Support",
+  internal_training: "Internal training",
+  bug_reproduction: "Bug reproduction",
+  documentation: "Documentation",
+  freestyle: "Freestyle",
+};
 
 function ThumbMock({ hue, hash }: { hue: number; hash: string }) {
   return (
@@ -123,6 +144,7 @@ function ThumbMock({ hue, hash }: { hue: number; hash: string }) {
 export function ProjectCard({
   project,
   sessionCount,
+  workflowType,
   onOpen,
   onRemove,
   removePending = false,
@@ -130,11 +152,10 @@ export function ProjectCard({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const { hue, hash } = projectAccent(project.id);
   const subtitle =
-    sessionCount && sessionCount > 0
-      ? `${sessionCount} session${sessionCount === 1 ? "" : "s"}`
-      : "No sessions yet";
-  // Scene/duration metadata placeholder — no scene model yet.
-  const metaLine = "— scenes · —:—";
+    sessionCount === undefined
+      ? "Checking recordings…"
+      : `${sessionCount} recording${sessionCount === 1 ? "" : "s"}`;
+  const status = sessionCount === undefined ? "Checking" : sessionCount > 0 ? "Recorded" : "Draft";
   const hasRemoveAction = Boolean(onRemove);
 
   const confirmRemove = async () => {
@@ -198,13 +219,15 @@ export function ProjectCard({
             >
               {project.name}
             </div>
-            <div style={{ fontSize: 11.5, color: "var(--sc-text-4)", marginTop: 2 }}>
-              {metaLine}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--sc-text-4)", marginTop: 1 }}>{subtitle}</div>
+            {workflowType ? (
+              <div style={{ fontSize: 12, color: "var(--sc-text-3)", marginTop: 3 }}>
+                {WORKFLOW_LABELS[workflowType]}
+              </div>
+            ) : null}
+            <div style={{ fontSize: 12, color: "var(--sc-text-3)", marginTop: 2 }}>{subtitle}</div>
           </div>
           <ScBadge tone="muted" dot>
-            Draft
+            {status}
           </ScBadge>
         </div>
         <div
@@ -215,39 +238,42 @@ export function ProjectCard({
             padding: "8px 4px 0",
             borderTop: "1px solid var(--sc-border)",
             marginTop: 8,
-            fontSize: 11,
-            color: "var(--sc-text-4)",
+            fontSize: 12,
+            color: "var(--sc-text-3)",
           }}
         >
           <Clock size={11} aria-hidden="true" />
           {relativeTime(project.last_opened_at)}
           <span style={{ flex: 1 }} />
-          <ScButton
-            size="sm"
-            variant="ghost"
-            icon={<Play size={11} aria-hidden="true" />}
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpen(project.id);
-            }}
-            aria-label={`Play ${project.name}`}
-          >
-            Play
-          </ScButton>
           {hasRemoveAction ? (
-            <ScButton
-              size="icon"
-              variant="ghost"
-              icon={<Trash2 size={14} aria-hidden="true" />}
-              disabled={removePending}
-              onClick={(e) => {
-                e.stopPropagation();
-                setConfirmOpen(true);
-              }}
-              onKeyDown={(e) => e.stopPropagation()}
-              aria-label={`Remove ${project.name} from dashboard`}
-              title="Remove from dashboard"
-            />
+            <ScPopover>
+              <ScPopoverTrigger
+                render={
+                  <ScButton
+                    size="icon"
+                    variant="ghost"
+                    icon={<MoreHorizontal size={14} aria-hidden="true" />}
+                    disabled={removePending}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    aria-label={`More actions for ${project.name}`}
+                  />
+                }
+              />
+              <ScPopoverContent onClick={(e) => e.stopPropagation()}>
+                <ScPopoverTitle>Project actions</ScPopoverTitle>
+                <ScButton
+                  size="sm"
+                  variant="ghost"
+                  icon={<Trash2 size={14} aria-hidden="true" />}
+                  disabled={removePending}
+                  onClick={() => setConfirmOpen(true)}
+                  aria-label={`Remove ${project.name} from dashboard`}
+                >
+                  Remove from dashboard
+                </ScButton>
+              </ScPopoverContent>
+            </ScPopover>
           ) : (
             <ScButton
               size="sm"

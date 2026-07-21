@@ -5,7 +5,7 @@
 
 import type { FitModeDto } from "@storycapture/shared-types";
 
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { ScToggleGroup as ToggleGroup, ScToggleGroupItem as ToggleGroupItem } from "@storycapture/ui";
 import { useOutputPrefsStore } from "@/state/output-prefs";
 
 import { FIT_OPTION_LABELS, LABEL_FIT } from "./copy";

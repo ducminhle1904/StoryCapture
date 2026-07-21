@@ -11,9 +11,9 @@ function LocationProbe() {
   return <div data-testid="location">{loc.pathname}</div>;
 }
 
-function renderWithRouter() {
+function renderWithRouter(initialEntry = "/") {
   return render(
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <CommandPalette />
       <LocationProbe />
       <Routes>
@@ -53,5 +53,21 @@ describe("CommandPalette", () => {
     await user.type(input, "settings");
     await user.keyboard("{Enter}");
     expect(screen.getByTestId("location")).toHaveTextContent("/settings");
+  });
+
+  it("does not offer project actions without a project context", async () => {
+    const user = userEvent.setup();
+    renderWithRouter();
+    await user.keyboard("{Meta>}k{/Meta}");
+    expect(screen.queryByText("Open Recorder")).not.toBeInTheDocument();
+    expect(screen.queryByText("Open Edit")).not.toBeInTheDocument();
+  });
+
+  it("keeps project actions scoped to the active project", async () => {
+    const user = userEvent.setup();
+    renderWithRouter("/editor/project%201");
+    await user.keyboard("{Meta>}k{/Meta}");
+    await user.click(screen.getByText("Open Recorder"));
+    expect(screen.getByTestId("location")).toHaveTextContent("/recorder/project%201");
   });
 });

@@ -20,7 +20,10 @@ describe("ProjectCard", () => {
 
     render(<ProjectCard project={project} onOpen={onOpen} onRemove={onRemove} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove Demo Project from dashboard" }));
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Demo Project" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Remove Demo Project from dashboard" }),
+    );
 
     expect(onOpen).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: "Remove project?" })).toBeInTheDocument();

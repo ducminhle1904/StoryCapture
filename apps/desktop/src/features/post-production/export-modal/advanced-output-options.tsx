@@ -8,15 +8,15 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { NumberField } from "@/components/ui/number-field";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { ScRadioGroup as RadioGroup, ScRadioGroupItem as RadioGroupItem } from "@storycapture/ui";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
+  ScSelect as Select,
+  ScSelectContent as SelectContent,
+  ScSelectItem as SelectItem,
+  ScSelectTrigger as SelectTrigger,
+  ScSelectValue as SelectValue,
+} from "@storycapture/ui";
+import { ScSlider as Slider } from "@storycapture/ui";
 import { probeHwEncoders } from "@/ipc/encode";
 import {
   type ExportContainer,

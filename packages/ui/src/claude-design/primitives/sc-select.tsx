@@ -1,26 +1,12 @@
 import { Select } from "@base-ui/react/select";
+import { Check, ChevronDown } from "lucide-react";
 import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from "react";
 
 import { cn } from "../../lib/cn";
 
-function SelectChevron() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M4.25 6.25 8 10l3.75-3.75" />
-    </svg>
-  );
-}
-
 export const ScSelect = Select.Root;
 export const ScSelectValue = Select.Value;
+export const ScSelectGroup = Select.Group;
 
 export const ScSelectTrigger = forwardRef<
   ElementRef<typeof Select.Trigger>,
@@ -29,7 +15,7 @@ export const ScSelectTrigger = forwardRef<
   <Select.Trigger ref={ref} className={cn("sc-select", className)} {...props}>
     {children}
     <Select.Icon className="sc-select-icon">
-      <SelectChevron />
+      <ChevronDown aria-hidden="true" size={14} />
     </Select.Icon>
   </Select.Trigger>
 ));
@@ -56,10 +42,25 @@ export const ScSelectItem = forwardRef<
   <Select.Item ref={ref} className={cn("sc-select-item", className)} {...props}>
     <span className="sc-select-check" aria-hidden="true">
       <Select.ItemIndicator className="sc-select-indicator">
-        <span className="sc-select-indicator-mark" />
+        <Check aria-hidden="true" size={12} />
       </Select.ItemIndicator>
     </span>
     <Select.ItemText>{children}</Select.ItemText>
   </Select.Item>
 ));
 ScSelectItem.displayName = "ScSelectItem";
+
+export const ScSelectGroupLabel = forwardRef<
+  ElementRef<typeof Select.GroupLabel>,
+  ComponentPropsWithoutRef<typeof Select.GroupLabel>
+>(({ className, ...props }, ref) => (
+  <Select.GroupLabel ref={ref} className={cn("sc-select-group-label", className)} {...props} />
+));
+ScSelectGroupLabel.displayName = "ScSelectGroupLabel";
+
+export const ScSelectSeparator = forwardRef<HTMLDivElement, ComponentPropsWithoutRef<"div">>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} role="separator" className={cn("sc-select-separator", className)} {...props} />
+  ),
+);
+ScSelectSeparator.displayName = "ScSelectSeparator";

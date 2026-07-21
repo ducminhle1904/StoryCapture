@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
+import { ScButton as Button } from "@storycapture/ui";
 
 export interface RateLimitBannerProps {
   message: string;

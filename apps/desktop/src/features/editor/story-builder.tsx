@@ -458,7 +458,7 @@ export function StoryBuilder({
 }: StoryBuilderProps) {
   const [pickingKey, setPickingKey] = useState<string | null>(null);
   const [expandedPolishKey, setExpandedPolishKey] = useState<string | null>(null);
-  const [intentExpanded, setIntentExpanded] = useState(true);
+  const [intentExpanded, setIntentExpanded] = useState(false);
 
   useEffect(() => () => onValidityChange?.(true), [onValidityChange]);
 
@@ -642,7 +642,7 @@ export function StoryBuilder({
             aria-expanded={intentExpanded}
             onClick={() => setIntentExpanded((value) => !value)}
           >
-            <span className="truncate">Post-production intent</span>
+            <span className="truncate">Advanced · Motion, Cursor, Canvas &amp; Audio</span>
             <ChevronDown
               size={13}
               aria-hidden="true"

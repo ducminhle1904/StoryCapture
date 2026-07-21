@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { ScCard, ScEmptyState } from "@storycapture/ui";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
@@ -71,30 +72,30 @@ export default async function DashboardPage() {
 
       {/* Quick stats */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+        <ScCard>
           <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
             Total Videos
           </p>
           <p className="mt-1 text-2xl font-bold text-zinc-100">
             {videos.length}
           </p>
-        </div>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+        </ScCard>
+        <ScCard>
           <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
             Published
           </p>
           <p className="mt-1 text-2xl font-bold text-zinc-100">
             {videos.filter((v) => v.isPublic).length}
           </p>
-        </div>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+        </ScCard>
+        <ScCard>
           <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
             Ready
           </p>
           <p className="mt-1 text-2xl font-bold text-zinc-100">
             {videos.filter((v) => v.status === "READY").length}
           </p>
-        </div>
+        </ScCard>
       </div>
 
       {/* Video grid */}
@@ -104,31 +105,18 @@ export default async function DashboardPage() {
         </h2>
 
         {videos.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800 bg-zinc-900/50 py-16">
-            <svg
-              className="h-12 w-12 text-zinc-700"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-              />
-            </svg>
-            <p className="mt-4 text-sm text-zinc-500">No videos yet</p>
-            <p className="mt-1 text-xs text-zinc-600">
-              Upload your first demo video from the desktop app
-            </p>
-          </div>
+          <ScEmptyState
+            title="No videos yet"
+            body="Upload your first demo video from the desktop app"
+            align="center"
+            className="py-16"
+          />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {videos.map((video) => (
-              <div
+              <ScCard
                 key={video.id}
-                className="group rounded-xl border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700"
+                className="group transition-colors hover:border-[var(--sc-border-strong)]"
               >
                 {/* Video thumbnail placeholder */}
                 <div className="flex h-32 items-center justify-center rounded-lg bg-zinc-800">
@@ -202,7 +190,7 @@ export default async function DashboardPage() {
                     Edit
                   </Link>
                 </div>
-              </div>
+              </ScCard>
             ))}
           </div>
         )}

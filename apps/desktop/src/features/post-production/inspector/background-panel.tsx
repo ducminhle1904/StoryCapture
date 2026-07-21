@@ -4,7 +4,7 @@ import {
 } from "@storycapture/shared-types";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { Slider } from "@/components/ui/slider";
+import { ScSlider as Slider } from "@storycapture/ui";
 import gradientManifest from "../../../../../../assets/gradient-presets/manifest.json";
 import {
   DEFAULT_BACKGROUND,

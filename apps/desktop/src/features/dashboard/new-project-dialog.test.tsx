@@ -11,11 +11,19 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: (...args: unknown[]) => dialogOpenMock(...(args as [])),
 }));
 
-function renderDialog(onCreated = vi.fn()) {
+function renderDialog(
+  onCreated = vi.fn(),
+  initialDraft?: React.ComponentProps<typeof NewProjectDialog>["initialDraft"],
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <NewProjectDialog open onOpenChange={vi.fn()} onCreated={onCreated} />
+      <NewProjectDialog
+        open
+        initialDraft={initialDraft}
+        onOpenChange={vi.fn()}
+        onCreated={onCreated}
+      />
     </QueryClientProvider>,
   );
   return { onCreated };
@@ -43,6 +51,20 @@ describe("NewProjectDialog", () => {
     expect(screen.getByRole("button", { name: /Bug Reproduction/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Documentation Video/i })).toBeInTheDocument();
     expect(screen.getByText("Product Demo roadmap")).toBeInTheDocument();
+  });
+
+  it("prefills the onboarding workflow and target URL", async () => {
+    renderDialog(vi.fn(), {
+      workflowType: "support",
+      workflowInputs: { target_url: "https://support.story.test/ticket/42" },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Target URL")).toHaveValue(
+        "https://support.story.test/ticket/42",
+      ),
+    );
+    expect(screen.getByText("Support / Troubleshooting roadmap")).toBeInTheDocument();
   });
 
   it("creates a guided project with starter story and workflow metadata", async () => {

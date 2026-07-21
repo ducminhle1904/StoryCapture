@@ -10,15 +10,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Mic } from "lucide-react";
 
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectGroupLabel,
-  SelectItem,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  ScSelect as Select,
+  ScSelectContent as SelectContent,
+  ScSelectGroup as SelectGroup,
+  ScSelectGroupLabel as SelectGroupLabel,
+  ScSelectItem as SelectItem,
+  ScSelectSeparator as SelectSeparator,
+  ScSelectTrigger as SelectTrigger,
+  ScSelectValue as SelectValue,
+} from "@storycapture/ui";
 import {
   listAudioInputs,
   type AudioInputInfo,

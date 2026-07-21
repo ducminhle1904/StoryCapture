@@ -3,7 +3,7 @@
  * RadioGroup mirroring FpsControl.
  */
 
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { ScRadioGroup as RadioGroup, ScRadioGroupItem as RadioGroupItem } from "@storycapture/ui";
 import { type RecordingQualityPreset, useOutputPrefsStore } from "@/state/output-prefs";
 
 import { LABEL_QUALITY, QUALITY_OPTION_LABELS } from "./copy";

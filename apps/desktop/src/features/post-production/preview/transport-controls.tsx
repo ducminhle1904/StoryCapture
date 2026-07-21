@@ -8,7 +8,7 @@
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { memo } from "react";
 
-import { Button } from "@/components/ui/button";
+import { ScButton as Button } from "@storycapture/ui";
 import { useEditorStore } from "../state/store";
 
 export interface TransportControlsProps {
@@ -33,18 +33,16 @@ function TransportControlsBase({ playing, onTogglePlay }: TransportControlsProps
         disabled={!canJumpBack}
         onClick={() => setPlayhead(Math.max(0, playheadMs - 5000))}
         className="h-8 w-8 rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)] text-[var(--sc-text-2)] hover:bg-[var(--sc-surface-2)] active:scale-[0.98] disabled:cursor-default disabled:opacity-45"
-      >
-        <SkipBack className="h-4 w-4" />
-      </Button>
+        icon={<SkipBack className="h-4 w-4" />}
+      />
       <Button
         variant="default"
         size="icon"
         aria-label={playing ? "Pause" : "Play"}
         onClick={onTogglePlay}
         className="h-8 w-8 rounded-[var(--sc-r-lg)] bg-[var(--sc-text)] text-[var(--sc-bg)] hover:bg-[var(--sc-text-2)] active:scale-[0.98]"
-      >
-        {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-      </Button>
+        icon={playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+      />
       <Button
         variant="ghost"
         size="icon"
@@ -56,9 +54,8 @@ function TransportControlsBase({ playing, onTogglePlay }: TransportControlsProps
           )
         }
         className="h-8 w-8 rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)] text-[var(--sc-text-2)] hover:bg-[var(--sc-surface-2)] active:scale-[0.98] disabled:cursor-default disabled:opacity-45"
-      >
-        <SkipForward className="h-4 w-4" />
-      </Button>
+        icon={<SkipForward className="h-4 w-4" />}
+      />
       <span className="ml-1 min-w-[56px] rounded-full border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-2.5 py-1 text-center text-xs tabular-nums text-[var(--sc-text-3)]">
         {(playheadMs / 1000).toFixed(2)}s
       </span>

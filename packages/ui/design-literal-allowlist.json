@@ -1,0 +1,1194 @@
+{
+  "apps/desktop/src/components/brand.tsx": {
+    "-0.02em": 1,
+    "10px": 1,
+    "3px": 1,
+    "6px": 1
+  },
+  "apps/desktop/src/components/command-palette/command-palette.tsx": {
+    "0.06em": 1,
+    "10.5px": 1,
+    "10px": 2,
+    "12.5px": 1,
+    "1px": 3,
+    "480px": 1,
+    "720px": 1,
+    "prop:size={13}": 6,
+    "prop:size={15}": 1,
+    "rgba(0,0,0,0.4)": 1
+  },
+  "apps/desktop/src/components/empty-state/empty-state.tsx": {
+    "1px": 1,
+    "20px": 1,
+    "prop:size={22}": 1
+  },
+  "apps/desktop/src/components/error-boundary.tsx": {
+    "1px": 1
+  },
+  "apps/desktop/src/components/panic-modal.tsx": {
+    "prop:size={14}": 2,
+    "prop:size={16}": 1
+  },
+  "apps/desktop/src/components/preview-surface/preview-surface.tsx": {
+    "12px": 1,
+    "13px": 1,
+    "prop:size={20}": 1
+  },
+  "apps/desktop/src/components/recording-indicator.tsx": {
+    "#ef4444": 1,
+    "0.5px": 1,
+    "10px": 1,
+    "1px": 1,
+    "30px": 1,
+    "oklch(0.65 0.20 22 / 0.4)": 1,
+    "rgba(0,0,0,0.5)": 1,
+    "rgba(255,255,255,0.06)": 1
+  },
+  "apps/desktop/src/components/sidebar.tsx": {
+    "10.5px": 2,
+    "10px": 3,
+    "12px": 1,
+    "14px": 1,
+    "16px": 1,
+    "1px": 1,
+    "7px": 1,
+    "prop:size={12}": 1,
+    "prop:size={13}": 1,
+    "prop:size={14}": 1,
+    "prop:size={28}": 1
+  },
+  "apps/desktop/src/components/status-bar.tsx": {
+    "11px": 1,
+    "28px": 1
+  },
+  "apps/desktop/src/components/ui/dropdown-menu.tsx": {
+    "-1px": 4,
+    "-3px": 2,
+    "0.12em": 1,
+    "10px": 1,
+    "12px": 4,
+    "prop:size={12}": 1,
+    "prop:size={13}": 1,
+    "prop:size={7}": 1,
+    "rgba(255,255,255,0.018)": 1,
+    "rgba(255,255,255,0.055)": 1,
+    "rgba(255,255,255,0)": 1
+  },
+  "apps/desktop/src/features/capture/TargetPicker.tsx": {
+    "11px": 1,
+    "22rem": 1,
+    "prop:size={11}": 1
+  },
+  "apps/desktop/src/features/dashboard/new-project-dialog.tsx": {
+    "-24px": 1,
+    "10px": 9,
+    "1120px": 1,
+    "18px": 1,
+    "1fr": 3,
+    "1px": 1,
+    "340px": 1,
+    "460px": 1,
+    "560px": 1,
+    "prop:size={14}": 3,
+    "prop:size={15}": 2,
+    "prop:size={16}": 3,
+    "prop:size={18}": 2
+  },
+  "apps/desktop/src/features/dashboard/project-card.tsx": {
+    "#0001": 1,
+    "#28c840": 1,
+    "#febc2e": 1,
+    "#ff5f57": 1,
+    "0.5px": 1,
+    "10px": 1,
+    "1fr": 1,
+    "1px": 5,
+    "20px": 1,
+    "2px": 1,
+    "3px": 2,
+    "4px": 4,
+    "6px": 1,
+    "8px": 2,
+    "oklch(0.12 0.02 ${hue})": 1,
+    "oklch(0.18 0.04 ${hue})": 1,
+    "oklch(0.32 0.10 ${(hue + 40) % 360})": 1,
+    "oklch(0.45 0.12 ${hue})": 1,
+    "oklch(0.78 0.14 ${hue})": 1,
+    "oklch(0.85 0.004 80)": 2,
+    "oklch(0.88 0.004 80)": 2,
+    "oklch(0.93 0.004 80)": 1,
+    "oklch(0.94 0.004 80)": 1,
+    "oklch(0.97 0.004 80)": 1,
+    "prop:size={11}": 1,
+    "prop:size={14}": 3,
+    "rgba(0,0,0,0.4)": 2,
+    "rgba(255,255,255,0.6)": 1
+  },
+  "apps/desktop/src/features/dashboard/project-grid.tsx": {
+    "1fr": 1,
+    "240px": 1,
+    "prop:size={16}": 1
+  },
+  "apps/desktop/src/features/editor/codemirror-setup.ts": {
+    "1.5px": 1,
+    "10px": 1,
+    "11.5px": 1,
+    "11px": 2,
+    "12px": 2,
+    "13px": 1,
+    "1px": 6,
+    "20px": 1,
+    "2px": 2,
+    "320px": 1,
+    "36px": 1,
+    "4px": 2,
+    "6px": 5,
+    "8px": 2
+  },
+  "apps/desktop/src/features/editor/DryRunPanel.tsx": {
+    "#13151C": 1,
+    "#242733": 3,
+    "#30A46C": 1,
+    "#7C3AED": 2,
+    "#8A90A2": 3,
+    "#E5484D": 1,
+    "#E6E8EE": 1,
+    "120px": 1
+  },
+  "apps/desktop/src/features/editor/DryRunStepRow.tsx": {
+    "#13151C": 1,
+    "#30A46C": 3,
+    "#4493F8": 2,
+    "#7C3AED": 1,
+    "#8A90A2": 5,
+    "#E5484D": 1,
+    "#E6E8EE": 1,
+    "10px": 1,
+    "rgba(68,147,248,0.12)": 1
+  },
+  "apps/desktop/src/features/editor/dsl-docs.ts": {
+    "300px": 1,
+    "500px": 1
+  },
+  "apps/desktop/src/features/editor/editor-breadcrumb.tsx": {
+    "prop:size={10}": 2
+  },
+  "apps/desktop/src/features/editor/editor-command-palette.tsx": {
+    "0.06em": 1,
+    "10.5px": 1,
+    "10px": 2,
+    "12.5px": 3,
+    "1px": 3,
+    "440px": 1,
+    "640px": 1,
+    "prop:size={13}": 13,
+    "prop:size={15}": 1,
+    "rgba(0,0,0,0.4)": 1
+  },
+  "apps/desktop/src/features/editor/editor-live-preview-panel.tsx": {
+    "-1rem": 1,
+    "0.12em": 1,
+    "10px": 2,
+    "11px": 3,
+    "12px": 3,
+    "13px": 1,
+    "1px": 4,
+    "28px": 2,
+    "9px": 1,
+    "prop:size={12}": 4,
+    "prop:size={18}": 1,
+    "prop:size={28}": 1,
+    "rgba(255,255,255,0.08)": 1
+  },
+  "apps/desktop/src/features/editor/picker-action-dsl.test.ts": {
+    "300px": 1
+  },
+  "apps/desktop/src/features/editor/PickerActionMenu.tsx": {
+    "11px": 2,
+    "12px": 2,
+    "13px": 2,
+    "1fr": 1,
+    "260px": 1,
+    "prop:size={14}": 1
+  },
+  "apps/desktop/src/features/editor/polish-sidecar.ts": {
+    "#101218": 2,
+    "#ffffff": 2
+  },
+  "apps/desktop/src/features/editor/preview-panel.tsx": {
+    "0.12em": 1,
+    "0.14em": 1,
+    "10px": 4,
+    "11px": 1,
+    "2px": 2,
+    "640px": 1,
+    "9px": 1,
+    "prop:size={13}": 3,
+    "prop:size={36}": 1,
+    "rgba(7,10,14,0.08)": 1,
+    "rgba(7,10,14,0.24)": 1
+  },
+  "apps/desktop/src/features/editor/PreviewLocationBar.tsx": {
+    "11px": 1,
+    "prop:size={12}": 1,
+    "prop:size={14}": 3
+  },
+  "apps/desktop/src/features/editor/PreviewPickerButton.tsx": {
+    "10px": 1,
+    "12px": 1,
+    "13px": 1,
+    "4px": 1,
+    "prop:size={14}": 4
+  },
+  "apps/desktop/src/features/editor/problems-panel.tsx": {
+    "0.06em": 1,
+    "12px": 2,
+    "1px": 2,
+    "4px": 1,
+    "prop:size={10}": 1,
+    "prop:size={12}": 2
+  },
+  "apps/desktop/src/features/editor/scene-list-panel.tsx": {
+    "0.12em": 1,
+    "10.5px": 1,
+    "10px": 2,
+    "11px": 2,
+    "6px": 3,
+    "prop:size={10}": 1,
+    "prop:size={11}": 1,
+    "prop:size={12}": 1
+  },
+  "apps/desktop/src/features/editor/SelectorFallbackPopover.tsx": {
+    "#13151C": 1,
+    "#242733": 1,
+    "#30A46C": 2,
+    "#8A90A2": 3,
+    "#E6E8EE": 1,
+    "10px": 1
+  },
+  "apps/desktop/src/features/editor/simulator-decoration.ts": {
+    "11px": 1,
+    "12px": 1,
+    "1px": 1,
+    "2px": 2,
+    "420px": 1,
+    "4px": 2,
+    "6px": 1,
+    "8px": 1,
+    "rgba(0,0,0,0.18)": 1
+  },
+  "apps/desktop/src/features/editor/simulator-keymap.ts": {
+    "10px": 1,
+    "12px": 1,
+    "1px": 2,
+    "20px": 1,
+    "220px": 1,
+    "4px": 3,
+    "6px": 3,
+    "8px": 3,
+    "rgba(0,0,0,0.24)": 1
+  },
+  "apps/desktop/src/features/editor/simulator-timeline.tsx": {
+    "10px": 6,
+    "11px": 5,
+    "12px": 1,
+    "1px": 8,
+    "2px": 2,
+    "9px": 1,
+    "prop:size={11}": 4,
+    "prop:size={12}": 2,
+    "prop:size={14}": 2
+  },
+  "apps/desktop/src/features/editor/story-builder.tsx": {
+    "#101218": 2,
+    "#c33": 2,
+    "#ffffff": 2,
+    "0.12em": 4,
+    "0.9fr": 1,
+    "1.35fr": 1,
+    "10px": 9,
+    "11px": 2,
+    "120px": 3,
+    "12px": 1,
+    "140px": 3,
+    "150px": 1,
+    "180px": 3,
+    "1fr": 4,
+    "220px": 2,
+    "300px": 1,
+    "56px": 2,
+    "8rem": 1,
+    "prop:size={11}": 3,
+    "prop:size={12}": 7,
+    "prop:size={13}": 1,
+    "prop:size={14}": 1
+  },
+  "apps/desktop/src/features/editor/story-editor.tsx": {
+    "13px": 1,
+    "prop:size={14}": 1
+  },
+  "apps/desktop/src/features/editor/story-ui-model.test.ts": {
+    "#101218": 1
+  },
+  "apps/desktop/src/features/nl-mode/ChatBubble.tsx": {
+    "#13151C": 1,
+    "#242733": 1,
+    "#8A90A2": 1,
+    "#E6E8EE": 1
+  },
+  "apps/desktop/src/features/nl-mode/ChatPanel.test.tsx": {
+    "40px": 2
+  },
+  "apps/desktop/src/features/nl-mode/ChatPanel.tsx": {
+    "#242733": 1,
+    "#7C3AED": 2,
+    "#8A90A2": 10,
+    "#E5484D": 4,
+    "#E6E8EE": 8,
+    "0.22em": 2,
+    "11px": 2,
+    "40px": 1,
+    "420px": 1
+  },
+  "apps/desktop/src/features/nl-mode/DiffCard.tsx": {
+    "#0E3A22": 1,
+    "#13151C": 1,
+    "#242733": 3,
+    "#30A46C": 3,
+    "#5C1D1F": 1,
+    "#78DDA4": 1,
+    "#7C3AED": 1,
+    "#8A90A2": 3,
+    "#E5484D": 1,
+    "#E6E8EE": 1,
+    "#FF8A8F": 1,
+    "13px": 1
+  },
+  "apps/desktop/src/features/nl-mode/RateLimitBanner.tsx": {
+    "#E5A000": 2,
+    "#E6E8EE": 1
+  },
+  "apps/desktop/src/features/nl-mode/StreamingDot.tsx": {
+    "#7C3AED": 2
+  },
+  "apps/desktop/src/features/post-production/__tests__/build-timeline-from-story.test.ts": {
+    "#00000080": 1,
+    "#00ffaa": 2,
+    "#010101": 2,
+    "#020202": 1,
+    "#030303": 1,
+    "#040404": 2,
+    "#111317bf": 1,
+    "#112233": 1,
+    "#11223380": 1,
+    "#123456": 2,
+    "#aaaaaa": 2,
+    "#abcdefaa": 1,
+    "#bbbbbb": 1,
+    "#cccccc": 2,
+    "#dddddd": 1,
+    "#f8fafc": 2,
+    "#fedcba": 1,
+    "#ffcc00": 2,
+    "#ffffff": 2
+  },
+  "apps/desktop/src/features/post-production/__tests__/compute-graph.test.ts": {
+    "#00ffaa": 1,
+    "#01020366": 1,
+    "#11223380": 1,
+    "#223344cc": 1,
+    "#abcdef80": 1,
+    "#fedcba99": 1,
+    "#ffcc00": 1,
+    "#ffffff": 1
+  },
+  "apps/desktop/src/features/post-production/__tests__/editor-shell-actions.test.tsx": {
+    "#00000080": 1,
+    "#abcdef": 2,
+    "#ffffff": 1
+  },
+  "apps/desktop/src/features/post-production/editor-shell.tsx": {
+    "0.12em": 4,
+    "0.14em": 1,
+    "0.16em": 1,
+    "0.18em": 1,
+    "10px": 1,
+    "11px": 9,
+    "12px": 2,
+    "1fr": 1,
+    "1px": 1,
+    "5px": 1,
+    "6px": 1,
+    "8px": 1,
+    "prop:size={12}": 6,
+    "prop:size={14}": 3,
+    "prop:size={16}": 1
+  },
+  "apps/desktop/src/features/post-production/export-compositor/canvas-scene-renderer.test.ts": {
+    "#000": 2,
+    "10px": 1,
+    "rgba(255, 80, 120, 0.7058823529411765)": 1
+  },
+  "apps/desktop/src/features/post-production/export-compositor/canvas-scene-renderer.ts": {
+    "#000": 2,
+    "#0e1117": 1,
+    "#0e1417": 1,
+    "#0f1411": 1,
+    "#101010": 1,
+    "#10171d": 1,
+    "#111111": 1,
+    "#121418": 1,
+    "#121816": 1,
+    "#123141": 1,
+    "#141116": 1,
+    "#141414": 1,
+    "#161312": 1,
+    "#161a20": 1,
+    "#17130f": 1,
+    "#171717": 1,
+    "#173322": 1,
+    "#1a1720": 1,
+    "#201724": 1,
+    "#222730": 1,
+    "#2a1713": 1,
+    "#4a2118": 1,
+    "#6f6557": 1,
+    "#ebe5da": 1,
+    "#f1f3f2": 1,
+    "#f3f0e9": 1,
+    "#f6f1e8": 1,
+    "#f8f4eb": 1,
+    "#f8fbff": 1,
+    "#f9faf8": 1,
+    "#fbfaf7": 1,
+    "#fff": 1,
+    "#ffffff": 1,
+    "rgba(${color.r}, ${color.g}, ${color.b}, ${clamp01((color.a / 255) * alphaMultiplier)})": 1,
+    "rgba(0, 0, 0, 0.08)": 1,
+    "rgba(0, 0, 0, 0.34)": 1,
+    "rgba(0, 0, 0, 0.72)": 1,
+    "rgba(8, 10, 12, 0.18)": 1,
+    "rgba(box.box_style.bg_color)": 1,
+    "rgba(box.box_style.border_color)": 1,
+    "rgba(box.color)": 1,
+    "rgba(color: ExportRgba, alphaMultiplier = 1)": 1,
+    "rgba(highlight.spec.color, 0.75)": 1,
+    "rgba(highlight.spec.color)": 1,
+    "rgba(kind.color)": 1,
+    "rgba(ripple.color)": 1,
+    "rgba(shadow.color)": 1,
+    "rgba(tint)": 1
+  },
+  "apps/desktop/src/features/post-production/export-compositor/export-compositor-app.tsx": {
+    "#000": 1
+  },
+  "apps/desktop/src/features/post-production/export-modal/advanced-output-options.tsx": {
+    "0.18em": 1,
+    "11px": 1,
+    "13px": 1
+  },
+  "apps/desktop/src/features/post-production/export-modal/export-modal.tsx": {
+    "-0.045em": 1,
+    "-1.5rem": 1,
+    "0.18em": 3,
+    "0.24em": 1,
+    "0.2em": 5,
+    "11px": 9,
+    "460px": 1,
+    "rgba(255,106,124,0.2)": 1
+  },
+  "apps/desktop/src/features/post-production/export-modal/format-checkboxes.tsx": {
+    "0.2em": 1,
+    "11px": 1
+  },
+  "apps/desktop/src/features/post-production/export-modal/resolution-picker.tsx": {
+    "0.2em": 1,
+    "11px": 1
+  },
+  "apps/desktop/src/features/post-production/inspector/background-panel.test.tsx": {
+    "#ff0055": 1
+  },
+  "apps/desktop/src/features/post-production/inspector/background-panel.tsx": {
+    "-6px": 2,
+    "#161a20": 2,
+    "#2b3038": 2,
+    "#ff5b76": 6,
+    "0.08em": 1,
+    "0.12em": 4,
+    "0.14em": 1,
+    "0.18em": 1,
+    "10px": 7,
+    "11px": 1,
+    "12px": 2,
+    "6px": 2,
+    "92px": 1
+  },
+  "apps/desktop/src/features/post-production/inspector/effect-params.test.tsx": {
+    "#111317d9": 1,
+    "#f8fafc": 1,
+    "#ff0055": 2,
+    "#ff00ff": 1,
+    "#ffcc00": 2,
+    "#ffffff": 5,
+    "#ffffff1f": 1
+  },
+  "apps/desktop/src/features/post-production/inspector/effect-params.tsx": {
+    "#0284c7": 1,
+    "#059669": 1,
+    "#15803d": 1,
+    "#b45309": 1,
+    "#c2410c": 1,
+    "#ff5b76": 3,
+    "0.14em": 3,
+    "0.16em": 1,
+    "0.1em": 1,
+    "10px": 12,
+    "11px": 5,
+    "6px": 2,
+    "8px": 16,
+    "9px": 1
+  },
+  "apps/desktop/src/features/post-production/inspector/inspector-panel.tsx": {
+    "0.08em": 1,
+    "0.12em": 1,
+    "10px": 1,
+    "12px": 1,
+    "1fr": 1,
+    "9px": 1,
+    "prop:size={14}": 1
+  },
+  "apps/desktop/src/features/post-production/inspector/preset-picker.tsx": {
+    "#ff5b76": 2,
+    "10px": 1
+  },
+  "apps/desktop/src/features/post-production/inspector/text-appearance-controls.test.tsx": {
+    "#00000066": 1,
+    "#00000080": 1,
+    "#101215e6": 1,
+    "#ffffff2e": 1,
+    "1fr": 1
+  },
+  "apps/desktop/src/features/post-production/inspector/text-appearance-controls.tsx": {
+    "#000000": 2,
+    "#00000099": 1,
+    "#111317": 2,
+    "#ff5b76": 2,
+    "#ffffff": 2,
+    "10px": 3,
+    "1fr": 2,
+    "8px": 4
+  },
+  "apps/desktop/src/features/post-production/layer-tracks/clip-affordance.tsx": {
+    "160px": 1
+  },
+  "apps/desktop/src/features/post-production/preview/__tests__/preview-player.test.tsx": {
+    "-1px": 4,
+    "-2px": 1,
+    "#01020366": 1,
+    "#11223380": 1,
+    "#223344cc": 1,
+    "#fedcba99": 1,
+    "#ffcc00": 1,
+    "#ffffff": 4,
+    "1.5px": 1,
+    "12px": 3,
+    "16px": 3,
+    "18px": 1,
+    "1px": 2,
+    "2.5px": 2,
+    "24px": 2,
+    "2px": 1,
+    "3px": 1,
+    "40px": 2,
+    "7px": 1,
+    "8.64px": 1,
+    "8px": 1,
+    "9px": 1,
+    "rgba(17, 24, 39\")": 3,
+    "rgba(255, 255, 255\")": 1
+  },
+  "apps/desktop/src/features/post-production/preview/preview-player.tsx": {
+    "#0b0c0f": 1,
+    "#0e1117": 1,
+    "#0e1417": 1,
+    "#0f1411": 1,
+    "#101010": 1,
+    "#10171d": 1,
+    "#111317": 1,
+    "#121418": 1,
+    "#121816": 1,
+    "#141116": 1,
+    "#141414": 1,
+    "#161312": 1,
+    "#161a20": 1,
+    "#17130f": 1,
+    "#171717": 1,
+    "#1a1720": 1,
+    "#222730": 1,
+    "#2a1713": 1,
+    "#ebe5da": 1,
+    "#f1f3f2": 1,
+    "#f3f0e9": 1,
+    "#f6f1e8": 1,
+    "#f8fbff": 1,
+    "#f9faf8": 1,
+    "#fbfaf7": 1,
+    "#ffffff": 1,
+    "0.16em": 1,
+    "10px": 1,
+    "12px": 1,
+    "1480px": 1,
+    "18px": 1,
+    "2.4em": 1,
+    "420px": 1,
+    "72px": 1,
+    "9999px": 1,
+    "rgba(${clamp255(color.r)}, ${clamp255(color.g)}, ${clamp255(color.b)}, ${alpha})": 1,
+    "rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})": 1,
+    "rgba(${Number.parseInt(red, 16)}, ${Number.parseInt(green, 16)}, ${Number.parseInt( blue, 16, )}, ${Math.max(0, Math.min(1, alpha))})": 1,
+    "rgba(0,0,0,0.16)": 1,
+    "rgba(0,0,0,0.46)": 1,
+    "rgba(107, 123, 145, 0.24)": 1,
+    "rgba(136, 166, 207, 0.18)": 1,
+    "rgba(16,20,27,0.10)": 1,
+    "rgba(16,20,27,0.32)": 1,
+    "rgba(168, 135, 255, 0.22)": 1,
+    "rgba(185, 84, 72, 0.24)": 1,
+    "rgba(196, 166, 112, 0.18)": 1,
+    "rgba(206, 184, 126, 0.14)": 1,
+    "rgba(255, 138, 92, 0.18)": 1,
+    "rgba(255, 160, 183, 0.16)": 1,
+    "rgba(255, 166, 102, 0.36)": 1,
+    "rgba(255, 178, 122, 0.22)": 1,
+    "rgba(255,255,255,0.04)": 1,
+    "rgba(255,255,255,0.08)": 1,
+    "rgba(255,255,255,0.28)": 1,
+    "rgba(58, 86, 154, 0.22)": 1,
+    "rgba(75, 141, 188, 0.26)": 1,
+    "rgba(8, 10, 12, 0.10)": 1,
+    "rgba(8, 10, 12, 0.24)": 1,
+    "rgba(82, 183, 136, 0.22)": 1,
+    "rgba(97, 213, 199, 0.16)": 1
+  },
+  "apps/desktop/src/features/post-production/preview/transport-controls.tsx": {
+    "56px": 1
+  },
+  "apps/desktop/src/features/post-production/render-queue/job-row.tsx": {
+    "#ff5b76": 1,
+    "10px": 5
+  },
+  "apps/desktop/src/features/post-production/render-queue/progress-bar.tsx": {
+    "#ff5b76": 1
+  },
+  "apps/desktop/src/features/post-production/render-queue/queue-widget.tsx": {
+    "#ff5b76": 1,
+    "11px": 1
+  },
+  "apps/desktop/src/features/post-production/sound-browser/sound-drawer.tsx": {
+    "#ff5b76": 3
+  },
+  "apps/desktop/src/features/post-production/sound-browser/sound-row.tsx": {
+    "#4a8eff": 2,
+    "#ff5b76": 1,
+    "10px": 1
+  },
+  "apps/desktop/src/features/post-production/state/build-timeline-from-story.ts": {
+    "#ffffff": 4
+  },
+  "apps/desktop/src/features/post-production/state/cursor-click-effect.ts": {
+    "#111827": 3,
+    "#ff5b76": 1,
+    "#ffffff": 4
+  },
+  "apps/desktop/src/features/post-production/state/text-style.test.ts": {
+    "#00000080": 2,
+    "#101215e6": 2,
+    "#abcdef80": 2
+  },
+  "apps/desktop/src/features/post-production/state/text-style.ts": {
+    "#00000080": 1,
+    "#101215e6": 1,
+    "#111317bf": 1,
+    "#111317d9": 3,
+    "#f59e0bcc": 1,
+    "#f8fafc": 1,
+    "#ffffff": 4,
+    "#ffffff1f": 1,
+    "#ffffff2e": 1,
+    "#ffffff33": 1
+  },
+  "apps/desktop/src/features/post-production/timeline/clip.tsx": {
+    "-1px": 1,
+    "#0284c7": 1,
+    "#059669": 1,
+    "#15803d": 1,
+    "#22c55e": 2,
+    "#34d399": 2,
+    "#38bdf8": 2,
+    "#5f3b00": 1,
+    "#8a5a08": 1,
+    "#92400e": 2,
+    "#b45309": 1,
+    "#c2410c": 1,
+    "#d97706": 1,
+    "#f59e0b": 4,
+    "#f97316": 2,
+    "#fbbf24": 1,
+    "0.12em": 1,
+    "10px": 1,
+    "1px": 1,
+    "6px": 1,
+    "9px": 1
+  },
+  "apps/desktop/src/features/post-production/timeline/playhead.tsx": {
+    "#ff5b76": 2
+  },
+  "apps/desktop/src/features/post-production/timeline/time-ruler.tsx": {
+    "10px": 1
+  },
+  "apps/desktop/src/features/post-production/timeline/timeline.tsx": {
+    "11px": 1
+  },
+  "apps/desktop/src/features/post-production/timeline/video-transition-controls.tsx": {
+    "#ff5b76": 4,
+    "11px": 1,
+    "prop:size={12}": 1
+  },
+  "apps/desktop/src/features/post-production/undo/actions.test.ts": {
+    "#ff0055": 1,
+    "#ffcc00": 2
+  },
+  "apps/desktop/src/features/post-production/voiceover-compact/voiceover-compact.tsx": {
+    "0.12em": 2,
+    "10px": 5,
+    "11px": 4,
+    "140px": 1,
+    "1fr": 1,
+    "9px": 1,
+    "prop:size={10}": 1,
+    "prop:size={11}": 1
+  },
+  "apps/desktop/src/features/project-workflow/project-stage-header.tsx": {
+    "10.5px": 1,
+    "11px": 1,
+    "15px": 2,
+    "180px": 2,
+    "1fr": 2,
+    "58px": 1,
+    "8px": 1,
+    "prop:size={13}": 1,
+    "prop:size={9}": 1
+  },
+  "apps/desktop/src/features/recorder/AudioDevicePicker.tsx": {
+    "#901": 1,
+    "prop:size={13}": 1
+  },
+  "apps/desktop/src/features/recorder/hud.tsx": {
+    "0.12em": 1,
+    "11px": 1,
+    "12px": 2,
+    "13px": 1,
+    "160px": 1,
+    "1px": 1,
+    "2px": 1,
+    "340px": 1,
+    "4px": 1,
+    "520px": 1,
+    "prop:size={16}": 1
+  },
+  "apps/desktop/src/features/recorder/live-preview.test.tsx": {
+    "prop:height={800}": 2,
+    "prop:width={1280}": 2
+  },
+  "apps/desktop/src/features/recorder/recording-view-lifecycle.test.tsx": {
+    "#000000": 1
+  },
+  "apps/desktop/src/features/recorder/recording-view.tsx": {
+    "-0.04em": 1,
+    "0.12em": 4,
+    "10px": 6,
+    "11px": 21,
+    "12px": 3,
+    "18px": 1,
+    "1fr": 2,
+    "1px": 2,
+    "2.5rem": 1,
+    "2px": 1,
+    "320px": 1,
+    "3px": 2,
+    "4.5rem": 1,
+    "prop:size={12}": 2,
+    "prop:size={13}": 10,
+    "prop:size={22}": 1,
+    "prop:size={26}": 2,
+    "prop:size={30}": 1,
+    "prop:size={7}": 1,
+    "prop:size={9}": 2,
+    "rgba(38,37,30,0.05)": 1
+  },
+  "apps/desktop/src/features/recorder/step-progress.tsx": {
+    "0.18em": 2,
+    "0.22em": 1,
+    "11px": 3,
+    "1fr": 1,
+    "260px": 1,
+    "3px": 1,
+    "4px": 1
+  },
+  "apps/desktop/src/features/recorder/TargetThumbnail.tsx": {
+    "10px": 1,
+    "prop:size={18}": 1
+  },
+  "apps/desktop/src/features/recorder/tcc-prompt.tsx": {
+    "0.22em": 1,
+    "11px": 1,
+    "prop:size={14}": 2,
+    "prop:size={20}": 1
+  },
+  "apps/desktop/src/features/recorder/video-output/bitrate-preview.tsx": {
+    "11px": 1,
+    "40px": 1
+  },
+  "apps/desktop/src/features/recorder/video-output/output-summary-badge.tsx": {
+    "11px": 1,
+    "220px": 1,
+    "prop:size={12}": 1
+  },
+  "apps/desktop/src/features/recorder/video-output/pad-color-control.tsx": {
+    "#000000": 1,
+    "#ffffff": 1
+  },
+  "apps/desktop/src/features/recorder/video-output/resolution-control.tsx": {
+    "10px": 1,
+    "11px": 3
+  },
+  "apps/desktop/src/features/recorder/video-output/video-output-section.test.tsx": {
+    "#000000": 2,
+    "#ff6b2d": 1
+  },
+  "apps/desktop/src/features/recorder/video-output/video-output-section.tsx": {
+    "0.1em": 1,
+    "1fr": 1
+  },
+  "apps/desktop/src/features/recorder/video-output/warnings.tsx": {
+    "11px": 1,
+    "prop:size={13}": 1
+  },
+  "apps/desktop/src/features/settings/accounts-panel.tsx": {
+    "0.18em": 3,
+    "11px": 3
+  },
+  "apps/desktop/src/features/settings/AccountsPage.tsx": {
+    "0.08em": 2,
+    "11px": 2,
+    "13px": 4,
+    "1fr": 1,
+    "prop:size={11}": 1
+  },
+  "apps/desktop/src/features/settings/ApiKeyRow.tsx": {
+    "10px": 3
+  },
+  "apps/desktop/src/features/settings/auto-updater.tsx": {
+    "prop:size={13}": 4
+  },
+  "apps/desktop/src/features/settings/BrowserLanguageRow.tsx": {
+    "11px": 1,
+    "13px": 1,
+    "480px": 1
+  },
+  "apps/desktop/src/features/settings/BrowserRow.tsx": {
+    "10px": 1,
+    "11px": 2,
+    "12px": 1,
+    "13px": 1,
+    "prop:size={10}": 1,
+    "prop:size={13}": 2
+  },
+  "apps/desktop/src/features/settings/categories/about-category.tsx": {
+    "0.08em": 1,
+    "1px": 1,
+    "prop:size={48}": 1
+  },
+  "apps/desktop/src/features/settings/categories/api-keys-category.tsx": {
+    "1px": 1,
+    "oklch(0.78 0.14 var(--sc-accent-h) / 0.08)": 1,
+    "oklch(0.78 0.14 var(--sc-accent-h) / 0.2)": 1,
+    "prop:size={14}": 1
+  },
+  "apps/desktop/src/features/settings/categories/general-category.tsx": {
+    "0.08em": 1,
+    "prop:size={12}": 1
+  },
+  "apps/desktop/src/features/settings/categories/keyboard-category.tsx": {
+    "10px": 1,
+    "16px": 1,
+    "1px": 2
+  },
+  "apps/desktop/src/features/settings/categories/logs-category.tsx": {
+    "#c33": 2,
+    "1px": 1,
+    "prop:size={12}": 5
+  },
+  "apps/desktop/src/features/settings/categories/privacy-category.tsx": {
+    "prop:size={12}": 1
+  },
+  "apps/desktop/src/features/settings/settings-row.tsx": {
+    "14px": 1,
+    "16px": 1,
+    "1fr": 1,
+    "1px": 2
+  },
+  "apps/desktop/src/features/status-bar/TokenBreakdownPopover.tsx": {
+    "300px": 1,
+    "400px": 1
+  },
+  "apps/desktop/src/features/status-bar/TokenCounter.tsx": {
+    "12px": 1
+  },
+  "apps/desktop/src/features/voiceover/TtsClipInspector.tsx": {
+    "10px": 1,
+    "12px": 1
+  },
+  "apps/desktop/src/features/voiceover/TtsScriptEditor.tsx": {
+    "0.12em": 1,
+    "11px": 2,
+    "14px": 1,
+    "172px": 1
+  },
+  "apps/desktop/src/features/voiceover/VoiceCatalogDialog.tsx": {
+    "-0.04em": 1,
+    "0.18em": 2,
+    "0.22em": 1,
+    "11px": 3,
+    "1fr": 1,
+    "220px": 1,
+    "280px": 3,
+    "760px": 2,
+    "920px": 2,
+    "rgba(245,78,0,0.05)": 1,
+    "rgba(245,78,0,0.10)": 1
+  },
+  "apps/desktop/src/features/voiceover/VoicePresetCard.tsx": {
+    "10px": 3
+  },
+  "apps/desktop/src/lib/lsp/storyLanguage.ts": {
+    "400px": 1,
+    "4px": 1,
+    "8px": 1
+  },
+  "apps/desktop/src/lib/wcag.ts": {
+    "#26251e": 1,
+    "#cf2d56": 1,
+    "#f2f1ed": 1,
+    "#f54e00": 1
+  },
+  "apps/desktop/src/routes/dashboard.tsx": {
+    "10px": 2,
+    "12px": 2,
+    "15px": 1,
+    "18px": 1,
+    "1px": 2,
+    "50px": 1,
+    "oklch(0.65 0.20 22 / 0.10)": 1,
+    "oklch(0.65 0.20 22 / 0.28)": 1,
+    "oklch(0.80 0.18 22)": 1,
+    "prop:size={13}": 6,
+    "prop:size={16}": 1,
+    "rgba(0,0,0,0.34)": 1
+  },
+  "apps/desktop/src/routes/editor.tsx": {
+    "1.5px": 1,
+    "10px": 1,
+    "12px": 1,
+    "1fr": 2,
+    "1px": 2,
+    "6px": 1,
+    "prop:size={11}": 1,
+    "prop:size={12}": 2,
+    "prop:size={14}": 1,
+    "prop:size={16}": 1
+  },
+  "apps/desktop/src/routes/onboarding.tsx": {
+    "-64px": 1,
+    "0.9fr": 1,
+    "1.1fr": 1,
+    "10.5px": 2,
+    "10px": 1,
+    "11px": 1,
+    "128px": 1,
+    "12px": 6,
+    "13px": 6,
+    "160px": 1,
+    "16px": 1,
+    "180px": 1,
+    "18px": 1,
+    "20px": 1,
+    "220px": 1,
+    "34px": 1,
+    "420px": 1,
+    "42px": 1,
+    "480px": 1,
+    "500px": 1,
+    "520px": 1,
+    "540px": 1,
+    "560px": 2,
+    "58px": 1,
+    "620px": 1,
+    "680px": 1,
+    "68px": 1,
+    "740px": 1,
+    "76px": 1,
+    "oklch(0.78_0.14_var(--sc-accent-h)/0.14)": 1,
+    "prop:size={12}": 1,
+    "prop:size={13}": 4,
+    "prop:size={14}": 4,
+    "prop:size={17}": 1
+  },
+  "apps/desktop/src/routes/post-production-landing.tsx": {
+    "18px": 1,
+    "1px": 2,
+    "50px": 1,
+    "oklch(0.65 0.20 22 / 0.10)": 1,
+    "oklch(0.65 0.20 22 / 0.28)": 1,
+    "oklch(0.80 0.18 22)": 1,
+    "prop:size={13}": 1,
+    "prop:size={16}": 1,
+    "rgba(0,0,0,0.34)": 1
+  },
+  "apps/desktop/src/routes/post-production.tsx": {
+    "12px": 1,
+    "13px": 2
+  },
+  "apps/desktop/src/routes/recorder.tsx": {
+    "prop:size={14}": 1,
+    "prop:size={16}": 1
+  },
+  "apps/desktop/src/routes/settings.tsx": {
+    "10px": 1,
+    "12px": 1,
+    "13px": 1,
+    "1px": 1,
+    "24px": 1,
+    "32px": 1,
+    "prop:size={12}": 9
+  },
+  "apps/desktop/src/styles.css": {
+    "-0.11px": 1,
+    "-0.325px": 1,
+    "-0.72px": 1,
+    "-2.16px": 1,
+    "-9999px": 1,
+    "0.375rem": 1,
+    "0.5rem": 1,
+    "0.9fr": 1,
+    "1.08rem": 1,
+    "1.1fr": 1,
+    "1.2rem": 1,
+    "1.375rem": 1,
+    "1.625rem": 1,
+    "1024px": 1,
+    "10px": 2,
+    "1100px": 1,
+    "14px": 1,
+    "1fr": 4,
+    "1px": 1,
+    "1rem": 1,
+    "2.25rem": 1,
+    "20px": 1,
+    "260px": 1,
+    "2px": 2,
+    "320px": 1,
+    "4.5rem": 1
+  },
+  "apps/web/src/app/(auth)/sign-in/page.tsx": {
+    "#34A853": 1,
+    "#4285F4": 1,
+    "#EA4335": 1,
+    "#FBBC05": 1,
+    "prop:height={42}": 1,
+    "prop:width={42}": 1
+  },
+  "apps/web/src/app/(dashboard)/layout.tsx": {
+    "-0.02em": 1,
+    "prop:height={26}": 1,
+    "prop:width={26}": 1
+  },
+  "apps/web/src/app/(dashboard)/page.tsx": {
+    "10px": 2
+  },
+  "apps/web/src/app/(dashboard)/workspace/[workspaceId]/page.tsx": {
+    "10px": 1
+  },
+  "apps/web/src/app/page.tsx": {
+    "-0.01em": 1,
+    "-0.02em": 1,
+    "-0.035em": 1,
+    "-0.045em": 1,
+    "-0.04em": 1,
+    "-0.055em": 1,
+    "#28c840": 1,
+    "#febc2e": 1,
+    "#ff5f57": 1,
+    "0.06em": 1,
+    "0.08em": 4,
+    "0.95fr": 1,
+    "1.18fr": 1,
+    "10.5px": 4,
+    "10px": 4,
+    "1180px": 8,
+    "11px": 9,
+    "12.5px": 2,
+    "12px": 7,
+    "13px": 14,
+    "14px": 2,
+    "15px": 3,
+    "18px": 1,
+    "1fr": 5,
+    "28px": 1,
+    "32px": 1,
+    "35px": 1,
+    "3px": 1,
+    "42px": 1,
+    "44px": 1,
+    "500px": 1,
+    "520px": 2,
+    "620px": 1,
+    "660px": 1,
+    "6px": 1,
+    "70px": 1,
+    "760px": 1,
+    "80px": 1,
+    "oklch(0.18_0.06_40)": 1,
+    "oklch(0.22_0.05_60)": 1,
+    "oklch(0.78_0.14_var(--sc-accent-h)/0.12)": 1
+  },
+  "apps/web/src/components/workspace-switcher.tsx": {
+    "10px": 2,
+    "180px": 1
+  },
+  "apps/web/src/lib/email.ts": {
+    "#09090b": 2,
+    "#18181b": 1,
+    "#27272a": 1,
+    "#71717a": 1,
+    "#a1a1aa": 1,
+    "#e4e4e7": 2,
+    "#fafafa": 2,
+    "10px": 1,
+    "12px": 2,
+    "14px": 2,
+    "1px": 1,
+    "20px": 1,
+    "24px": 3,
+    "32px": 1,
+    "40px": 2,
+    "560px": 1,
+    "8px": 2
+  },
+  "apps/web/src/styles/globals.css": {
+    "-8px": 1,
+    "16px": 1,
+    "185px": 1,
+    "20px": 1
+  }
+}

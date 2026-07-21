@@ -8,7 +8,7 @@ import type { PadColorDto } from "@storycapture/shared-types";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import { ColorField } from "@/components/ui/color-field";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { ScToggleGroup as ToggleGroup, ScToggleGroupItem as ToggleGroupItem } from "@storycapture/ui";
 import { useOutputPrefsStore } from "@/state/output-prefs";
 
 import { LABEL_PAD, PAD_OPTION_LABELS } from "./copy";

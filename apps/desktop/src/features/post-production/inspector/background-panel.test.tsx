@@ -7,8 +7,9 @@ import { COALESCE_IDLE_MS, Coalescer } from "../undo/coalesce";
 import { HISTORY_CAP, HistoryBuffer } from "../undo/history-buffer";
 import { BackgroundPanel } from "./background-panel";
 
-vi.mock("@/components/ui/slider", () => ({
-  Slider: ({
+vi.mock("@storycapture/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@storycapture/ui")>()),
+  ScSlider: ({
     id,
     min,
     max,

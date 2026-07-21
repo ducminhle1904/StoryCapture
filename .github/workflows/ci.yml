@@ -47,6 +47,18 @@ jobs:
         shell: bash
         run: pnpm --dir packages/ui test
 
+      - name: UI design-system boundaries
+        shell: bash
+        run: pnpm --dir packages/ui test:boundaries
+
+      - name: Install UI visual-test browser
+        shell: bash
+        run: pnpm --dir packages/ui exec playwright install chromium
+
+      - name: UI visual baselines
+        shell: bash
+        run: pnpm --dir packages/ui test:visual
+
       - name: Web tests
         shell: bash
         run: pnpm --dir apps/web test

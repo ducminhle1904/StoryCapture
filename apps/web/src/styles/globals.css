@@ -1,6 +1,21 @@
 @import "tailwindcss";
-@import "@storycapture/ui/claude-design/tokens.css";
 @import "@storycapture/ui/tokens.css";
+@import "@storycapture/ui/primitives.css";
+
+:root {
+  /* Transitional mapping for existing Tailwind zinc utilities. */
+  --color-zinc-950: var(--sc-bg);
+  --color-zinc-900: var(--sc-surface-2);
+  --color-zinc-800: var(--sc-surface-3);
+  --color-zinc-700: var(--sc-border-strong);
+  --color-zinc-600: var(--sc-text-4);
+  --color-zinc-500: var(--sc-text-3);
+  --color-zinc-400: var(--sc-text-2);
+  --color-zinc-300: var(--sc-text-2);
+  --color-zinc-200: var(--sc-text);
+  --color-zinc-100: var(--sc-text);
+  --color-zinc-50: var(--sc-text);
+}
 
 body {
   background: var(--sc-bg);

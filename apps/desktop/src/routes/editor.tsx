@@ -1,15 +1,6 @@
-import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
+import { ScButton, ScSegmented } from "@storycapture/ui";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import {
-  AlertTriangle,
-  ArrowLeft,
-  ChevronRight,
-  File,
-  FolderOpen,
-  Scissors,
-  Sparkles,
-  Video,
-} from "lucide-react";
+import { AlertTriangle, ArrowLeft, File, Maximize2, PanelLeftClose } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -18,6 +9,12 @@ import { PageContentTransition } from "@/components/page-content-transition";
 import { deriveVariant, useAuthorDriverStore } from "@/features/editor/authorDriverStore";
 import { EditorBreadcrumb } from "@/features/editor/editor-breadcrumb";
 import { EditorCommandPalette } from "@/features/editor/editor-command-palette";
+import {
+  DEFAULT_EDITOR_LAYOUT,
+  editorWorkspaceModeForLayout,
+  readEditorLayoutPreferences,
+  writeEditorLayoutPreferences,
+} from "@/features/editor/editor-layout-preferences";
 import { EditorLivePreviewPanel } from "@/features/editor/editor-live-preview-panel";
 import {
   DEFAULT_POLISH_DOC,
@@ -26,12 +23,17 @@ import {
   type StoryPolishDoc,
   savePolishDoc,
 } from "@/features/editor/polish-sidecar";
-import { ProblemsPanel } from "@/features/editor/problems-panel";
+import { ProblemsPanel, useProblemsPanelStore } from "@/features/editor/problems-panel";
 import { SimulatorTimeline } from "@/features/editor/simulator-timeline";
 import { StoryBuilder } from "@/features/editor/story-builder";
 import { type EditorJumpTarget, StoryEditor } from "@/features/editor/story-editor";
 import { ensureAllStepIds, formatEditableStory } from "@/features/editor/story-ui-model";
 import { useEditorLivePreview } from "@/features/editor/use-editor-live-preview";
+import type {
+  ProjectStage,
+  ProjectWorkflowSnapshot,
+} from "@/features/project-workflow/project-stage";
+import { ProjectStageHeader } from "@/features/project-workflow/project-stage-header";
 import { parseStory, type Story } from "@/ipc/parse";
 import { fetchProjectFolder, type ProjectFolderInfo, useProjectRecordings } from "@/ipc/projects";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
@@ -62,8 +64,14 @@ export default function EditorRoute() {
   const [polish, setPolish] = useState<StoryPolishDoc>(DEFAULT_POLISH_DOC);
   const [polishReady, setPolishReady] = useState(false);
   const [polishDirty, setPolishDirty] = useState(false);
-  const [recordPolishStarting, setRecordPolishStarting] = useState(false);
+  const [recordStarting, setRecordStarting] = useState(false);
   const [storyBuilderValid, setStoryBuilderValid] = useState(true);
+  const [layout, setLayout] = useState(readEditorLayoutPreferences);
+  const [workspaceMode, setWorkspaceMode] = useState<"author" | "preview">(() =>
+    editorWorkspaceModeForLayout(layout),
+  );
+  const [previewRunRequest, setPreviewRunRequest] = useState(0);
+  const setProblemsOpen = useProblemsPanelStore((s) => s.setOpen);
   const latestPolishRef = useRef(polish);
   // Only render once store state matches the URL project to avoid a stale scene flash.
   const [loadedProjectId, setLoadedProjectId] = useState<string | null>(null);
@@ -81,6 +89,10 @@ export default function EditorRoute() {
   const errorCount = diagnostics.filter((d) => d.severity === "error").length;
   const warningCount = diagnostics.filter((d) => d.severity === "warning").length;
   const recordingBlocked = errorCount > 0 || (editorMode === "ui" && !storyBuilderValid);
+
+  useEffect(() => {
+    writeEditorLayoutPreferences(layout);
+  }, [layout]);
 
   const previewViewport = useEditorStore((s) => s.previewViewport);
   const setPreviewViewport = useEditorStore((s) => s.setViewport);
@@ -289,9 +301,9 @@ export default function EditorRoute() {
     uiAutosave.flush();
   }, [uiAutosave]);
 
-  const handleRecordAndPolish = useCallback(async () => {
+  const handleRecord = useCallback(async () => {
     if (!projectId || recordingBlocked) return;
-    setRecordPolishStarting(true);
+    setRecordStarting(true);
     try {
       uiAutosave.flush();
       const parsed = await parseStory(source);
@@ -302,9 +314,9 @@ export default function EditorRoute() {
           await commitUiSourceChange(formatEditableStory(stamped.story));
         }
       }
-      navigate(`/recorder/${projectId}?polish=1`);
+      navigate(`/recorder/${projectId}`);
     } finally {
-      setRecordPolishStarting(false);
+      setRecordStarting(false);
     }
   }, [
     commitUiSourceChange,
@@ -315,6 +327,59 @@ export default function EditorRoute() {
     source,
     uiAutosave,
   ]);
+
+  const latestRecordingIsValid = Boolean(latest && latest.validation?.status !== "invalid");
+  const workflowSnapshot: ProjectWorkflowSnapshot = {
+    storyValid: !recordingBlocked,
+    previewState: simulatorRunState,
+    hasValidRecording: latestRecordingIsValid,
+    editState: latestRecordingIsValid ? "review" : "unavailable",
+    exportReady: latestRecordingIsValid,
+    exportBlockedReason: latestRecordingIsValid
+      ? undefined
+      : "Record a valid take before exporting.",
+  };
+
+  const selectProjectStage = (stage: ProjectStage): boolean => {
+    if (stage === "author" || stage === "preview") {
+      setWorkspaceMode(stage);
+      setLayout((current) => ({
+        ...current,
+        previewFocused: stage === "preview",
+        authorCollapsed: stage === "preview",
+      }));
+      return true;
+    }
+    return false;
+  };
+
+  const startEditorResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    const workspace = event.currentTarget.parentElement;
+    if (!workspace) return;
+    const bounds = workspace.getBoundingClientRect();
+    const move = (moveEvent: PointerEvent) => {
+      const ratio = ((moveEvent.clientX - bounds.left) / bounds.width) * 100;
+      setLayout((current) => ({ ...current, splitRatio: Math.min(72, Math.max(28, ratio)) }));
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+  };
+
+  const resizeEditorFromKeyboard = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home") return;
+    event.preventDefault();
+    setLayout((current) => ({
+      ...current,
+      splitRatio:
+        event.key === "Home"
+          ? DEFAULT_EDITOR_LAYOUT.splitRatio
+          : Math.min(72, Math.max(28, current.splitRatio + (event.key === "ArrowRight" ? 2 : -2))),
+    }));
+  };
 
   // Reload when the window regains focus and disk drifted from our snapshot.
   // Clean buffer → silent reload; dirty buffer → prompt before discarding edits.
@@ -382,108 +447,56 @@ export default function EditorRoute() {
 
   return (
     <main id="main-content" className="relative flex h-full flex-col bg-[var(--sc-bg)]">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed inset-0 z-50 opacity-[0.03] mix-blend-overlay"
-        style={{
-          backgroundImage:
-            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='1'/></svg>\")",
-        }}
-      />
-      {/* ─── Toolbar ─── */}
-      <div className="sc-toolbar sc-window-chrome">
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-          <Link
-            to="/"
-            aria-label="Back to projects"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              color: "var(--sc-text-2)",
-              marginRight: 2,
-            }}
-          >
-            <ArrowLeft size={14} aria-hidden="true" />
-          </Link>
-          <FolderOpen size={14} style={{ color: "var(--sc-text-3)" }} aria-hidden="true" />
-          <Link
-            to="/"
-            style={{ fontSize: 12.5, color: "var(--sc-text-3)", textDecoration: "none" }}
-          >
-            Projects
-          </Link>
-          <ChevronRight size={10} style={{ color: "var(--sc-text-4)" }} aria-hidden="true" />
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{folder?.name ?? "Loading..."}</span>
-          {story && cursor && (
-            <EditorBreadcrumb
-              story={story}
-              cursorLine={cursor.line}
-              onJumpToOffset={queueEditorJump}
-            />
-          )}
-          {errorCount > 0 && (
-            <ScBadge tone="record">
-              {errorCount} {errorCount === 1 ? "error" : "errors"}
-            </ScBadge>
-          )}
-          {warningCount > 0 && (
-            <ScBadge tone="warn">
-              {warningCount} {warningCount === 1 ? "warning" : "warnings"}
-            </ScBadge>
-          )}
-        </div>
-        <span className="sc-spacer" />
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {projectId && (
-            <>
-              <Link
-                to={`/recorder/${projectId}`}
-                className={`sc-btn ghost sm ${recordingBlocked ? "pointer-events-none opacity-50" : ""}`}
-                aria-disabled={recordingBlocked}
-                tabIndex={recordingBlocked ? -1 : undefined}
-                title={
-                  recordingBlocked ? "Fix story validation errors before recording" : undefined
-                }
-                onClick={(event) => {
-                  if (recordingBlocked) event.preventDefault();
-                }}
-              >
-                <Video size={12} aria-hidden="true" />
-                Record
-              </Link>
-              <ScButton
-                size="sm"
-                variant="success"
-                disabled={recordPolishStarting || recordingBlocked}
-                icon={<Sparkles size={12} aria-hidden="true" />}
-                onClick={handleRecordAndPolish}
-              >
-                {recordPolishStarting ? "Preparing..." : "Record with Polish"}
-              </ScButton>
-              {(folder?.session_count ?? 0) > 0 ? (
-                <Link
-                  to={`/post-production/${projectId}`}
-                  className="sc-btn ghost sm"
-                  aria-label="Send to Post-Production"
-                >
-                  <Scissors size={12} aria-hidden="true" />
-                  Fine-tune Video
-                </Link>
-              ) : (
-                <ScButton
-                  size="sm"
-                  disabled
-                  icon={<Scissors size={12} aria-hidden="true" />}
-                  aria-label="Send to Post-Production"
-                  title="Record a story first"
-                >
-                  Fine-tune Video
-                </ScButton>
-              )}
-            </>
-          )}
-        </div>
-      </div>
+      {projectId ? (
+        <ProjectStageHeader
+          projectId={projectId}
+          projectName={folder?.name ?? "Opening project…"}
+          workflowLabel={
+            errorCount > 0
+              ? `${errorCount} ${errorCount === 1 ? "error" : "errors"}`
+              : warningCount > 0
+                ? `${warningCount} ${warningCount === 1 ? "warning" : "warnings"}`
+                : "Story ready"
+          }
+          currentStage={workspaceMode}
+          snapshot={workflowSnapshot}
+          onStageChange={selectProjectStage}
+          primaryAction={
+            workspaceMode === "author"
+              ? recordingBlocked
+                ? {
+                    label: "Fix issues",
+                    onClick: () => {
+                      setWorkspaceMode("author");
+                      setLayout((current) => ({
+                        ...current,
+                        authorCollapsed: false,
+                        previewFocused: false,
+                      }));
+                      setProblemsOpen(true);
+                    },
+                    title: "Open Problems and resolve validation errors",
+                  }
+                : {
+                    label: recordStarting ? "Preparing…" : "Record",
+                    onClick: () => void handleRecord(),
+                    disabled: recordStarting,
+                  }
+              : simulatorRunState === "complete" && !recordingBlocked
+                ? { label: "Record", onClick: () => void handleRecord(), disabled: recordStarting }
+                : simulatorRunState === "running"
+                  ? undefined
+                  : {
+                      label: simulatorRunState === "failed" ? "Retry preview" : "Run preview",
+                      onClick: () => setPreviewRunRequest((current) => current + 1),
+                      disabled: recordingBlocked || !appUrlValid || authorStreamId == null,
+                      title: recordingBlocked
+                        ? "Fix story validation errors before previewing"
+                        : undefined,
+                    }
+          }
+        />
+      ) : null}
 
       {/* ─── Main workspace ─── */}
       {!ready ? (
@@ -503,121 +516,177 @@ export default function EditorRoute() {
             streamId={authorStreamId}
             onJumpToOffset={queueEditorJump}
           />
-          <PageContentTransition className="min-h-0 flex-1">
-            <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-2">
+          <PageContentTransition className="flex min-h-0 flex-1 flex-col">
+            <div
+              className="sc-editor-workspace min-h-0 flex-1"
+              data-editor-mode={editorMode}
+              data-workspace-mode={workspaceMode}
+              style={{
+                gridTemplateColumns:
+                  layout.authorCollapsed || layout.previewFocused
+                    ? "minmax(0, 1fr)"
+                    : `${layout.splitRatio}% 6px minmax(0, 1fr)`,
+              }}
+            >
               {/* Script editor — primary workspace */}
-              <section
-                className="min-h-0 min-w-0 overflow-hidden border-r border-[var(--sc-border-2)]"
-                aria-label="Story"
-              >
-                <div className="flex h-full min-h-0 flex-col bg-[var(--sc-surface)]">
-                  {/* File tabs strip — single tab reflects real single-buffer state. */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      height: 30,
-                      paddingLeft: 8,
-                      background: "var(--sc-chrome-2)",
-                      borderBottom: "1px solid var(--sc-border-2)",
-                    }}
-                  >
+              {!layout.authorCollapsed && !layout.previewFocused ? (
+                <section
+                  className="min-h-0 min-w-0 overflow-hidden border-r border-[var(--sc-border-2)]"
+                  aria-label="Story"
+                >
+                  <div className="flex h-full min-h-0 flex-col bg-[var(--sc-surface)]">
+                    {/* File tabs strip — single tab reflects real single-buffer state. */}
                     <div
                       style={{
-                        padding: "0 12px",
-                        height: "100%",
-                        display: "inline-flex",
+                        display: "flex",
                         alignItems: "center",
-                        gap: 6,
-                        background: "var(--sc-surface)",
-                        borderRight: "1px solid var(--sc-border-2)",
-                        fontSize: 12,
-                        color: "var(--sc-text)",
-                        borderTop: "1.5px solid var(--sc-accent-400)",
-                        fontFamily: "var(--sc-font-mono)",
+                        height: 30,
+                        paddingLeft: 8,
+                        background: "var(--sc-chrome-2)",
+                        borderBottom: "1px solid var(--sc-border-2)",
                       }}
                     >
-                      <File size={11} aria-hidden="true" />
-                      {folder?.name ? `${folder.name}.story` : "story"}
-                      <span
-                        aria-hidden="true"
-                        title="Modified indicator (placeholder)"
+                      <div
                         style={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: 99,
-                          background: "var(--sc-text-4)",
-                          marginLeft: 4,
-                          opacity: 0.6,
+                          padding: "0 12px",
+                          height: "100%",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          background: "var(--sc-surface)",
+                          borderRight: "1px solid var(--sc-border-2)",
+                          fontSize: 12,
+                          color: "var(--sc-text)",
+                          borderTop: "1.5px solid var(--sc-accent-400)",
+                          fontFamily: "var(--sc-font-mono)",
                         }}
+                      >
+                        <File size={11} aria-hidden="true" />
+                        {folder?.name ? `${folder.name}.story` : "story"}
+                        <span
+                          aria-hidden="true"
+                          title="Modified indicator (placeholder)"
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: 99,
+                            background: "var(--sc-text-4)",
+                            marginLeft: 4,
+                            opacity: 0.6,
+                          }}
+                        />
+                      </div>
+                      <span style={{ flex: 1 }} />
+                      {story && cursor ? (
+                        <EditorBreadcrumb
+                          story={story}
+                          cursorLine={cursor.line}
+                          onJumpToOffset={queueEditorJump}
+                        />
+                      ) : null}
+                      <ScSegmented
+                        size="sm"
+                        value={editorMode}
+                        aria-label="Editor mode"
+                        options={[
+                          { value: "ui", label: "UI" },
+                          { value: "code", label: "Code" },
+                        ]}
+                        onValueChange={(value) => setEditorMode(value as "ui" | "code")}
                       />
+                      <ScButton
+                        size="icon"
+                        variant="ghost"
+                        icon={<PanelLeftClose size={12} aria-hidden="true" />}
+                        onClick={() => {
+                          setWorkspaceMode("preview");
+                          setLayout((current) => ({ ...current, authorCollapsed: true }));
+                        }}
+                        aria-label="Collapse author panel"
+                        title="Collapse author panel"
+                      />
+                      <ScButton
+                        size="icon"
+                        variant="ghost"
+                        icon={<Maximize2 size={12} aria-hidden="true" />}
+                        onClick={() => {
+                          setWorkspaceMode("preview");
+                          setLayout((current) => ({
+                            ...current,
+                            authorCollapsed: true,
+                            previewFocused: true,
+                          }));
+                        }}
+                        aria-label="Focus preview"
+                        title="Focus preview"
+                      />
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "var(--sc-text-4)",
+                          padding: "0 10px",
+                          fontFamily: "var(--sc-font-mono)",
+                        }}
+                      >
+                        {cursor ? `Ln ${cursor.line}, Col ${cursor.col}` : "Ln —, Col —"} · SC-DSL ·
+                        UTF-8
+                      </span>
                     </div>
-                    <span style={{ flex: 1 }} />
-                    <ScSegmented
-                      size="sm"
-                      value={editorMode}
-                      aria-label="Editor mode"
-                      options={[
-                        { value: "ui", label: "UI" },
-                        { value: "code", label: "Code" },
-                      ]}
-                      onValueChange={(value) => setEditorMode(value as "ui" | "code")}
-                    />
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: "var(--sc-text-4)",
-                        padding: "0 10px",
-                        fontFamily: "var(--sc-font-mono)",
-                      }}
-                    >
-                      {cursor ? `Ln ${cursor.line}, Col ${cursor.col}` : "Ln —, Col —"} · SC-DSL ·
-                      UTF-8
-                    </span>
+
+                    <div className="min-h-0 flex-1 overflow-hidden">
+                      {editorMode === "ui" ? (
+                        <StoryBuilder
+                          story={story}
+                          polish={polish}
+                          simulatorActive={simulatorRunState === "running"}
+                          storySource={source}
+                          storyPath={folder?.story_path ?? null}
+                          streamId={authorStreamId}
+                          onSourceChange={handleUiSourceChange}
+                          onSourceCommit={commitUiSourceChange}
+                          onFlushSource={flushUiSourceChange}
+                          onPolishChange={updatePolish}
+                          onJumpToOffset={queueEditorJump}
+                          onValidityChange={setStoryBuilderValid}
+                        />
+                      ) : (
+                        <StoryEditor
+                          onAutosave={autosave}
+                          autosaveEnabled={autosaveEnabled}
+                          autosaveDelayMs={autosaveDelayMs}
+                          jumpTarget={editorJumpTarget}
+                          projectFolder={folder?.folder_path ?? null}
+                          storyPath={folder?.story_path ?? null}
+                          streamId={authorStreamId}
+                          onCursorChange={setCursor}
+                        />
+                      )}
+                    </div>
+
+                    <ProblemsPanel onJumpToOffset={queueEditorJump} />
                   </div>
+                </section>
+              ) : null}
 
-                  <div className="min-h-0 flex-1 overflow-hidden">
-                    {editorMode === "ui" ? (
-                      <StoryBuilder
-                        story={story}
-                        polish={polish}
-                        simulatorActive={simulatorRunState === "running"}
-                        storySource={source}
-                        storyPath={folder?.story_path ?? null}
-                        streamId={authorStreamId}
-                        onSourceChange={handleUiSourceChange}
-                        onSourceCommit={commitUiSourceChange}
-                        onFlushSource={flushUiSourceChange}
-                        onPolishChange={updatePolish}
-                        onJumpToOffset={queueEditorJump}
-                        onValidityChange={setStoryBuilderValid}
-                      />
-                    ) : (
-                      <StoryEditor
-                        onAutosave={autosave}
-                        autosaveEnabled={autosaveEnabled}
-                        autosaveDelayMs={autosaveDelayMs}
-                        jumpTarget={editorJumpTarget}
-                        projectFolder={folder?.folder_path ?? null}
-                        storyPath={folder?.story_path ?? null}
-                        streamId={authorStreamId}
-                        onCursorChange={setCursor}
-                      />
-                    )}
-                  </div>
-
-                  <ProblemsPanel onJumpToOffset={queueEditorJump} />
-
-                  <SimulatorTimeline
-                    projectFolder={folder?.folder_path ?? ""}
-                    storyPath={folder?.story_path ?? ""}
-                    storySource={source}
-                    streamId={authorStreamId}
-                    appUrlValid={appUrlValid}
-                    disabled={recordingBlocked}
-                  />
-                </div>
-              </section>
+              {!layout.authorCollapsed && !layout.previewFocused ? (
+                <hr
+                  aria-label="Resize Author and Preview"
+                  aria-orientation="vertical"
+                  aria-valuemin={28}
+                  aria-valuemax={72}
+                  aria-valuenow={Math.round(layout.splitRatio)}
+                  tabIndex={0}
+                  onPointerDown={startEditorResize}
+                  onKeyDown={resizeEditorFromKeyboard}
+                  onDoubleClick={() =>
+                    setLayout((current) => ({
+                      ...current,
+                      splitRatio: DEFAULT_EDITOR_LAYOUT.splitRatio,
+                    }))
+                  }
+                  className="m-0 cursor-col-resize border-0 bg-[var(--sc-border)] outline-none hover:bg-[var(--sc-accent-400)] focus-visible:bg-[var(--sc-focus)]"
+                />
+              ) : null}
 
               {/* Right side: preview rail */}
               <section className="min-h-0 min-w-0 overflow-hidden" aria-label="Live Preview">
@@ -632,10 +701,22 @@ export default function EditorRoute() {
                   simulatorActiveFrame={simulatorActiveFrame}
                   simulatorRunState={simulatorRunState}
                   streamId={authorStreamId}
+                  authorHidden={layout.authorCollapsed || layout.previewFocused}
                   onViewportChange={setPreviewViewport}
+                  onShowAuthor={() => selectProjectStage("author")}
                 />
               </section>
             </div>
+            <SimulatorTimeline
+              projectFolder={folder?.folder_path ?? ""}
+              storyPath={folder?.story_path ?? ""}
+              storySource={source}
+              streamId={authorStreamId}
+              appUrlValid={appUrlValid}
+              disabled={recordingBlocked}
+              expanded={workspaceMode === "preview"}
+              runRequestId={previewRunRequest}
+            />
           </PageContentTransition>
         </>
       )}

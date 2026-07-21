@@ -27,6 +27,9 @@ apps/desktop/src-tauri/binaries/playwright-sidecar-*
 apps/desktop/test-results/
 apps/desktop/playwright-report/
 apps/desktop/src-tauri/gen/
+packages/ui/dist-catalog/
+packages/ui/test-results/
+packages/ui/playwright-report/
 
 # Electron build artifacts
 apps/desktop/dist-electron/

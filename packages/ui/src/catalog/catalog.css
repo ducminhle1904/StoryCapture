@@ -1,0 +1,35 @@
+@import "../tokens.css";
+@import "../primitives.css";
+
+* { box-sizing: border-box; }
+html, body, #root { min-height: 100%; margin: 0; }
+body {
+  background: var(--sc-bg);
+  color: var(--sc-text);
+  font-family: var(--sc-font-ui);
+}
+.catalog {
+  width: min(1120px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 48px 0 80px;
+}
+.catalog-kicker {
+  color: var(--sc-accent-400);
+  font-family: var(--sc-font-mono);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.catalog h1 { margin: 8px 0 6px; font-size: 32px; letter-spacing: -.035em; }
+.catalog-intro { max-width: 620px; margin: 0; color: var(--sc-text-3); line-height: 1.6; }
+.catalog-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 32px; }
+.catalog-section { min-width: 0; }
+.catalog-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.catalog-stack { display: grid; gap: 12px; }
+.catalog-field { width: min(280px, 100%); }
+.catalog-note { color: var(--sc-text-3); font-size: 12px; }
+@media (max-width: 760px) {
+  .catalog { width: min(100% - 28px, 1120px); padding-top: 28px; }
+  .catalog-grid { grid-template-columns: 1fr; }
+}

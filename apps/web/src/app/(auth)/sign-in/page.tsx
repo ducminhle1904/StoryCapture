@@ -1,4 +1,6 @@
 import { auth, signIn } from "@/lib/auth";
+import { ScButton, ScCard } from "@storycapture/ui";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 
 /**
@@ -14,8 +16,15 @@ export default async function SignInPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-950">
-      <div className="w-full max-w-sm space-y-6 rounded-xl border border-zinc-800 bg-zinc-900 p-8">
+      <ScCard className="w-full max-w-sm space-y-6 p-8">
         <div className="space-y-2 text-center">
+          <Image
+            src="/assets/ribbon-s-mark-product.png"
+            alt=""
+            width={42}
+            height={42}
+            className="mx-auto mb-4"
+          />
           <h1 className="text-2xl font-bold tracking-tight text-zinc-50">
             Sign in to StoryCapture
           </h1>
@@ -31,13 +40,14 @@ export default async function SignInPage() {
               await signIn("github", { redirectTo: "/dashboard" });
             }}
           >
-            <button
+            <ScButton
               type="submit"
-              className="flex w-full items-center justify-center gap-3 rounded-lg bg-zinc-800 px-4 py-3 text-sm font-medium text-zinc-50 transition-colors hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+              size="lg"
+              className="w-full"
             >
               <GitHubIcon />
               Sign in with GitHub
-            </button>
+            </ScButton>
           </form>
 
           <form
@@ -46,20 +56,21 @@ export default async function SignInPage() {
               await signIn("google", { redirectTo: "/dashboard" });
             }}
           >
-            <button
+            <ScButton
               type="submit"
-              className="flex w-full items-center justify-center gap-3 rounded-lg bg-zinc-800 px-4 py-3 text-sm font-medium text-zinc-50 transition-colors hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+              size="lg"
+              className="w-full"
             >
               <GoogleIcon />
               Sign in with Google
-            </button>
+            </ScButton>
           </form>
         </div>
 
         <p className="text-center text-xs text-zinc-500">
           By signing in, you agree to our terms of service.
         </p>
-      </div>
+      </ScCard>
     </div>
   );
 }

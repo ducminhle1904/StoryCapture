@@ -66,18 +66,15 @@ Concrete patterns used in the current Electron/TypeScript codebase.
 ## UI
 
 - Base UI compound components are the default primitive foundation.
-- Use `@storycapture/ui` and the `claude-design` `Sc*` primitives where a
-  matching primitive exists.
+- Use `@storycapture/ui` `Sc*` primitives where a matching primitive exists.
 - Icons come from `lucide-react`.
 - Motion uses `motion/react`.
-- Use tokens from `@storycapture/ui/tokens.css` or the `claude-design` token
-  layer. Avoid hardcoded colors and spacing unless the surrounding file already
-  requires it.
+- Import `tokens.css` then `primitives.css`; desktop also imports
+  `desktop-shell.css`. Avoid hardcoded colors and spacing.
 - Do not introduce Radix assumptions into `packages/ui`; current primitives are
   Base UI based.
-- Current `Sc*` primitive families include Badge, Button, Callout, Card,
-  EmptyState, Field, Input, Kbd, Segmented, Select, Skeleton, Slider, Switch,
-  Tabs, and Textarea. `ScTabs` currently has no matching primitive test file.
+- Current `Sc*` families also include Accordion, Dialog, Popover, Tooltip,
+  RadioGroup, and ToggleGroup. Every shared family has a focused test.
 
 ## Web
 
@@ -108,12 +105,14 @@ Known commands:
 - Web targeted test: `pnpm --dir apps/web exec vitest run <path>`.
 - Web typecheck: `pnpm --dir apps/web typecheck`.
 - UI tests: `pnpm --dir packages/ui test`.
+- UI accessibility: `pnpm --dir packages/ui test:a11y`.
+- UI visual baselines: `pnpm --dir packages/ui test:visual`.
+- UI boundary checks: `pnpm --dir packages/ui test:boundaries`.
 - UI targeted test: `pnpm --dir packages/ui exec vitest run <path>`.
 - Story DSL typecheck: `pnpm --dir packages/story-dsl typecheck`.
 
-There is no root `pnpm test`. There is no current Playwright/E2E test command or
-config; Playwright references in source are runtime automation concepts, not
-test wiring.
+There is no root `pnpm test`. UI visual regression uses the package-scoped
+Playwright catalog; desktop media/cursor/export parity remains package-scoped.
 
 Coverage shape:
 

@@ -11,17 +11,24 @@
       "import": "./src/index.ts"
     },
     "./tokens.css": "./src/tokens.css",
-    "./claude-design/tokens.css": "./src/claude-design/tokens.css",
-    "./claude-design/app.css": "./src/claude-design/app.css"
+    "./primitives.css": "./src/primitives.css",
+    "./desktop-shell.css": "./src/desktop-shell.css"
   },
   "scripts": {
+    "catalog": "vite --config vite.catalog.config.ts",
+    "catalog:build": "vite build --config vite.catalog.config.ts",
     "test": "vitest run",
+    "test:a11y": "vitest run src/catalog/__tests__/catalog-a11y.test.tsx",
+    "test:boundaries": "node scripts/check-design-boundaries.mjs",
+    "boundaries:update": "node scripts/check-design-boundaries.mjs --update-allowlist",
+    "test:visual": "playwright test --config playwright.visual.config.ts",
     "test:watch": "vitest",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
     "clsx": "^2.1.1",
+    "lucide-react": "^0.575.0",
     "tailwind-merge": "^3.6.0"
   },
   "peerDependencies": {
@@ -34,10 +41,13 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "@playwright/test": "^1.61.1",
+    "axe-core": "^4.11.0",
     "happy-dom": "^20.10.6",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "typescript": "^7.0.2",
+    "vite": "^8.1.4",
     "vitest": "^4.1.10"
   }
 }

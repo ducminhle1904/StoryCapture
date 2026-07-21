@@ -6,7 +6,17 @@ import { cn } from "../../lib/cn";
 export type ScSliderProps = ComponentPropsWithoutRef<typeof Slider.Root>;
 
 export const ScSlider = forwardRef<ElementRef<typeof Slider.Root>, ScSliderProps>(
-  ({ className, min = 0, max = 100, ...props }, ref) => (
+  (
+    {
+      className,
+      min = 0,
+      max = 100,
+      "aria-label": ariaLabel,
+      "aria-labelledby": ariaLabelledBy,
+      ...props
+    },
+    ref,
+  ) => (
     <Slider.Root
       ref={ref}
       min={min}
@@ -18,7 +28,11 @@ export const ScSlider = forwardRef<ElementRef<typeof Slider.Root>, ScSliderProps
         <Slider.Track className="sc-slider-track">
           <Slider.Indicator className="sc-slider-fill" />
         </Slider.Track>
-        <Slider.Thumb className="sc-slider-thumb" />
+        <Slider.Thumb
+          className="sc-slider-thumb"
+          aria-label={ariaLabel}
+          aria-labelledby={ariaLabelledBy}
+        />
       </Slider.Control>
     </Slider.Root>
   ),

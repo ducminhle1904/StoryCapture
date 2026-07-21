@@ -1,13 +1,4 @@
-import {
-  Circle,
-  Code,
-  Download,
-  Film,
-  Home,
-  Scissors,
-  Search,
-  Settings as SettingsIcon,
-} from "lucide-react";
+import { Home, Search, Settings as SettingsIcon } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { BrandMark } from "@/components/brand";
@@ -30,30 +21,7 @@ interface NavGroup {
 const NAV: NavGroup[] = [
   {
     group: "Workspace",
-    items: [
-      { id: "dashboard", label: "Projects", icon: Home, path: "/" },
-      {
-        id: "editor",
-        label: "Story Editor",
-        icon: Code,
-        path: "/editor",
-        matchPattern: /^\/editor(\/|$)/,
-      },
-      {
-        id: "post",
-        label: "Post-Production",
-        icon: Scissors,
-        path: "/post-production",
-        matchPattern: /^\/post-production(\/|$)/,
-      },
-    ],
-  },
-  {
-    group: "Output",
-    items: [
-      { id: "export", label: "Render & Export", icon: Download, disabled: true },
-      { id: "renders", label: "Recent Renders", icon: Film, disabled: true },
-    ],
+    items: [{ id: "dashboard", label: "Projects", icon: Home, path: "/" }],
   },
   {
     group: "System",
@@ -75,17 +43,21 @@ function isActive(item: NavItem, pathname: string): boolean {
   return false;
 }
 
-export function Sidebar() {
+interface SidebarProps {
+  variant?: "default" | "editor";
+  /** @deprecated Project actions belong in ProjectStageHeader. */
+  recordPath?: string;
+}
+
+export function Sidebar({ variant = "default" }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const setPaletteOpen = useDashboardStore((s) => s.setPaletteOpen);
 
   const openPalette = () => setPaletteOpen(true);
 
-  const startRecord = () => navigate("/recorder");
-
   return (
-    <nav aria-label="Main navigation" className="sc-nav sc-window-sidebar" style={{ width: 224 }}>
+    <nav aria-label="Main navigation" className="sc-nav sc-window-sidebar" data-variant={variant}>
       {/* Brand */}
       <div className="sc-brand">
         <BrandMark size={28} className="rounded-md" />
@@ -151,15 +123,8 @@ export function Sidebar() {
         ))}
       </div>
 
-      {/* Record + user footer */}
+      {/* Workspace footer */}
       <div className="p-[10px] border-t border-[var(--sc-border)]">
-        <button
-          type="button"
-          onClick={startRecord}
-          className="sc-btn primary w-full justify-center mb-[10px]"
-        >
-          <Circle size={9} fill="currentColor" /> Record
-        </button>
         <div className="flex items-center gap-2">
           <div className="sc-avatar">SC</div>
           <div className="min-w-0">

@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -99,6 +100,20 @@ function resetStore() {
   });
 }
 
+function renderEditorShell() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <EditorShell storyId="story-1" videoSrc="/recording.mp4" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 beforeEach(() => {
   resetStore();
   toastMocks.warning.mockReset();
@@ -124,13 +139,10 @@ beforeEach(() => {
 
 describe("EditorShell toolbar actions", () => {
   it("adds a default zoom clip at the current playhead", () => {
-    render(
-      <MemoryRouter>
-        <EditorShell storyId="story-1" videoSrc="/recording.mp4" />
-      </MemoryRouter>,
-    );
+    renderEditorShell();
     useEditorStore.getState().setPlayhead(2_500);
 
+    fireEvent.click(screen.getAllByRole("button", { name: "Fine Tune" })[0]!);
     fireEvent.click(screen.getByRole("button", { name: "Add zoom clip" }));
 
     const state = useEditorStore.getState();
@@ -154,13 +166,10 @@ describe("EditorShell toolbar actions", () => {
   });
 
   it("adds a default text annotation clip at the current playhead", () => {
-    render(
-      <MemoryRouter>
-        <EditorShell storyId="story-1" videoSrc="/recording.mp4" />
-      </MemoryRouter>,
-    );
+    renderEditorShell();
     useEditorStore.getState().setPlayhead(2_500);
 
+    fireEvent.click(screen.getAllByRole("button", { name: "Fine Tune" })[0]!);
     fireEvent.click(screen.getByRole("button", { name: "Add text clip" }));
 
     const state = useEditorStore.getState();

@@ -11,7 +11,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { motion } from "motion/react";
 import { Check, Pencil, RotateCcw, X, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { ScButton as Button } from "@storycapture/ui";
 import { useNlStore, type DiffCard as DiffCardType } from "./nlStore";
 
 // Lazy load CodeMirror to avoid heavy import at render time

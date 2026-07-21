@@ -95,7 +95,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`dark ${geist.variable} ${geistMono.variable}`}>
+    <html
+      lang="en"
+      data-theme="dark"
+      data-density="web"
+      className={`dark ${geist.variable} ${geistMono.variable}`}
+    >
       <body>
         <TRPCReactProvider>{children}</TRPCReactProvider>
         <Analytics />

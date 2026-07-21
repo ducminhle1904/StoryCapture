@@ -1,3 +1,9 @@
+export {
+  ScAccordion,
+  ScAccordionContent,
+  ScAccordionItem,
+  ScAccordionTrigger,
+} from "./sc-accordion";
 export type { ScBadgeProps, ScBadgeTone } from "./sc-badge";
 export { ScBadge } from "./sc-badge";
 export type { ScButtonProps, ScButtonSize, ScButtonVariant } from "./sc-button";
@@ -14,12 +20,32 @@ export type { ScInputProps } from "./sc-input";
 export { ScInput } from "./sc-input";
 export type { ScKbdProps } from "./sc-kbd";
 export { ScKbd } from "./sc-kbd";
+export {
+  ScDialog,
+  ScDialogClose,
+  ScDialogContent,
+  ScDialogDescription,
+  ScDialogTitle,
+  ScDialogTrigger,
+} from "./sc-dialog";
+export {
+  ScPopover,
+  ScPopoverClose,
+  ScPopoverContent,
+  ScPopoverDescription,
+  ScPopoverTitle,
+  ScPopoverTrigger,
+} from "./sc-popover";
+export { ScRadioGroup, ScRadioGroupItem } from "./sc-radio-group";
 export type { ScSegmentedOption, ScSegmentedProps } from "./sc-segmented";
 export { ScSegmented } from "./sc-segmented";
 export {
   ScSelect,
   ScSelectContent,
+  ScSelectGroup,
+  ScSelectGroupLabel,
   ScSelectItem,
+  ScSelectSeparator,
   ScSelectTrigger,
   ScSelectValue,
 } from "./sc-select";
@@ -33,3 +59,10 @@ export type { ScSwitchProps } from "./sc-switch";
 export { ScSwitch } from "./sc-switch";
 export type { ScTextareaProps } from "./sc-textarea";
 export { ScTextarea } from "./sc-textarea";
+export { ScToggleGroup, ScToggleGroupItem } from "./sc-toggle-group";
+export {
+  ScTooltip,
+  ScTooltipContent,
+  ScTooltipProvider,
+  ScTooltipTrigger,
+} from "./sc-tooltip";

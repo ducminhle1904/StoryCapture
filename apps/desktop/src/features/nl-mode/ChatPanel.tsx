@@ -7,7 +7,7 @@
 import * as React from "react";
 import { useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { ScButton as Button } from "@storycapture/ui";
 import {
   MessageCircle,
   History,
@@ -308,9 +308,8 @@ export function ChatPanel({
             className="self-end bg-[var(--color-accent,#7C3AED)] hover:bg-[var(--color-accent,#7C3AED)]/80"
             size="icon"
             aria-label={"G\u1eedi"}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+            icon={<Send className="h-4 w-4" />}
+          />
         </div>
         <div className="mt-1 text-right text-xs text-[var(--color-muted-foreground,#8A90A2)]">
           {"\u2318\u21b5 G\u1eedi"}

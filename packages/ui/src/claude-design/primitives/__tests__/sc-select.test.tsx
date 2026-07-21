@@ -15,4 +15,17 @@ describe("ScSelect", () => {
     const trigger = container.querySelector(".sc-select");
     expect(trigger).not.toBeNull();
   });
+
+  it("forwards the disabled state to the trigger", () => {
+    const { container } = render(
+      <ScSelect disabled defaultValue="one">
+        <ScSelectTrigger>
+          <ScSelectValue />
+        </ScSelectTrigger>
+      </ScSelect>,
+    );
+
+    const trigger = container.querySelector<HTMLButtonElement>(".sc-select");
+    expect(trigger?.disabled).toBe(true);
+  });
 });

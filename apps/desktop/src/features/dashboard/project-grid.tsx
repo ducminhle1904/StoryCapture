@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 
 import type { Project } from "@/ipc/projects";
 import { ProjectCard } from "./project-card";
+import { useProjectDashboardSummary } from "./use-project-dashboard-summary";
 
 interface ProjectGridProps {
   projects: Project[];
@@ -10,6 +11,31 @@ interface ProjectGridProps {
   onNewStory: () => void;
   onRemove?: (project: Project) => Promise<void> | void;
   removingProjectId?: string | null;
+  showCreateTile?: boolean;
+}
+
+function ProjectGridItem({
+  project,
+  onOpen,
+  onRemove,
+  removePending,
+}: {
+  project: Project;
+  onOpen: (id: string) => void;
+  onRemove?: (project: Project) => Promise<void> | void;
+  removePending: boolean;
+}) {
+  const summary = useProjectDashboardSummary(project.id);
+  return (
+    <ProjectCard
+      project={project}
+      sessionCount={summary.sessionCount}
+      workflowType={summary.workflowType}
+      onOpen={onOpen}
+      onRemove={onRemove}
+      removePending={removePending}
+    />
+  );
 }
 
 export function ProjectGrid({
@@ -18,6 +44,7 @@ export function ProjectGrid({
   onNewStory,
   onRemove,
   removingProjectId,
+  showCreateTile = true,
 }: ProjectGridProps) {
   return (
     <ul
@@ -32,7 +59,7 @@ export function ProjectGrid({
     >
       {projects.map((p) => (
         <li key={p.id}>
-          <ProjectCard
+          <ProjectGridItem
             project={p}
             onOpen={onOpen}
             onRemove={onRemove}
@@ -40,49 +67,51 @@ export function ProjectGrid({
           />
         </li>
       ))}
-      <li>
-        <ScCard
-          role="button"
-          tabIndex={0}
-          aria-label="Create new story"
-          onClick={onNewStory}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              onNewStory();
-            }
-          }}
-          style={{
-            padding: 10,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            minHeight: 232,
-            borderStyle: "dashed",
-            borderColor: "var(--sc-border-2)",
-            cursor: "default",
-          }}
-        >
-          <div
+      {showCreateTile ? (
+        <li>
+          <ScCard
+            role="button"
+            tabIndex={0}
+            aria-label="Create new story"
+            onClick={onNewStory}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onNewStory();
+              }
+            }}
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: 99,
-              background: "var(--sc-surface-3)",
-              display: "grid",
-              placeItems: "center",
-              marginBottom: 10,
+              padding: 10,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              minHeight: 232,
+              borderStyle: "dashed",
+              borderColor: "var(--sc-border-2)",
+              cursor: "default",
             }}
           >
-            <Plus size={16} style={{ color: "var(--sc-text-3)" }} aria-hidden="true" />
-          </div>
-          <div style={{ fontSize: 13, fontWeight: 500 }}>New Story</div>
-          <div style={{ fontSize: 11, color: "var(--sc-text-4)", marginTop: 2 }}>
-            ⌘N · blank, template, or import .story
-          </div>
-        </ScCard>
-      </li>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 99,
+                background: "var(--sc-surface-3)",
+                display: "grid",
+                placeItems: "center",
+                marginBottom: 10,
+              }}
+            >
+              <Plus size={16} style={{ color: "var(--sc-text-3)" }} aria-hidden="true" />
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>New Story</div>
+            <div style={{ fontSize: 11, color: "var(--sc-text-4)", marginTop: 2 }}>
+              ⌘N · blank, template, or import .story
+            </div>
+          </ScCard>
+        </li>
+      ) : null}
     </ul>
   );
 }

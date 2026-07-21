@@ -5,21 +5,22 @@ Shared design tokens and UI primitives for StoryCapture.
 ## What Lives Here
 
 - `src/tokens.css`
-  Shared token layer used across desktop and web.
+  Canonical foundation, semantic, and compatibility token layer.
+- `src/primitives.css`
+  Shared component styling for desktop and web.
+- `src/desktop-shell.css`
+  Electron window chrome, navigation, and workspace layout.
 - `src/claude-design/`
-  The shipped `sc-*` design namespace: tokens, app-level styles, and the
-  component language used by the current desktop UI.
+  The shipped `Sc*` React component implementation.
 - Package exports:
   - `@storycapture/ui`
   - `@storycapture/ui/tokens.css`
-  - `@storycapture/ui/claude-design/tokens.css`
-  - `@storycapture/ui/claude-design/app.css`
+  - `@storycapture/ui/primitives.css`
+  - `@storycapture/ui/desktop-shell.css`
 
 ## Current Role
 
-- Desktop consumes the token layer and `claude-design` styles today.
-- Web can consume the same package, but desktop is the primary consumer right
-  now.
+- Desktop and web consume the canonical tokens and shared React primitives.
 - Base UI is the primitive layer. Do not introduce Radix-based assumptions
   here.
 
@@ -28,6 +29,7 @@ Shared design tokens and UI primitives for StoryCapture.
 The `claude-design` primitive barrel exports these `Sc*` families:
 
 - `ScBadge`
+- `ScAccordion`
 - `ScButton`
 - `ScCallout`
 - `ScCard`
@@ -35,6 +37,9 @@ The `claude-design` primitive barrel exports these `Sc*` families:
 - `ScField`
 - `ScInput`
 - `ScKbd`
+- `ScDialog`
+- `ScPopover`
+- `ScRadioGroup`
 - `ScSegmented`
 - `ScSelect`
 - `ScSkeleton`
@@ -42,12 +47,19 @@ The `claude-design` primitive barrel exports these `Sc*` families:
 - `ScSwitch`
 - `ScTabs`
 - `ScTextarea`
+- `ScToggleGroup`
+- `ScTooltip`
 
 Use these before adding local one-off UI primitives in desktop/web surfaces.
 
 ## Commands
 
 - `pnpm --dir packages/ui test`
+- `pnpm --dir packages/ui test:a11y`
+- `pnpm --dir packages/ui test:boundaries`
+- `pnpm --dir packages/ui boundaries:update` refreshes the exact per-file literal allowlist after an intentional token exception is reviewed.
+- `pnpm --dir packages/ui test:visual`
+- `pnpm --dir packages/ui catalog`
 - `pnpm --dir packages/ui exec vitest run <path>`
 
 ## Notes

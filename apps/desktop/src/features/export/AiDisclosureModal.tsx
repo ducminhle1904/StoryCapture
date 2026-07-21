@@ -13,7 +13,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { ExternalLink } from "lucide-react";
 import { useCallback, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { ScButton as Button } from "@storycapture/ui";
 import {
   dialogBackdropMotionClassName,
   dialogCenteredPopupMotionClassName,

@@ -9,7 +9,7 @@ import { Copy, RotateCw, X } from "lucide-react";
 
 import { onPanic, type PanicPayload } from "@/ipc";
 import { frontendLog } from "@/lib/log";
-import { Button } from "@/components/ui/button";
+import { ScButton as Button } from "@storycapture/ui";
 import {
   dialogBackdropMotionClassName,
   dialogCenteredPopupMotionClassName,

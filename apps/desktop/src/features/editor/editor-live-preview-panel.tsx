@@ -1,6 +1,6 @@
-import { ScBadge, ScSegmented } from "@storycapture/ui";
+import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { AlertTriangle, Monitor, Radio, Smartphone, Tablet } from "lucide-react";
+import { AlertTriangle, Monitor, PanelLeftOpen, Radio, Smartphone, Tablet } from "lucide-react";
 import type { ComponentProps, ReactNode, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 
@@ -31,7 +31,9 @@ interface EditorLivePreviewPanelProps {
   simulatorActiveFrame: SimulatorFrame | null;
   simulatorRunState: string;
   streamId: string | null;
+  authorHidden?: boolean;
   onViewportChange: (viewport: PreviewViewport) => void;
+  onShowAuthor?: () => void;
 }
 
 function formatRelative(ts: number): string {
@@ -140,7 +142,7 @@ function StageShell({
   const size = VIEWPORT_SIZES[viewport];
   return (
     <section
-      className="relative overflow-hidden rounded-[var(--sc-r-lg)] border border-[var(--sc-border-2)] bg-[var(--sc-n-950)] shadow-[var(--sc-sh-3)]"
+      className="relative overflow-hidden rounded-[var(--sc-r-lg)] border border-[color-mix(in_oklab,var(--sc-accent-400)_24%,var(--sc-border-2))] bg-[var(--sc-n-950)] shadow-[var(--sc-canvas-glow)]"
       style={{
         aspectRatio: `${size.w} / ${size.h}`,
         width: fit ? `${fit.width}px` : "100%",
@@ -242,7 +244,9 @@ export function EditorLivePreviewPanel({
   simulatorActiveFrame,
   simulatorRunState,
   streamId,
+  authorHidden = false,
   onViewportChange,
+  onShowAuthor,
 }: EditorLivePreviewPanelProps) {
   const size = VIEWPORT_SIZES[previewViewport];
   const stageAreaRef = useRef<HTMLDivElement | null>(null);
@@ -278,6 +282,16 @@ export function EditorLivePreviewPanel({
         ) : null}
         <PreviewPickerButton />
         <span className="min-w-0 flex-1" />
+        {authorHidden && onShowAuthor ? (
+          <ScButton
+            size="sm"
+            variant="ghost"
+            icon={<PanelLeftOpen size={12} aria-hidden="true" />}
+            onClick={onShowAuthor}
+          >
+            Show Author
+          </ScButton>
+        ) : null}
         <ScSegmented
           size="sm"
           value={previewViewport}

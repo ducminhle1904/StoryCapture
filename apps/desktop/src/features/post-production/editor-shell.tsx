@@ -12,14 +12,14 @@
  * from the store so user preferences survive reloads.
  */
 
-import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
+import { ScBadge, ScButton } from "@storycapture/ui";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import {
-  ArrowLeft,
   CheckCircle2,
   Clock3,
+  Maximize2,
   Music2,
-  Scissors,
+  PanelRightClose,
   Sparkles,
   TriangleAlert,
   Type,
@@ -27,7 +27,7 @@ import {
   ZoomIn,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { PageContentTransition } from "@/components/page-content-transition";
 import { PreviewSurface } from "@/components/preview-surface";
@@ -36,6 +36,8 @@ import {
   prunePolishDocForStory,
   type StoryPolishDoc,
 } from "@/features/editor/polish-sidecar";
+import type { ProjectWorkflowSnapshot } from "@/features/project-workflow/project-stage";
+import { ProjectStageHeader } from "@/features/project-workflow/project-stage-header";
 import { VoiceCatalogDialog } from "@/features/voiceover/VoiceCatalogDialog";
 import { useRecordingActions } from "@/ipc/actions";
 import { type ParseResult, parseStory } from "@/ipc/parse";
@@ -151,7 +153,6 @@ function ReviewPanel({
   hasStepTiming,
   fixItems,
   recipe,
-  onExport,
   onFineTune,
   onFixItem,
 }: {
@@ -163,7 +164,6 @@ function ReviewPanel({
   hasStepTiming: boolean;
   fixItems: ReviewFixItem[];
   recipe: string;
-  onExport: () => void;
   onFineTune: () => void;
   onFixItem: (item: ReviewFixItem) => void;
 }) {
@@ -274,7 +274,7 @@ function ReviewPanel({
       </div>
 
       <span className="flex-1" />
-      <div className="mt-5 grid grid-cols-2 gap-2">
+      <div className="mt-5 flex justify-end">
         <ScButton
           size="sm"
           variant="ghost"
@@ -282,9 +282,6 @@ function ReviewPanel({
           onClick={onFineTune}
         >
           Fine Tune
-        </ScButton>
-        <ScButton size="sm" variant="success" onClick={onExport} disabled={!readyToExport}>
-          Export
         </ScButton>
       </div>
     </div>
@@ -304,7 +301,12 @@ function clipIdForStep(
 }
 
 export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const timelineHeightPct = useEditorStore((s) => s.timelineHeightPct);
   const previewWidthPct = useEditorStore((s) => s.previewWidthPct);
+  const setTimelineHeightPct = useEditorStore((s) => s.setTimelineHeightPct);
+  const setPreviewWidthPct = useEditorStore((s) => s.setPreviewWidthPct);
   const setSoundDrawerOpen = useEditorStore((s) => s.setSoundDrawerOpen);
   const setExportModalOpen = useEditorStore((s) => s.setExportModalOpen);
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
@@ -343,6 +345,8 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const [timelineHydrated, setTimelineHydrated] = useState(Boolean(videoSrc));
   const [timelineNeedsBootstrap, setTimelineNeedsBootstrap] = useState(Boolean(videoSrc));
   const [workspaceMode, setWorkspaceMode] = useState<"review" | "fine-tune">("review");
+  const [projectName, setProjectName] = useState("Post-Production");
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const timelineLoadTokenRef = useRef(0);
   const lastSavedTimelineRef = useRef("");
   const staleAnnotationsRef = useRef<AnnotationClip[]>([]);
@@ -357,6 +361,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       try {
         const info = await fetchProjectFolder(storyId);
         if (cancelled) return;
+        setProjectName(info.name);
         setProjectOpenReady(true);
         const polishPromise = loadPolishDoc(info.story_path);
         const storyPromise = readTextFile(info.story_path).then((text) => parseStory(text));
@@ -735,6 +740,13 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
 
   useEditorHotkeys();
 
+  useEffect(() => {
+    const state = location.state as { openExport?: boolean } | null;
+    if (!state?.openExport) return;
+    setExportModalOpen(true);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate, setExportModalOpen]);
+
   // Set a default duration so the timeline ruler has visible ticks on
   // first mount. Loaded recordings override it during bootstrap.
   useEffect(() => {
@@ -743,12 +755,54 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     }
   }, [setDuration]);
 
-  const effectivePreviewWidthPct =
-    workspaceMode === "fine-tune" ? Math.max(previewWidthPct, 74) : Math.max(previewWidthPct, 64);
+  const effectivePreviewWidthPct = Math.max(48, Math.min(84, previewWidthPct));
   const inspectorWidthPct = 100 - effectivePreviewWidthPct;
-  const timelinePanelHeightPx = 284;
   const effectiveTopHeight =
-    workspaceMode === "review" ? "100%" : `calc(100% - ${timelinePanelHeightPx + 12}px)`;
+    workspaceMode === "review" ? "100%" : `${100 - Math.max(18, Math.min(55, timelineHeightPct))}%`;
+
+  const startPreviewResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    const container = event.currentTarget.parentElement;
+    if (!container) return;
+    const bounds = container.getBoundingClientRect();
+    const move = (moveEvent: PointerEvent) =>
+      setPreviewWidthPct(((moveEvent.clientX - bounds.left) / bounds.width) * 100);
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+  };
+
+  const startTimelineResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    const container = event.currentTarget.parentElement;
+    if (!container) return;
+    const bounds = container.getBoundingClientRect();
+    const move = (moveEvent: PointerEvent) =>
+      setTimelineHeightPct(((bounds.bottom - moveEvent.clientY) / bounds.height) * 100);
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+  };
+
+  const criticalReviewCount = reviewFixItems.filter((item) => item.tone === "critical").length;
+  const exportReady = tracksVideoLen > 0 && criticalReviewCount === 0;
+  const workflowSnapshot: ProjectWorkflowSnapshot = {
+    storyValid: Boolean(storyParsed?.ast),
+    previewState: "complete",
+    hasValidRecording: Boolean(resolvedVideoSrc),
+    editState: criticalReviewCount > 0 ? "review" : "ready",
+    exportReady,
+    exportBlockedReason:
+      tracksVideoLen === 0
+        ? "Add or record a video track before exporting."
+        : criticalReviewCount > 0
+          ? `Resolve ${criticalReviewCount} critical review ${criticalReviewCount === 1 ? "issue" : "issues"} before exporting.`
+          : undefined,
+  };
 
   const addZoomAtPlayhead = useCallback(() => {
     const playheadMs = useEditorStore.getState().playheadMs;
@@ -798,7 +852,6 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       hasStepTiming={hasStepTimingData}
       fixItems={reviewFixItems}
       recipe={polishDoc?.global.recipe ?? "dynamic"}
-      onExport={() => setExportModalOpen(true)}
       onFineTune={() => setWorkspaceMode("fine-tune")}
       onFixItem={handleReviewFixItem}
     />
@@ -812,78 +865,41 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       data-editor-shell="true"
       data-story-id={storyId}
     >
-      {/* Top bar */}
-      <div className="sc-toolbar sc-window-chrome">
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-          <Link
-            to="/"
-            aria-label="Back to projects"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              color: "var(--sc-text-2)",
-              marginRight: 2,
-            }}
-          >
-            <ArrowLeft size={14} aria-hidden="true" />
-          </Link>
-          <Scissors size={14} style={{ color: "var(--sc-text-3)" }} aria-hidden="true" />
-          <div className="sc-toolbar-title">Post-Production</div>
-          <ScBadge tone="muted">Story {storyId}</ScBadge>
-        </div>
-        <span className="sc-spacer" />
-        <ScSegmented
-          size="sm"
-          value={workspaceMode}
-          aria-label="Post-production mode"
-          options={[
-            { value: "review", label: "Review" },
-            { value: "fine-tune", label: "Fine Tune" },
-          ]}
-          onValueChange={(value) => setWorkspaceMode(value as "review" | "fine-tune")}
-        />
-        <ScBadge tone={workspaceMode === "review" ? "info" : "accent"}>
-          {workspaceMode === "review" ? "Guided Review" : "Timeline Editing"}
-        </ScBadge>
-        <div
-          style={{
-            width: 1,
-            height: 18,
-            background: "var(--sc-border)",
-            margin: "0 4px",
-          }}
-          aria-hidden="true"
-        />
-        <ScButton
-          size="sm"
-          icon={<Music2 size={12} aria-hidden="true" />}
-          onClick={() => setSoundDrawerOpen(true)}
-          aria-label="Open sound library"
-        >
-          Sounds
-        </ScButton>
-        {projectOpenReady ? (
-          <QueueWidget storyId={storyId} />
-        ) : (
-          <ScBadge tone="muted">0 Queue</ScBadge>
-        )}
-        <ScButton
-          variant="success"
-          size="sm"
-          onClick={() => setExportModalOpen(true)}
-          aria-label="Open export dialog"
-        >
-          Export
-        </ScButton>
-      </div>
+      <ProjectStageHeader
+        projectId={storyId}
+        projectName={projectName}
+        workflowLabel={workspaceMode === "review" ? "Guided Review" : "Fine Tune"}
+        currentStage="edit"
+        snapshot={workflowSnapshot}
+        onStageChange={(stage) => {
+          if (stage !== "edit") return false;
+          setWorkspaceMode("review");
+          return true;
+        }}
+        onExport={() => setExportModalOpen(true)}
+        primaryAction={{
+          label: "Export",
+          onClick: () => setExportModalOpen(true),
+          disabled: !exportReady,
+          title: workflowSnapshot.exportBlockedReason,
+          tone: "success",
+        }}
+      />
 
       <PageContentTransition className="min-h-0 flex-1">
         {/* Top region: preview | inspector */}
-        <div className="flex min-h-0 gap-3 px-3 py-3" style={{ height: effectiveTopHeight }}>
+        <div
+          className="grid min-h-0 px-3 py-3"
+          style={{
+            height: effectiveTopHeight,
+            gridTemplateColumns: inspectorCollapsed
+              ? "minmax(0,1fr)"
+              : `${effectivePreviewWidthPct}% 6px minmax(0,${inspectorWidthPct}%)`,
+          }}
+        >
           <section
             className="min-w-0 overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] shadow-[var(--sc-sh-1)]"
             style={{
-              width: `${effectivePreviewWidthPct}%`,
               display: "flex",
               flexDirection: "column",
             }}
@@ -905,27 +921,62 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
               <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--sc-text-4)]">
                 Preview
               </span>
+              <ScButton
+                size="sm"
+                variant={workspaceMode === "review" ? "primary" : "ghost"}
+                onClick={() => setWorkspaceMode("review")}
+              >
+                Guided Review
+              </ScButton>
+              <ScButton
+                size="sm"
+                variant={workspaceMode === "fine-tune" ? "primary" : "ghost"}
+                onClick={() => setWorkspaceMode("fine-tune")}
+              >
+                Fine Tune
+              </ScButton>
               <span style={{ flex: 1 }} />
+              {workspaceMode === "fine-tune" ? (
+                <>
+                  <ScButton
+                    size="sm"
+                    variant="ghost"
+                    icon={<ZoomIn size={12} aria-hidden="true" />}
+                    title="Add zoom keyframe"
+                    aria-label="Add zoom clip"
+                    onClick={addZoomAtPlayhead}
+                  >
+                    Add Zoom
+                  </ScButton>
+                  <ScButton
+                    size="sm"
+                    variant="ghost"
+                    icon={<Type size={12} aria-hidden="true" />}
+                    title="Add text annotation"
+                    aria-label="Add text clip"
+                    onClick={addTextAtPlayhead}
+                  >
+                    Add Text
+                  </ScButton>
+                  <ScButton
+                    size="sm"
+                    icon={<Music2 size={12} aria-hidden="true" />}
+                    onClick={() => setSoundDrawerOpen(true)}
+                    aria-label="Open sound library"
+                  >
+                    Sounds
+                  </ScButton>
+                </>
+              ) : null}
+              {projectOpenReady ? <QueueWidget storyId={storyId} /> : null}
               <ScButton
-                size="sm"
+                size="icon"
                 variant="ghost"
-                icon={<ZoomIn size={12} aria-hidden="true" />}
-                title="Add zoom keyframe"
-                aria-label="Add zoom clip"
-                onClick={addZoomAtPlayhead}
-              >
-                Add Zoom
-              </ScButton>
-              <ScButton
-                size="sm"
-                variant="ghost"
-                icon={<Type size={12} aria-hidden="true" />}
-                title="Add text annotation"
-                aria-label="Add text clip"
-                onClick={addTextAtPlayhead}
-              >
-                Add Text
-              </ScButton>
+                icon={inspectorCollapsed ? <PanelRightClose size={12} /> : <Maximize2 size={12} />}
+                onClick={() => setInspectorCollapsed((current) => !current)}
+                aria-label={inspectorCollapsed ? "Show inspector" : "Focus preview"}
+                title={inspectorCollapsed ? "Show inspector" : "Focus preview"}
+              />
             </div>
 
             <div style={{ flex: 1, minHeight: 0, display: "flex", position: "relative" }}>
@@ -955,36 +1006,83 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
               )}
             </div>
           </section>
-          <section
-            className="min-w-0 overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
-            style={{ width: `${inspectorWidthPct}%` }}
-          >
-            {inspectorContent}
-          </section>
+
+          {!inspectorCollapsed ? (
+            <hr
+              aria-label="Resize preview and inspector"
+              aria-orientation="vertical"
+              aria-valuemin={48}
+              aria-valuemax={84}
+              aria-valuenow={Math.round(effectivePreviewWidthPct)}
+              tabIndex={0}
+              onPointerDown={startPreviewResize}
+              onKeyDown={(event) => {
+                if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home")
+                  return;
+                event.preventDefault();
+                setPreviewWidthPct(
+                  event.key === "Home"
+                    ? 74
+                    : effectivePreviewWidthPct + (event.key === "ArrowRight" ? 2 : -2),
+                );
+              }}
+              onDoubleClick={() => setPreviewWidthPct(74)}
+              className="mx-0.5 cursor-col-resize rounded-full bg-[var(--sc-border)] outline-none hover:bg-[var(--sc-accent-400)] focus-visible:bg-[var(--sc-focus)]"
+            />
+          ) : null}
+
+          {!inspectorCollapsed ? (
+            <section className="min-w-0 overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]">
+              {inspectorContent}
+            </section>
+          ) : null}
         </div>
 
         {/* Bottom region: timeline */}
         {workspaceMode === "fine-tune" && (
-          <section
-            className="mx-3 mb-3 flex shrink-0 flex-col overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
-            style={{ height: timelinePanelHeightPx }}
-            aria-label="Timeline area"
-          >
-            <div className="flex h-8 items-center gap-2 border-b border-[var(--sc-border)] bg-[var(--sc-surface)] px-3">
-              <span className="text-[12px] font-semibold text-[var(--sc-text)]">Timeline</span>
-              <span className="font-mono text-[11px] text-[var(--sc-text-4)]">
-                {tracksVideoLen}V · {tracksZoomLen}Z · {tracksAnnotationLen}T
-                {tracksSoundLen > 0 ? ` · ${tracksSoundLen}A` : ""}
-              </span>
-              <span className="min-w-0 flex-1" />
-              <span className="hidden font-mono text-[11px] text-[var(--sc-text-4)] lg:inline">
-                Drag clips to retime. Select a clip to edit.
-              </span>
-            </div>
-            <div className="min-h-0 flex-1">
-              <Timeline storyId={storyId} />
-            </div>
-          </section>
+          <>
+            <hr
+              aria-label="Resize timeline height"
+              aria-orientation="horizontal"
+              aria-valuemin={18}
+              aria-valuemax={55}
+              aria-valuenow={Math.round(timelineHeightPct)}
+              tabIndex={0}
+              onPointerDown={startTimelineResize}
+              onKeyDown={(event) => {
+                if (event.key !== "ArrowUp" && event.key !== "ArrowDown" && event.key !== "Home")
+                  return;
+                event.preventDefault();
+                setTimelineHeightPct(
+                  event.key === "Home"
+                    ? 30
+                    : timelineHeightPct + (event.key === "ArrowUp" ? 2 : -2),
+                );
+              }}
+              onDoubleClick={() => setTimelineHeightPct(30)}
+              className="mx-3 h-2 cursor-row-resize rounded-full bg-[var(--sc-border)] outline-none hover:bg-[var(--sc-accent-400)] focus-visible:bg-[var(--sc-focus)]"
+            />
+            <section
+              className="mx-3 mb-3 flex shrink-0 flex-col overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
+              style={{ height: `calc(${Math.max(18, Math.min(55, timelineHeightPct))}% - 8px)` }}
+              aria-label="Timeline area"
+            >
+              <div className="flex h-8 items-center gap-2 border-b border-[var(--sc-border)] bg-[var(--sc-surface)] px-3">
+                <span className="text-[12px] font-semibold text-[var(--sc-text)]">Timeline</span>
+                <span className="font-mono text-[11px] text-[var(--sc-text-4)]">
+                  {tracksVideoLen}V · {tracksZoomLen}Z · {tracksAnnotationLen}T
+                  {tracksSoundLen > 0 ? ` · ${tracksSoundLen}A` : ""}
+                </span>
+                <span className="min-w-0 flex-1" />
+                <span className="hidden font-mono text-[11px] text-[var(--sc-text-4)] lg:inline">
+                  Drag clips to retime. Select a clip to edit.
+                </span>
+              </div>
+              <div className="min-h-0 flex-1">
+                <Timeline storyId={storyId} />
+              </div>
+            </section>
+          </>
         )}
       </PageContentTransition>
 

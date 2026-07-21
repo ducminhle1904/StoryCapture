@@ -12,6 +12,9 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/src/features/dashboard/`, `apps/desktop/src/state/projects.ts`,
   `apps/desktop/src/ipc/projects.ts`, and new-project workflow definitions in
   `apps/desktop/src/features/workflows/workflow-catalog.ts`.
+- Project pipeline stages and hybrid navigation gates:
+  `apps/desktop/src/features/project-workflow/project-stage.ts` and
+  `apps/desktop/src/features/project-workflow/project-stage-header.tsx`.
 - Editor/authoring: `apps/desktop/src/routes/editor.tsx`,
   `apps/desktop/src/features/editor/story-editor.tsx`,
   `apps/desktop/src/features/editor/story-builder.tsx`,
@@ -211,9 +214,10 @@ Use this for task routing after reading the short root guide.
 - Desktop styling entry: `apps/desktop/src/styles.css`.
 - Shared package entry and base tokens: `packages/ui/src/index.ts`,
   `packages/ui/src/tokens.css`.
-- Claude design docs/tokens: `packages/ui/src/claude-design/README.md`,
-  `packages/ui/src/claude-design/tokens.css`,
-  `packages/ui/src/claude-design/app.css`.
+- Shared CSS: `packages/ui/src/primitives.css` and
+  `packages/ui/src/desktop-shell.css`.
+- Component catalog and governance: `packages/ui/src/catalog/`,
+  `packages/ui/visual-tests/`, and `packages/ui/scripts/`.
 - Primitives: `packages/ui/src/claude-design/primitives/` and
   exports from `packages/ui/src/claude-design/index.ts`.
 - Desktop local wrappers/components: `apps/desktop/src/components/ui/`.

@@ -14,6 +14,9 @@ migrations, generated files, or release tooling.
   - `pnpm --dir apps/desktop run test:e2e:cursor-sync`
   - `pnpm --dir apps/desktop run test:e2e:media`
   - `pnpm --dir packages/ui test`
+  - `pnpm --dir packages/ui test:boundaries`
+  - `pnpm --dir packages/ui exec playwright install chromium`
+  - `pnpm --dir packages/ui test:visual`
   - `pnpm --dir apps/web test`
   - `pnpm --dir apps/desktop run test:e2e:export`
 - The Windows job runs local-media and packaged export parity smokes. Both
