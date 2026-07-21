@@ -5,6 +5,8 @@
  * Keeps the writing surface spare and focused on the line itself.
  */
 
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { TextArea as AstryxTextArea } from "@astryxdesign/core/TextArea";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback } from "react";
 import type { VoiceoverStepBinding } from "@/features/post-production/state/voiceover-timeline";
@@ -42,8 +44,7 @@ export function TtsScriptEditor({ projectId, stepId, stepBinding }: TtsScriptEdi
   const charCount = script.length;
 
   const handleTextChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const newText = e.target.value;
+    (newText: string) => {
       setScript(stepId, newText);
       if (clip) {
         setEditedAfterGen(stepId, true);
@@ -157,45 +158,50 @@ export function TtsScriptEditor({ projectId, stepId, stepBinding }: TtsScriptEdi
   return (
     <div data-testid="tts-script-editor" className="flex flex-col gap-4">
       {!script && !clip ? (
-        <div className="text-sm leading-relaxed text-[var(--muted-foreground)]">
+        <div className="text-sm leading-relaxed text-[var(--color-text-secondary)]">
           Write the line, then render a take.
         </div>
       ) : null}
 
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
+          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
             Narration
           </div>
-          <div className="mt-1 truncate text-xs text-[var(--muted-foreground)]">
+          <div className="mt-1 truncate text-xs text-[var(--color-text-secondary)]">
             {selectedPreset ? selectedPreset.name : "No voice selected"}
           </div>
         </div>
 
         {charCount >= WARNING_THRESHOLD ? (
-          <span className="font-mono text-[11px] tabular-nums text-[var(--warning)]">
+          <span className="font-mono text-[11px] tabular-nums text-[var(--color-warning)]">
             {charCount} / {SOFT_LIMIT}
           </span>
         ) : null}
       </div>
 
       {/* Textarea */}
-      <textarea
-        className="font-serif min-h-[172px] w-full resize-none rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--background)] px-4 py-3.5 text-[14px] leading-6 text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+      <AstryxTextArea
+        label="Narration script"
+        isLabelHidden
+        className="font-serif"
         value={script}
         onChange={handleTextChange}
         placeholder="Write the narration for this step..."
         rows={6}
+        width="100%"
       />
 
       {/* Stale warning chip */}
       {isEditedAfterGen && clip && (
-        <div className="text-xs text-[var(--warning)]">The script changed since the last take.</div>
+        <div className="text-xs text-[var(--color-warning)]">
+          The script changed since the last take.
+        </div>
       )}
 
       {/* Footer row */}
       <div className="flex items-center justify-between">
-        <div className="text-xs text-[var(--muted-foreground)]">
+        <div className="text-xs text-[var(--color-text-secondary)]">
           {clip
             ? "A take is ready for this step."
             : selectedPreset
@@ -206,25 +212,26 @@ export function TtsScriptEditor({ projectId, stepId, stepBinding }: TtsScriptEdi
         {/* Action buttons */}
         <div className="flex gap-2">
           {!clip && (
-            <button
-              type="button"
-              className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--accent)]/90 disabled:opacity-50"
+            <AstryxButton
+              variant="primary"
+              size="sm"
               onClick={handleGenerate}
-              disabled={isGenerating || !script.trim() || !selectedPreset}
-              aria-label="Generate audio"
+              isDisabled={isGenerating || !script.trim() || !selectedPreset}
+              label="Generate audio"
             >
               {isGenerating ? "Generating..." : "Generate audio"}
-            </button>
+            </AstryxButton>
           )}
           {clip && (
-            <button
-              type="button"
-              className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/5 disabled:opacity-50"
+            <AstryxButton
+              variant="secondary"
+              size="sm"
               onClick={handleRegenerate}
-              disabled={isGenerating || !script.trim() || !selectedPreset}
+              isDisabled={isGenerating || !script.trim() || !selectedPreset}
+              label="Regenerate audio"
             >
               {isGenerating ? "Regenerating..." : "Regenerate audio"}
-            </button>
+            </AstryxButton>
           )}
         </div>
       </div>

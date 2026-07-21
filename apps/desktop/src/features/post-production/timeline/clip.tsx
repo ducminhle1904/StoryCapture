@@ -22,28 +22,28 @@ export interface ClipProps {
 
 const TRACK_STYLE: Record<TrackId, { background: string; borderColor: string; accent: string }> = {
   video: {
-    background: "color-mix(in oklch, #38bdf8 10%, var(--sc-surface))",
-    borderColor: "color-mix(in oklch, #38bdf8 46%, var(--sc-border))",
+    background: "color-mix(in oklch, #38bdf8 10%, var(--color-background-surface))",
+    borderColor: "color-mix(in oklch, #38bdf8 46%, var(--color-border))",
     accent: "#0284c7",
   },
   cursor: {
-    background: "color-mix(in oklch, #34d399 12%, var(--sc-surface))",
-    borderColor: "color-mix(in oklch, #34d399 48%, var(--sc-border))",
+    background: "color-mix(in oklch, #34d399 12%, var(--color-background-surface))",
+    borderColor: "color-mix(in oklch, #34d399 48%, var(--color-border))",
     accent: "#059669",
   },
   zoom: {
-    background: "color-mix(in oklch, #f59e0b 12%, var(--sc-surface))",
-    borderColor: "color-mix(in oklch, #f59e0b 50%, var(--sc-border))",
+    background: "color-mix(in oklch, #f59e0b 12%, var(--color-background-surface))",
+    borderColor: "color-mix(in oklch, #f59e0b 50%, var(--color-border))",
     accent: "#b45309",
   },
   sound: {
-    background: "color-mix(in oklch, #22c55e 10%, var(--sc-surface))",
-    borderColor: "color-mix(in oklch, #22c55e 46%, var(--sc-border))",
+    background: "color-mix(in oklch, #22c55e 10%, var(--color-background-surface))",
+    borderColor: "color-mix(in oklch, #22c55e 46%, var(--color-border))",
     accent: "#15803d",
   },
   annotations: {
-    background: "color-mix(in oklch, #f97316 10%, var(--sc-surface))",
-    borderColor: "color-mix(in oklch, #f97316 46%, var(--sc-border))",
+    background: "color-mix(in oklch, #f97316 10%, var(--color-background-surface))",
+    borderColor: "color-mix(in oklch, #f97316 46%, var(--color-border))",
     accent: "#c2410c",
   },
 };
@@ -97,11 +97,11 @@ function ClipBase({ clip, trackId, pxPerMs, trackHeight }: ClipProps) {
       aria-pressed={selected}
       data-clip-id={clip.id}
       data-track-id={trackId}
-      className={`absolute top-1 flex items-center overflow-hidden rounded-[var(--sc-r-sm)] border text-left text-[10px] text-[var(--sc-text)] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--sc-surface)_92%,transparent)] transition-[box-shadow,transform,border-color] active:scale-[0.99] ${
-        selected ? "ring-2 ring-[var(--sc-focus-ring)]" : ""
+      className={`absolute top-1 flex items-center overflow-hidden rounded-[var(--radius-inner)] border text-left text-[10px] text-[var(--color-text-primary)] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--color-background-surface)_92%,transparent)] transition-[box-shadow,transform,border-color] active:scale-[0.99] ${
+        selected ? "ring-2 ring-[var(--color-accent-muted)]" : ""
       } ${
         clip.trackId === "zoom" ? "font-sans" : ""
-      } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-focus-ring)]`}
+      } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-muted)]`}
       style={{
         left,
         width,
@@ -110,8 +110,8 @@ function ClipBase({ clip, trackId, pxPerMs, trackHeight }: ClipProps) {
         ...(clip.trackId === "zoom"
           ? {
               background:
-                "linear-gradient(135deg, color-mix(in oklch, #f59e0b 20%, var(--sc-surface)) 0%, color-mix(in oklch, #f59e0b 11%, var(--sc-surface)) 48%, color-mix(in oklch, #fbbf24 9%, var(--sc-surface)) 100%)",
-              borderColor: "color-mix(in oklch, #d97706 44%, var(--sc-border))",
+                "linear-gradient(135deg, color-mix(in oklch, #f59e0b 20%, var(--color-background-surface)) 0%, color-mix(in oklch, #f59e0b 11%, var(--color-background-surface)) 48%, color-mix(in oklch, #fbbf24 9%, var(--color-background-surface)) 100%)",
+              borderColor: "color-mix(in oklch, #d97706 44%, var(--color-border))",
               boxShadow:
                 "inset 0 1px 0 color-mix(in oklch, white 58%, transparent), inset 0 -1px 0 color-mix(in oklch, #92400e 18%, transparent)",
             }
@@ -163,14 +163,14 @@ function ClipBase({ clip, trackId, pxPerMs, trackHeight }: ClipProps) {
           }`}
         >
           <span
-            className={`block truncate font-semibold text-[var(--sc-text)] ${
+            className={`block truncate font-semibold text-[var(--color-text-primary)] ${
               clip.trackId === "zoom" ? "tracking-tight" : ""
             }`}
           >
             {compactZoom ? "Zoom" : displayLabel}
           </span>
           {showMeta && !compactZoom ? (
-            <span className="mt-0.5 block truncate text-[9px] uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+            <span className="mt-0.5 block truncate text-[9px] uppercase tracking-[0.12em] text-[var(--color-text-disabled)]">
               {meta}
             </span>
           ) : null}

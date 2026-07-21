@@ -27,6 +27,18 @@ jobs:
         shell: bash
         run: pnpm install --frozen-lockfile
 
+      - name: Astryx rollout guard
+        shell: bash
+        run: pnpm ui:legacy-check
+
+      - name: Gothic theme generated artifacts
+        shell: bash
+        run: pnpm --dir packages/ui run theme:check
+
+      - name: Lint
+        shell: bash
+        run: pnpm lint
+
       - name: Typecheck
         shell: bash
         run: pnpm typecheck
@@ -35,9 +47,17 @@ jobs:
         shell: bash
         run: pnpm --dir apps/desktop exec vitest run
 
+      - name: Desktop Gothic UI E2E
+        shell: bash
+        run: pnpm --dir apps/desktop run test:e2e:ui
+
       - name: Cursor synchronization Electron smoke
         shell: bash
         run: pnpm --dir apps/desktop run test:e2e:cursor-sync
+
+      - name: Scroll Electron smoke
+        shell: bash
+        run: pnpm --dir apps/desktop run test:e2e:scroll
 
       - name: Local media playback Electron smoke
         shell: bash
@@ -51,9 +71,25 @@ jobs:
         shell: bash
         run: pnpm --dir apps/web test
 
+      - name: Install web UI E2E browsers
+        shell: bash
+        run: pnpm --dir apps/web exec playwright install chromium firefox webkit
+
+      - name: Web Gothic UI E2E
+        shell: bash
+        run: pnpm --dir apps/web run test:e2e:ui
+
       - name: Desktop package and export parity smoke
         shell: bash
         run: pnpm --dir apps/desktop run test:e2e:export
+
+      - name: Packaged native capture helper gate
+        shell: bash
+        run: pnpm --dir apps/desktop run test:e2e:recording-v2-helper
+
+      - name: Web production build
+        shell: bash
+        run: pnpm --dir apps/web build
 
   windows-media-smoke:
     name: windows-media-smoke

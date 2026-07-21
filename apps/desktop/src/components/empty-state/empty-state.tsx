@@ -1,75 +1,41 @@
-import type { ComponentType, ReactNode } from "react";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { Kbd } from "@astryxdesign/core/Kbd";
+import { Text } from "@astryxdesign/core/Text";
+import type { ReactNode } from "react";
+import storyToVideoEmptySrc from "@/assets/illustrations/story-to-video-empty.png";
 
-export interface EmptyStateProps {
-  illustration?: ReactNode;
-  icon?: ComponentType<{ size?: number; "aria-hidden"?: boolean; style?: React.CSSProperties }>;
+export interface StoryEmptyStateProps {
   title: string;
-  body?: ReactNode;
+  description: string;
   actions?: ReactNode;
-  footer?: ReactNode;
 }
 
-export function EmptyState({
-  illustration,
-  icon: Icon,
-  title,
-  body,
-  actions,
-  footer,
-}: EmptyStateProps) {
+export function StoryEmptyState({ title, description, actions }: StoryEmptyStateProps) {
   return (
-    <div style={{ display: "grid", placeItems: "center", minHeight: 400, padding: 40 }}>
-      <div
-        style={{
-          textAlign: "center",
-          maxWidth: 460,
-          width: "100%",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-        }}
-      >
-        {illustration ? (
-          <div
-            style={{ width: "100%", display: "flex", justifyContent: "center", marginBottom: 24 }}
-          >
-            {illustration}
-          </div>
-        ) : Icon ? (
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              margin: "0 auto 20px",
-              borderRadius: 12,
-              background: "var(--sc-surface-3)",
-              border: "1px solid var(--sc-border-2)",
-              display: "grid",
-              placeItems: "center",
-            }}
-          >
-            <Icon size={22} aria-hidden style={{ color: "var(--sc-text-3)" }} />
-          </div>
-        ) : null}
-        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>{title}</div>
-        {body ? (
-          <div
-            style={{
-              fontSize: 13,
-              color: "var(--sc-text-3)",
-              lineHeight: 1.5,
-              marginBottom: 20,
-            }}
-          >
-            {body}
-          </div>
-        ) : null}
-        {actions ? (
-          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>{actions}</div>
-        ) : null}
-        {footer ? (
-          <div style={{ marginTop: 24, fontSize: 11, color: "var(--sc-text-4)" }}>{footer}</div>
-        ) : null}
+    <div className="grid min-h-[400px] place-items-center px-10 py-10">
+      <div className="flex w-full flex-col items-center gap-4">
+        <EmptyState
+          title={title}
+          description={description}
+          actions={actions}
+          headingLevel={2}
+          icon={
+            <img
+              src={storyToVideoEmptySrc}
+              alt=""
+              aria-hidden="true"
+              className="block size-[172px] object-cover"
+              style={{
+                borderRadius: "var(--radius-container)",
+                border: "1px solid var(--color-border)",
+                boxShadow: "var(--shadow-high)",
+              }}
+            />
+          }
+        />
+        <Text type="supporting">
+          Try <Kbd keys="⌘K" /> for commands.
+        </Text>
       </div>
     </div>
   );

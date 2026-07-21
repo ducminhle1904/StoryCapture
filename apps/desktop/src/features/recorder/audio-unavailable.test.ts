@@ -2,13 +2,13 @@
 //
 // Verifies the pattern used in `recording-view.tsx`:
 //   - An incoming RecordingEvent { type: "audio-unavailable", reason }
-//     produces a sonner toast.error and flips a local audioUnavailable flag.
+//     produces an application notification and flips a local audioUnavailable flag.
 //   - Recording continues (status unchanged — video-only).
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("sonner", () => ({
-  toast: {
+vi.mock("@/lib/notifications", () => ({
+  notifications: {
     error: vi.fn(),
     success: vi.fn(),
     warning: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-import { toast } from "sonner";
+import { notifications } from "@/lib/notifications";
 
 type RecordingEvent =
   | { type: "audio-unavailable"; reason: string }
@@ -30,7 +30,7 @@ function makeDispatch(state: { audioUnavailable: boolean }) {
   return (event: RecordingEvent) => {
     switch (event.type) {
       case "audio-unavailable":
-        toast.error(`Audio unavailable: ${event.reason}`);
+        notifications.error(`Audio unavailable: ${event.reason}`);
         state.audioUnavailable = true;
         break;
       default:
@@ -44,13 +44,13 @@ afterEach(() => {
 });
 
 describe("D-13 AudioUnavailable UX", () => {
-  it("shows a toast.error with the reason and sets the badge flag", () => {
+  it("shows a notifications.error with the reason and sets the badge flag", () => {
     const state = { audioUnavailable: false };
     const dispatch = makeDispatch(state);
 
     dispatch({ type: "audio-unavailable", reason: "Mic busy" });
 
-    expect(toast.error).toHaveBeenCalledWith("Audio unavailable: Mic busy");
+    expect(notifications.error).toHaveBeenCalledWith("Audio unavailable: Mic busy");
     expect(state.audioUnavailable).toBe(true);
   });
 
@@ -61,6 +61,6 @@ describe("D-13 AudioUnavailable UX", () => {
     dispatch({ type: "failed", message: "boom" });
 
     expect(state.audioUnavailable).toBe(false);
-    expect(toast.error).not.toHaveBeenCalled();
+    expect(notifications.error).not.toHaveBeenCalled();
   });
 });

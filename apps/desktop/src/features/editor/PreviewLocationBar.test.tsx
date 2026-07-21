@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({
@@ -49,30 +49,24 @@ describe("<PreviewLocationBar />", () => {
   });
 
   it("disables Back/Forward when canGo* is false", () => {
-    render(
-      <PreviewLocationBar
-        {...baseProps}
-        canGoBack={false}
-        canGoForward={false}
-      />,
-    );
-    expect(screen.getByLabelText("Back")).toBeDisabled();
-    expect(screen.getByLabelText("Forward")).toBeDisabled();
-    expect(screen.getByLabelText("Reload")).not.toBeDisabled();
+    render(<PreviewLocationBar {...baseProps} canGoBack={false} canGoForward={false} />);
+    expect(screen.getByLabelText("Back")).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByLabelText("Forward")).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByLabelText("Reload")).not.toHaveAttribute("aria-disabled");
   });
 
   it("disables all 3 buttons when disabled prop is true", () => {
     render(<PreviewLocationBar {...baseProps} disabled />);
-    expect(screen.getByLabelText("Back")).toBeDisabled();
-    expect(screen.getByLabelText("Forward")).toBeDisabled();
-    expect(screen.getByLabelText("Reload")).toBeDisabled();
+    expect(screen.getByLabelText("Back")).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByLabelText("Forward")).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByLabelText("Reload")).toHaveAttribute("aria-disabled", "true");
   });
 
   it("disables all 3 buttons when streamId is null", () => {
     render(<PreviewLocationBar {...baseProps} streamId={null} />);
-    expect(screen.getByLabelText("Back")).toBeDisabled();
-    expect(screen.getByLabelText("Forward")).toBeDisabled();
-    expect(screen.getByLabelText("Reload")).toBeDisabled();
+    expect(screen.getByLabelText("Back")).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByLabelText("Forward")).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByLabelText("Reload")).toHaveAttribute("aria-disabled", "true");
   });
 
   it("Back click invokes author_preview_back", () => {
@@ -101,12 +95,8 @@ describe("<PreviewLocationBar />", () => {
 
   it("URL display reflects prop changes", () => {
     const { rerender } = render(<PreviewLocationBar {...baseProps} />);
-    expect(screen.getByTestId("preview-url-display")).toHaveTextContent(
-      "https://example.com/path",
-    );
-    rerender(
-      <PreviewLocationBar {...baseProps} url="https://other.example.org/" />,
-    );
+    expect(screen.getByTestId("preview-url-display")).toHaveTextContent("https://example.com/path");
+    rerender(<PreviewLocationBar {...baseProps} url="https://other.example.org/" />);
     expect(screen.getByTestId("preview-url-display")).toHaveTextContent(
       "https://other.example.org/",
     );

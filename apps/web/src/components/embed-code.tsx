@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
+import { useCallback, useState } from "react";
 
 interface EmbedCodeProps {
   videoId: string;
@@ -46,42 +48,39 @@ export function EmbedCode({ videoId, baseUrl }: EmbedCodeProps) {
 
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-medium text-zinc-200">Embed Code</h3>
+      <h3 className="text-sm font-medium text-[var(--color-text-primary)]">Embed Code</h3>
 
       {/* Size selector */}
-      <div className="flex gap-2">
-        {SIZE_PRESETS.map((p, i) => (
-          <button
-            key={p.label}
-            onClick={() => setSizeIndex(i)}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-              i === sizeIndex
-                ? "bg-zinc-100 text-zinc-900"
-                : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
-            }`}
-          >
-            {p.label}
-          </button>
+      <SegmentedControl
+        label="Embed size"
+        value={String(sizeIndex)}
+        onChange={(value) => setSizeIndex(Number(value))}
+      >
+        {SIZE_PRESETS.map((preset, index) => (
+          <SegmentedControlItem key={preset.label} value={String(index)} label={preset.label} />
         ))}
-      </div>
+      </SegmentedControl>
 
       {/* Code snippet */}
       <div className="relative">
-        <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-3 text-xs text-zinc-300">
+        <pre className="overflow-x-auto rounded-[var(--radius-element)] bg-[var(--color-syntax-background)] p-3 text-xs text-[var(--color-text-secondary)]">
           <code>{iframeCode}</code>
         </pre>
-        <button
+        <AstryxButton
+          label={copied ? "Copied!" : "Copy embed code"}
+          size="sm"
+          variant="secondary"
           onClick={handleCopy}
-          className="absolute right-2 top-2 rounded-md bg-zinc-700 px-2.5 py-1 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
+          className="absolute right-2 top-2"
         >
           {copied ? "Copied!" : "Copy"}
-        </button>
+        </AstryxButton>
       </div>
 
       {/* oEmbed reference */}
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-[var(--color-text-secondary)]">
         oEmbed discovery:{" "}
-        <code className="rounded bg-zinc-800 px-1 py-0.5 text-zinc-400">
+        <code className="rounded-[var(--radius-inner)] bg-[var(--color-background-muted)] px-1 py-0.5 text-[var(--color-text-secondary)]">
           {baseUrl}/api/oembed?url={baseUrl}/watch/&lt;slug&gt;
         </code>
       </p>

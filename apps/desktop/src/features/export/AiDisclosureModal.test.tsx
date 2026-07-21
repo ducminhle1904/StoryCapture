@@ -8,8 +8,11 @@ describe("AiDisclosureModal", () => {
     const onResult = vi.fn();
     render(<AiDisclosureModal open ttsClipCount={3} onResult={onResult} />);
 
+    expect(
+      screen.getByRole("dialog", { name: /This export contains AI-generated voiceover/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/EU AI Act/)).toBeInTheDocument();
-    const checkbox = screen.getByRole("checkbox", {
+    const checkbox = screen.getByRole("switch", {
       name: /Embed AI-generated voice metadata \(XMP\)/i,
     });
     expect(checkbox).toBeChecked();
@@ -23,14 +26,12 @@ describe("AiDisclosureModal", () => {
     const onResult = vi.fn();
     const { rerender } = render(<AiDisclosureModal open ttsClipCount={1} onResult={onResult} />);
     fireEvent.click(
-      screen.getByRole("checkbox", { name: /Embed AI-generated voice metadata \(XMP\)/i }),
+      screen.getByRole("switch", { name: /Embed AI-generated voice metadata \(XMP\)/i }),
     );
     fireEvent.click(screen.getByRole("button", { name: /export anyway/i }));
     expect(onResult).toHaveBeenCalledWith({ proceed: true, embedXmp: false });
 
     rerender(<AiDisclosureModal open ttsClipCount={0} onResult={onResult} />);
-    expect(
-      screen.queryByText(/This export contains AI-generated voiceover/i),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

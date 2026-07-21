@@ -13,7 +13,7 @@ export function BrandMark({ className, size = 40 }: BrandMarkProps) {
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-[10px] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-[3px] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_2px_rgba(0,0,0,0.35)]",
+        "inline-flex shrink-0 items-center justify-center rounded-[10px] border border-[var(--color-border)] bg-[var(--color-background-card)] p-[3px] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_2px_rgba(0,0,0,0.35)]",
         className,
       )}
       style={{ height: size, width: size }}
@@ -39,7 +39,7 @@ export function BrandWordmark({ className, muted = false }: BrandWordmarkProps) 
     <span
       className={cn(
         "font-semibold tracking-[-0.02em]",
-        muted ? "text-[var(--color-fg-secondary)]" : "text-[var(--color-fg-primary)]",
+        muted ? "text-[var(--color-text-secondary)]" : "text-[var(--color-text-primary)]",
         className,
       )}
       style={{ fontFamily: "'Outfit Variable', 'Outfit', sans-serif" }}

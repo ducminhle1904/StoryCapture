@@ -1,4 +1,9 @@
-import { Command } from "cmdk";
+import {
+  CommandPalette as AstryxCommandPalette,
+  CommandPaletteInput,
+} from "@astryxdesign/core/CommandPalette";
+import { Kbd } from "@astryxdesign/core/Kbd";
+import { createStaticSource, type SearchableItem } from "@astryxdesign/core/Typeahead";
 import {
   Circle,
   Code,
@@ -6,16 +11,14 @@ import {
   Home,
   Plus,
   Scissors,
-  Search,
   Settings as SettingsIcon,
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useNavigate } from "react-router-dom";
 
-import { useDashboardStore } from "@/state/projects";
 import { GLOBAL_SHORTCUTS } from "@/lib/shortcuts";
+import { useDashboardStore } from "@/state/projects";
 
 type NavigateFn = ReturnType<typeof useNavigate>;
 
@@ -34,160 +37,166 @@ interface PaletteItem {
 }
 
 const ITEMS: PaletteItem[] = [
-  { id: "dashboard", label: "Go to Projects", group: "Navigate", icon: <Home size={13} />, run: ({ navigate }) => navigate("/") },
-  { id: "editor", label: "Go to Story Editor", group: "Navigate", icon: <Code size={13} />, run: ({ navigate }) => navigate("/") },
-  { id: "post", label: "Go to Post-Production", group: "Navigate", icon: <Scissors size={13} />, run: ({ navigate }) => navigate("/") },
-  { id: "export", label: "Render & Export…", group: "Navigate", icon: <Download size={13} />, kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "export")?.keys, run: ({ navigate }) => navigate("/post-production") },
-  { id: "settings", label: "Open Settings", group: "Navigate", icon: <SettingsIcon size={13} />, kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "settings")?.keys, run: ({ navigate }) => navigate("/settings") },
-  { id: "new", label: "New Story…", group: "Actions", icon: <Plus size={13} />, kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "new-story")?.keys, run: ({ navigate, requestNewProject }) => { navigate("/"); requestNewProject(); } },
-  { id: "record", label: "Start Recording", group: "Actions", icon: <Circle size={13} />, kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "record")?.keys, run: ({ navigate }) => navigate("/recorder") },
+  {
+    id: "dashboard",
+    label: "Go to Projects",
+    group: "Navigate",
+    icon: <Home size={13} />,
+    run: ({ navigate }) => navigate("/"),
+  },
+  {
+    id: "editor",
+    label: "Go to Story Editor",
+    group: "Navigate",
+    icon: <Code size={13} />,
+    run: ({ navigate }) => navigate("/"),
+  },
+  {
+    id: "post",
+    label: "Go to Post-Production",
+    group: "Navigate",
+    icon: <Scissors size={13} />,
+    run: ({ navigate }) => navigate("/"),
+  },
+  {
+    id: "export",
+    label: "Render & Export…",
+    group: "Navigate",
+    icon: <Download size={13} />,
+    kbd: GLOBAL_SHORTCUTS.find((shortcut) => shortcut.id === "export")?.keys,
+    run: ({ navigate }) => navigate("/post-production"),
+  },
+  {
+    id: "settings",
+    label: "Open Settings",
+    group: "Navigate",
+    icon: <SettingsIcon size={13} />,
+    kbd: GLOBAL_SHORTCUTS.find((shortcut) => shortcut.id === "settings")?.keys,
+    run: ({ navigate }) => navigate("/settings"),
+  },
+  {
+    id: "new",
+    label: "New Story…",
+    group: "Actions",
+    icon: <Plus size={13} />,
+    kbd: GLOBAL_SHORTCUTS.find((shortcut) => shortcut.id === "new-story")?.keys,
+    run: ({ navigate, requestNewProject }) => {
+      navigate("/");
+      requestNewProject();
+    },
+  },
+  {
+    id: "record",
+    label: "Start Recording",
+    group: "Actions",
+    icon: <Circle size={13} />,
+    kbd: GLOBAL_SHORTCUTS.find((shortcut) => shortcut.id === "record")?.keys,
+    run: ({ navigate }) => navigate("/recorder"),
+  },
 ];
 
+interface PaletteSearchData {
+  command: PaletteItem;
+  group: PaletteItem["group"];
+}
+
+type PaletteSearchItem = SearchableItem<PaletteSearchData>;
+
+const SEARCH_ITEMS: PaletteSearchItem[] = ITEMS.map((command) => ({
+  id: command.id,
+  label: command.label,
+  auxiliaryData: { command, group: command.group },
+}));
+
+const SEARCH_SOURCE = createStaticSource(SEARCH_ITEMS, {
+  keywords: (item) => [item.id],
+});
+
 export function CommandPalette() {
-  const open = useDashboardStore((s) => s.paletteOpen);
-  const setOpen = useDashboardStore((s) => s.setPaletteOpen);
+  const open = useDashboardStore((state) => state.paletteOpen);
+  const setOpen = useDashboardStore((state) => state.setPaletteOpen);
   const navigate = useNavigate();
-  const requestNewProject = useDashboardStore((s) => s.requestNewProject);
+  const requestNewProject = useDashboardStore((state) => state.requestNewProject);
 
   useHotkeys(
     "mod+k",
-    (e) => {
-      e.preventDefault();
+    (event) => {
+      event.preventDefault();
       setOpen(!open);
     },
     { enableOnFormTags: true, preventDefault: true },
   );
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [open]);
-
   const runItem = useCallback(
-    (item: PaletteItem) => {
+    (itemId: string) => {
+      const item = ITEMS.find((candidate) => candidate.id === itemId);
+      if (!item) return;
       item.run({ navigate, requestNewProject });
-      setOpen(false);
     },
     [navigate, requestNewProject],
   );
 
-  useHotkeys("mod+n", (e) => { e.preventDefault(); navigate("/"); requestNewProject(); }, { enableOnFormTags: true });
-  useHotkeys("mod+e", (e) => { e.preventDefault(); navigate("/post-production"); }, { enableOnFormTags: true });
-  useHotkeys("mod+comma", (e) => { e.preventDefault(); navigate("/settings"); }, { enableOnFormTags: true });
-  useHotkeys("mod+shift+r", (e) => { e.preventDefault(); navigate("/recorder"); }, { enableOnFormTags: true });
+  useHotkeys(
+    "mod+n",
+    (event) => {
+      event.preventDefault();
+      navigate("/");
+      requestNewProject();
+    },
+    { enableOnFormTags: true },
+  );
+  useHotkeys(
+    "mod+e",
+    (event) => {
+      event.preventDefault();
+      navigate("/post-production");
+    },
+    { enableOnFormTags: true },
+  );
+  useHotkeys(
+    "mod+comma",
+    (event) => {
+      event.preventDefault();
+      navigate("/settings");
+    },
+    { enableOnFormTags: true },
+  );
+  useHotkeys(
+    "mod+shift+r",
+    (event) => {
+      event.preventDefault();
+      navigate("/recorder");
+    },
+    { enableOnFormTags: true },
+  );
 
-  const groups = useMemo(() => {
-    const map = new Map<string, PaletteItem[]>();
-    for (const it of ITEMS) {
-      const list = map.get(it.group) ?? [];
-      list.push(it);
-      map.set(it.group, list);
-    }
-    return Array.from(map.entries());
-  }, []);
-
-  if (!open) return null;
   return (
-    <AnimatePresence>
-      {open ? (
-        <motion.div
-          role="presentation"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.18 }}
-          onClick={() => setOpen(false)}
-          className="fixed inset-0 z-[200] grid place-items-center backdrop-blur-md"
-          style={{ background: "rgba(0,0,0,0.4)" }}
-        >
-          <motion.div
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.18 }}
-            onClick={(e) => e.stopPropagation()}
-            className="sc-palette w-[720px] max-w-[90%] overflow-hidden"
-            style={{
-              background: "var(--sc-surface)",
-              border: "1px solid var(--sc-border-2)",
-              borderRadius: "var(--sc-r-xl)",
-              boxShadow: "var(--sc-sh-pop)",
-            }}
-          >
-            <Command
-              label="Command palette"
-              shouldFilter
-              onKeyDownCapture={(e) => {
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setOpen(false);
-                }
-              }}
-            >
-              <div
-                className="flex items-center gap-[10px] px-4 py-3"
-                style={{ borderBottom: "1px solid var(--sc-border)" }}
-              >
-                <Search size={15} style={{ color: "var(--sc-text-4)" }} />
-                <Command.Input
-                  autoFocus
-                  placeholder="Type a command or search…"
-                  className="flex-1 bg-transparent text-sm outline-none"
-                  style={{ color: "var(--sc-text)" }}
-                />
-                <span className="sc-kbd">esc</span>
-              </div>
-              <Command.List className="max-h-[480px] overflow-y-auto p-1.5">
-                <Command.Empty className="px-4 py-8 text-center text-xs" style={{ color: "var(--sc-text-4)" }}>
-                  No commands found.
-                </Command.Empty>
-                {groups.map(([group, items]) => (
-                  <Command.Group
-                    key={group}
-                    heading={group}
-                    className="[&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.06em]"
-                    style={{ ["--cmdk-group-heading-color" as string]: "var(--sc-text-4)" }}
-                  >
-                    {items.map((it) => (
-                      <Command.Item
-                        key={it.id}
-                        value={`${it.label} ${it.id}`}
-                        onSelect={() => runItem(it)}
-                        className="flex cursor-default items-center gap-2.5 rounded-[var(--sc-r-md)] px-2.5 py-2 text-[12.5px] data-[selected=true]:bg-[var(--sc-hover)]"
-                        style={{ color: "var(--sc-text)" }}
-                      >
-                        <span className="w-4" style={{ color: "var(--sc-text-3)" }}>
-                          {it.icon}
-                        </span>
-                        <span className="flex-1">{it.label}</span>
-                        {it.kbd ? <span className="sc-kbd">{it.kbd}</span> : null}
-                      </Command.Item>
-                    ))}
-                  </Command.Group>
-                ))}
-              </Command.List>
-              <div
-                className="flex items-center gap-3.5 px-3.5 py-2 text-[10.5px]"
-                style={{ borderTop: "1px solid var(--sc-border)", color: "var(--sc-text-4)" }}
-              >
-                <span>
-                  <span className="sc-kbd">↑↓</span> navigate
-                </span>
-                <span>
-                  <span className="sc-kbd">↵</span> select
-                </span>
-                <span className="ml-auto">Powered by fuzzy search</span>
-              </div>
-            </Command>
-          </motion.div>
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
+    <AstryxCommandPalette<PaletteSearchItem>
+      isOpen={open}
+      onOpenChange={setOpen}
+      searchSource={SEARCH_SOURCE}
+      onValueChange={runItem}
+      label="Command palette"
+      width={720}
+      maxHeight={480}
+      emptySearchText="No commands found."
+      input={
+        <CommandPaletteInput
+          placeholder="Type a command or search…"
+          endContent={<Kbd keys="Esc" />}
+        />
+      }
+      renderItem={(item) => {
+        const command = item.auxiliaryData?.command;
+        if (!command) return item.label;
+        return (
+          <div className="flex w-full items-center gap-2.5">
+            <span className="w-4 text-[var(--color-text-secondary)]">{command.icon}</span>
+            <span className="flex-1">{command.label}</span>
+            {command.kbd ? <Kbd keys={command.kbd} /> : null}
+          </div>
+        );
+      }}
+    />
   );
 }

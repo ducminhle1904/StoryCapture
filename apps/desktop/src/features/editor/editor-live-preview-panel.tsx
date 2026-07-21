@@ -1,4 +1,8 @@
-import { ScBadge, ScSegmented } from "@storycapture/ui";
+import { Badge as AstryxBadge } from "@astryxdesign/core/Badge";
+import {
+  SegmentedControl as AstryxSegmentedControl,
+  SegmentedControlItem as AstryxSegmentedControlItem,
+} from "@astryxdesign/core/SegmentedControl";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { AlertTriangle, Monitor, Radio, Smartphone, Tablet } from "lucide-react";
 import type { ComponentProps, ReactNode, RefObject } from "react";
@@ -55,12 +59,12 @@ function statusTone({
   previewStatus: PreviewLifecycleStatus;
   streamId: string | null;
   simulatorActiveFrame: SimulatorFrame | null;
-}): ComponentProps<typeof ScBadge>["tone"] {
+}): ComponentProps<typeof AstryxBadge>["variant"] {
   if (simulatorActiveFrame) return "info";
-  if (!appUrlValid) return "muted";
-  if (previewStatus === "error") return "record";
+  if (!appUrlValid) return "neutral";
+  if (previewStatus === "error") return "error";
   if (streamId) return "success";
-  return "warn";
+  return "warning";
 }
 
 function statusLabel({
@@ -140,7 +144,7 @@ function StageShell({
   const size = VIEWPORT_SIZES[viewport];
   return (
     <section
-      className="relative overflow-hidden rounded-[var(--sc-r-lg)] border border-[var(--sc-border-2)] bg-[var(--sc-n-950)] shadow-[var(--sc-sh-3)]"
+      className="relative overflow-hidden rounded-[var(--radius-container)] border border-[var(--color-border-emphasized)] bg-[var(--color-background-surface)] shadow-[var(--shadow-high)]"
       style={{
         aspectRatio: `${size.w} / ${size.h}`,
         width: fit ? `${fit.width}px` : "100%",
@@ -151,14 +155,14 @@ function StageShell({
       aria-label={`Preview viewport: ${VIEWPORT_LABELS[viewport]} (${size.w}x${size.h})`}
     >
       <div className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] items-center gap-1.5 text-[9px] uppercase tracking-[0.12em]">
-        <span className="rounded-[var(--sc-r-xs)] border border-white/10 bg-[var(--sc-n-950)]/70 px-1.5 py-0.5 text-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-sm">
+        <span className="rounded-[var(--radius-inner)] border border-white/10 bg-[var(--color-background-surface)]/70 px-1.5 py-0.5 text-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-sm">
           {VIEWPORT_LABELS[viewport]}
         </span>
-        <span className="rounded-[var(--sc-r-xs)] border border-white/10 bg-[var(--sc-n-950)]/70 px-1.5 py-0.5 font-mono text-white/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-sm">
+        <span className="rounded-[var(--radius-inner)] border border-white/10 bg-[var(--color-background-surface)]/70 px-1.5 py-0.5 font-mono text-white/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-sm">
           {size.w} x {size.h}
         </span>
         {fit ? (
-          <span className="rounded-[var(--sc-r-xs)] border border-white/10 bg-[var(--sc-n-950)]/70 px-1.5 py-0.5 font-mono text-white/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-sm">
+          <span className="rounded-[var(--radius-inner)] border border-white/10 bg-[var(--color-background-surface)]/70 px-1.5 py-0.5 font-mono text-white/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-sm">
             {Math.round(fit.scale * 100)}%
           </span>
         ) : null}
@@ -171,12 +175,14 @@ function StageShell({
 function StartingPreview({ appUrl }: { appUrl: string | null | undefined }) {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-5 text-center">
-      <div className="h-20 w-40 overflow-hidden rounded-[var(--sc-r-sm)] border border-white/10 bg-white/5">
+      <div className="h-20 w-40 overflow-hidden rounded-[var(--radius-inner)] border border-white/10 bg-white/5">
         <div className="h-full w-full animate-pulse bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.08)_42%,transparent_74%)]" />
       </div>
       <div className="space-y-1">
-        <div className="font-mono text-[12px] text-[var(--sc-text-2)]">Starting preview</div>
-        <div className="max-w-[28ch] truncate text-[10px] text-[var(--sc-text-4)]">
+        <div className="font-mono text-[12px] text-[var(--color-text-secondary)]">
+          Starting preview
+        </div>
+        <div className="max-w-[28ch] truncate text-[10px] text-[var(--color-text-disabled)]">
           {appUrl ?? ""}
         </div>
       </div>
@@ -187,16 +193,20 @@ function StartingPreview({ appUrl }: { appUrl: string | null | undefined }) {
 function PreviewErrorState({ appUrl }: { appUrl: string | null | undefined }) {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-5 text-center">
-      <div className="grid h-10 w-10 place-items-center rounded-[var(--sc-r-md)] border border-[var(--sc-record)]/30 bg-[var(--sc-record)]/10">
-        <AlertTriangle size={18} aria-hidden="true" className="text-[var(--sc-record)]" />
+      <div className="grid h-10 w-10 place-items-center rounded-[var(--radius-element)] border border-[var(--story-recording)]/30 bg-[var(--story-recording)]/10">
+        <AlertTriangle size={18} aria-hidden="true" className="text-[var(--story-recording)]" />
       </div>
       <div className="space-y-1">
-        <div className="text-[13px] font-medium text-[var(--sc-text-2)]">Preview did not start</div>
-        <div className="max-w-[30ch] text-[11px] leading-4 text-[var(--sc-text-4)]">
+        <div className="text-[13px] font-medium text-[var(--color-text-secondary)]">
+          Preview did not start
+        </div>
+        <div className="max-w-[30ch] text-[11px] leading-4 text-[var(--color-text-disabled)]">
           Check the app URL or sidecar logs, then reload the preview.
         </div>
         {appUrl ? (
-          <div className="truncate font-mono text-[10px] text-[var(--sc-text-4)]">{appUrl}</div>
+          <div className="truncate font-mono text-[10px] text-[var(--color-text-disabled)]">
+            {appUrl}
+          </div>
         ) : null}
       </div>
     </div>
@@ -206,13 +216,13 @@ function PreviewErrorState({ appUrl }: { appUrl: string | null | undefined }) {
 function NoAppState({ latestRecording }: { latestRecording: RecordingInfo | null }) {
   if (latestRecording) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-[var(--sc-n-950)] p-3">
+      <div className="flex h-full w-full items-center justify-center bg-[var(--color-background-surface)] p-3">
         {/* biome-ignore lint/a11y/useMediaCaption: user-captured screen recording; no caption track exists in source */}
         <video
           src={convertFileSrc(latestRecording.path)}
           controls
           preload="metadata"
-          className="h-full w-full rounded-[var(--sc-r-sm)] border border-white/10 bg-[var(--sc-n-950)] object-contain"
+          className="h-full w-full rounded-[var(--radius-inner)] border border-white/10 bg-[var(--color-background-surface)] object-contain"
         />
       </div>
     );
@@ -220,10 +230,10 @@ function NoAppState({ latestRecording }: { latestRecording: RecordingInfo | null
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-5 text-center">
-      <Radio size={28} aria-hidden="true" className="text-[var(--sc-text-4)]" />
+      <Radio size={28} aria-hidden="true" className="text-[var(--color-text-disabled)]" />
       <div className="space-y-1">
-        <div className="font-mono text-[12px] text-[var(--sc-text-2)]">No app URL</div>
-        <div className="max-w-[30ch] text-[11px] leading-4 text-[var(--sc-text-4)]">
+        <div className="font-mono text-[12px] text-[var(--color-text-secondary)]">No app URL</div>
+        <div className="max-w-[30ch] text-[11px] leading-4 text-[var(--color-text-disabled)]">
           Set <code>meta.app</code> in the story to launch Live Preview.
         </div>
       </div>
@@ -261,29 +271,28 @@ export function EditorLivePreviewPanel({
   });
 
   return (
-    <div className="flex h-full flex-col bg-[var(--sc-surface)]">
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-[var(--sc-border-2)] bg-[var(--sc-chrome-2)] px-3">
-        <span className="text-[12px] font-semibold text-[var(--sc-text)]">Live Preview</span>
+    <div className="flex h-full flex-col bg-[var(--color-background-surface)]">
+      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-[var(--color-border-emphasized)] bg-[var(--color-background-card)] px-3">
+        <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">
+          Live Preview
+        </span>
         {badgeLabel === "live" ? (
           <span
             role="status"
             aria-label="Live"
-            className="h-2 w-2 rounded-full bg-[var(--sc-success)] motion-safe:animate-pulse"
+            className="h-2 w-2 rounded-full bg-[var(--color-success)] motion-safe:animate-pulse"
           />
         ) : null}
-        {badgeTone === "record" ? (
-          <ScBadge tone="record" dot>
-            Check
-          </ScBadge>
-        ) : null}
+        {badgeTone === "error" ? <AstryxBadge variant="error" label="Check" /> : null}
         <PreviewPickerButton />
         <span className="min-w-0 flex-1" />
-        <ScSegmented
+        <AstryxSegmentedControl
           size="sm"
           value={previewViewport}
-          onValueChange={(v) => onViewportChange(v as PreviewViewport)}
-          aria-label="Viewport size"
-          options={[
+          onChange={(v) => onViewportChange(v as PreviewViewport)}
+          label="Viewport size"
+        >
+          {[
             {
               value: "mobile",
               label: <Smartphone size={12} aria-label="Mobile" />,
@@ -296,8 +305,15 @@ export function EditorLivePreviewPanel({
               value: "desktop",
               label: <Monitor size={12} aria-label="Desktop" />,
             },
-          ]}
-        />
+          ].map((option) => (
+            <AstryxSegmentedControlItem
+              key={option.value}
+              value={option.value}
+              label={typeof option.label === "string" ? option.label : option.value}
+              icon={typeof option.label === "string" ? undefined : option.label}
+            />
+          ))}
+        </AstryxSegmentedControl>
       </div>
 
       <PreviewLocationBar
@@ -317,14 +333,14 @@ export function EditorLivePreviewPanel({
 
       <div
         ref={stageAreaRef}
-        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[var(--sc-surface-2)] p-3"
+        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[var(--color-background-card)] p-3"
       >
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 opacity-[0.18]"
           style={{
             backgroundImage:
-              "linear-gradient(var(--sc-border) 1px, transparent 1px), linear-gradient(90deg, var(--sc-border) 1px, transparent 1px)",
+              "linear-gradient(var(--color-border) 1px, transparent 1px), linear-gradient(90deg, var(--color-border) 1px, transparent 1px)",
             backgroundSize: "28px 28px",
           }}
         />
@@ -339,7 +355,7 @@ export function EditorLivePreviewPanel({
               pageWidth={size.w}
               pageHeight={size.h}
               pickerArmed={authorDriverVariant === "picking"}
-              className="h-full w-full rounded-none border-0 bg-[var(--sc-n-950)]"
+              className="h-full w-full rounded-none border-0 bg-[var(--color-background-surface)]"
             />
           ) : previewStatus === "error" ? (
             <PreviewErrorState appUrl={appUrl} />
@@ -351,10 +367,13 @@ export function EditorLivePreviewPanel({
         </StageShell>
       </div>
 
-      <div className="flex h-8 shrink-0 items-center gap-2 border-t border-[var(--sc-border-2)] bg-[var(--sc-surface-2)] px-3 font-mono text-[11px] text-[var(--sc-text-3)]">
-        <ScBadge tone="muted" dot>
-          {latestRecording ? `Latest: ${formatRelative(latestRecording.captured_at)}` : "Idle"}
-        </ScBadge>
+      <div className="flex h-8 shrink-0 items-center gap-2 border-t border-[var(--color-border-emphasized)] bg-[var(--color-background-card)] px-3 font-mono text-[11px] text-[var(--color-text-secondary)]">
+        <AstryxBadge
+          variant="neutral"
+          label={
+            latestRecording ? `Latest: ${formatRelative(latestRecording.captured_at)}` : "Idle"
+          }
+        />
         <span>
           {latestRecording?.width && latestRecording.height
             ? `${latestRecording.width} x ${latestRecording.height}`

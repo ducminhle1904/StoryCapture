@@ -16,8 +16,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
-vi.mock("sonner", () => ({
-  toast: { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn() },
+vi.mock("@/lib/notifications", () => ({
+  notifications: { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn() },
 }));
 vi.mock("@/ipc/automation", () => ({ launchAutomation: mocks.launchAutomation }));
 vi.mock("@/ipc/capture", () => ({

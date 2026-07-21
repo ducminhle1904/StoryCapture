@@ -1,58 +1,27 @@
 # @storycapture/ui
 
-Shared design tokens and UI primitives for StoryCapture.
+StoryCapture's product theme boundary on top of Astryx Gothic.
 
-## What Lives Here
+## Ownership
 
-- `src/tokens.css`
-  Shared token layer used across desktop and web.
-- `src/claude-design/`
-  The shipped `sc-*` design namespace: tokens, app-level styles, and the
-  component language used by the current desktop UI.
-- Package exports:
-  - `@storycapture/ui`
-  - `@storycapture/ui/tokens.css`
-  - `@storycapture/ui/claude-design/tokens.css`
-  - `@storycapture/ui/claude-design/app.css`
+- `@storycapture/ui/theme` exports `StoryCaptureThemeProvider` and
+  `storyCaptureGothicTheme`.
+- `@storycapture/ui/theme.css` is the checked-in Astryx CLI output.
+- `@storycapture/ui/fonts.css` loads the bundled Fustat, JetBrains Mono, and
+  Manufacturing Consent fonts without a runtime network dependency.
+- `@storycapture/ui/product-tokens.css` defines only StoryCapture-specific
+  recording, timeline, track, and Electron chrome aliases.
 
-## Current Role
-
-- Desktop consumes the token layer and `claude-design` styles today.
-- Web can consume the same package, but desktop is the primary consumer right
-  now.
-- Base UI is the primitive layer. Do not introduce Radix-based assumptions
-  here.
-
-## Primitive Families
-
-The `claude-design` primitive barrel exports these `Sc*` families:
-
-- `ScBadge`
-- `ScButton`
-- `ScCallout`
-- `ScCard`
-- `ScEmptyState`
-- `ScField`
-- `ScInput`
-- `ScKbd`
-- `ScSegmented`
-- `ScSelect`
-- `ScSkeleton`
-- `ScSlider`
-- `ScSwitch`
-- `ScTabs`
-- `ScTextarea`
-
-Use these before adding local one-off UI primitives in desktop/web surfaces.
+Generic UI components are imported directly from Astryx subpaths such as
+`@astryxdesign/core/Button`. This package must not wrap or rename Astryx
+components.
 
 ## Commands
 
+- `pnpm --dir packages/ui run theme:build`
+- `pnpm --dir packages/ui run theme:check`
 - `pnpm --dir packages/ui test`
-- `pnpm --dir packages/ui exec vitest run <path>`
+- `pnpm --dir packages/ui run typecheck`
 
-## Notes
-
-- Tokens are hand-authored and versioned in-repo.
-- This package is not “future only” scaffolding anymore.
-- If you change the design language, update `AGENTS.md` only at the headline
-  level and put the real detail in `docs/ARCHITECTURE.md` or package docs.
+Generated files under `src/theme/generated/` are committed and must only be
+updated through `theme:build`.

@@ -1,8 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
-
-import { useSimulatorStore } from "@/state/simulator-store";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SimulatorStepFrame } from "@/ipc/simulator";
+import { useSimulatorStore } from "@/state/simulator-store";
 import { SimulatorTimeline } from "./simulator-timeline";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -18,8 +17,8 @@ vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => p,
 }));
 
-vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
+vi.mock("@/lib/notifications", () => ({
+  notifications: { success: vi.fn(), error: vi.fn() },
 }));
 
 function mkFrame(
@@ -47,7 +46,7 @@ describe("SimulatorTimeline", () => {
       <SimulatorTimeline
         projectFolder="/p"
         storyPath="/p/story.story"
-        storySource={"scene x:\n  click \"ok\"\n"}
+        storySource={'scene x:\n  click "ok"\n'}
         streamId="stream-1"
         appUrlValid={true}
       />,

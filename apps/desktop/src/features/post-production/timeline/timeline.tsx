@@ -85,7 +85,7 @@ export function Timeline({ storyId, pxPerMs = 0.1 }: TimelineProps) {
       TRACK_IDS.map((id) => (
         <div key={id} className="flex">
           <div
-            className="flex shrink-0 items-center border-b border-r border-[var(--sc-border)] bg-[var(--sc-surface)] px-2.5 text-[11px] font-medium text-[var(--sc-text-3)]"
+            className="flex shrink-0 items-center border-b border-r border-[var(--color-border)] bg-[var(--color-background-surface)] px-2.5 text-[11px] font-medium text-[var(--color-text-secondary)]"
             style={{ width: LABEL_GUTTER_PX, height: TRACK_HEIGHT }}
           >
             {TRACK_LABEL[id]}
@@ -165,7 +165,7 @@ export function Timeline({ storyId, pxPerMs = 0.1 }: TimelineProps) {
     >
       <div className="flex">
         <div
-          className="shrink-0 border-b border-r border-[var(--sc-border)] bg-[var(--sc-surface)]"
+          className="shrink-0 border-b border-r border-[var(--color-border)] bg-[var(--color-background-surface)]"
           style={{ width: LABEL_GUTTER_PX, height: RULER_HEIGHT }}
         />
         <div ref={rulerRef} className="cursor-pointer" onPointerDown={onRulerPointerDown}>

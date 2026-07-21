@@ -9,11 +9,11 @@
  * 5. "Regenerate audio" button calls tts_regenerate_clip
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { TtsScriptEditor } from "./TtsScriptEditor";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TtsClipInspector } from "./TtsClipInspector";
+import { TtsScriptEditor } from "./TtsScriptEditor";
 import { useVoiceoverStore } from "./voiceoverStore";
 
 // Mock Tauri invoke
@@ -56,15 +56,9 @@ describe("TtsScriptEditor", () => {
   });
 
   it("renders empty state copy and CTA when no script exists", () => {
-    render(
-      <TtsScriptEditor projectId="proj-1" stepId="step-1" />,
-    );
-    expect(
-      screen.getByText(/Write the line, then render a take\./i),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: /Generate audio/i }),
-    ).toBeTruthy();
+    render(<TtsScriptEditor projectId="proj-1" stepId="step-1" />);
+    expect(screen.getByText(/Write the line, then render a take\./i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Generate audio/i })).toBeTruthy();
   });
 
   it("invokes tts_generate on CTA click with script text", async () => {
@@ -72,9 +66,7 @@ describe("TtsScriptEditor", () => {
     act(() => {
       useVoiceoverStore.getState().setScript("step-1", "Hello world narration text");
     });
-    render(
-      <TtsScriptEditor projectId="proj-1" stepId="step-1" />,
-    );
+    render(<TtsScriptEditor projectId="proj-1" stepId="step-1" />);
     const generateBtn = screen.getByRole("button", {
       name: /Generate audio/i,
     });
@@ -102,13 +94,9 @@ describe("TtsScriptEditor", () => {
         costUsd: 0.01,
       });
     });
-    const user = userEvent.setup();
-    render(
-      <TtsScriptEditor projectId="proj-1" stepId="step-1" />,
-    );
+    render(<TtsScriptEditor projectId="proj-1" stepId="step-1" />);
     const textarea = screen.getByRole("textbox");
-    await user.clear(textarea);
-    await user.type(textarea, "a".repeat(710));
+    fireEvent.change(textarea, { target: { value: "a".repeat(710) } });
     expect(screen.getByText(/710 \/ 800/)).toBeTruthy();
   });
 
@@ -122,17 +110,13 @@ describe("TtsScriptEditor", () => {
         costUsd: 0.015,
       });
     });
-    render(
-      <TtsScriptEditor projectId="proj-1" stepId="step-1" />,
-    );
+    render(<TtsScriptEditor projectId="proj-1" stepId="step-1" />);
     // Edit the script
     const textarea = screen.getByRole("textbox");
     await userEvent.setup().type(textarea, " edited");
     // Should show stale warning
     await waitFor(() => {
-      expect(
-        screen.getByText(/The script changed since the last take\./i),
-      ).toBeTruthy();
+      expect(screen.getByText(/The script changed since the last take\./i)).toBeTruthy();
     });
   });
 

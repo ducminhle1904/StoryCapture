@@ -5,7 +5,7 @@
  * `CursorCaptureSettings` via `StartRecordingArgs.include_cursor`.
  */
 
-import { useId } from "react";
+import { Switch } from "@astryxdesign/core/Switch";
 
 interface CursorToggleProps {
   checked: boolean;
@@ -14,38 +14,17 @@ interface CursorToggleProps {
 }
 
 export function CursorToggle({ checked, onChange, disabled }: CursorToggleProps) {
-  const id = useId();
   return (
-    <label
-      htmlFor={id}
-      className={`flex items-center justify-between text-[var(--color-fg-secondary)] ${
-        disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-      }`}
-      title="Include the real OS cursor in the raw recording."
-    >
-      <span>Capture real cursor</span>
-      <button
-        id={id}
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label="Include real cursor in recording"
-        disabled={disabled}
-        onClick={() => {
-          if (!disabled) onChange(!checked);
-        }}
-        className={`relative h-4 w-7 rounded-full transition-colors duration-150 ${
-          checked
-            ? "bg-[var(--color-accent-primary)]"
-            : "bg-[var(--color-surface-400)]"
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 left-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform duration-150 ${
-            checked ? "translate-x-3" : "translate-x-0"
-          }`}
-        />
-      </button>
-    </label>
+    <Switch
+      label="Capture real cursor"
+      description="Include the real OS cursor in the raw recording."
+      value={checked}
+      onChange={onChange}
+      isDisabled={disabled}
+      disabledMessage="Recording controls are currently locked"
+      labelPosition="start"
+      labelSpacing="spread"
+      width="100%"
+    />
   );
 }

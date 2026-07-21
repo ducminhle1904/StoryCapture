@@ -6,6 +6,7 @@
  * States: generated, out-of-sync-with-script, regenerating, failed, selected.
  */
 
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
 import type { TtsClip } from "./voiceoverStore";
 
 export type TtsClipStatus =
@@ -27,11 +28,11 @@ export interface TtsClipInspectorProps {
 }
 
 const STATUS_COLORS: Record<TtsClipStatus, string> = {
-  generated: "bg-[var(--success)]/15 text-[var(--success)]",
-  "out-of-sync-with-script": "bg-[var(--warning)]/15 text-[var(--warning)]",
-  regenerating: "bg-[var(--info)]/15 text-[var(--info)]",
-  failed: "bg-[var(--destructive)]/15 text-[var(--destructive)]",
-  selected: "bg-[var(--accent)]/15 text-[var(--accent)]",
+  generated: "bg-[var(--color-success)]/15 text-[var(--color-success)]",
+  "out-of-sync-with-script": "bg-[var(--color-warning)]/15 text-[var(--color-warning)]",
+  regenerating: "bg-[var(--color-text-blue)]/15 text-[var(--color-text-blue)]",
+  failed: "bg-[var(--color-error)]/15 text-[var(--color-error)]",
+  selected: "bg-[var(--color-accent)]/15 text-[var(--color-accent)]",
 };
 
 const STATUS_LABELS: Record<TtsClipStatus, string> = {
@@ -60,11 +61,11 @@ export function TtsClipInspector({
   return (
     <div
       data-testid="tts-clip-inspector"
-      className="flex items-center justify-between gap-4 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--card)] px-4 py-3"
+      className="flex items-center justify-between gap-4 rounded-[var(--radius-container)] border border-[var(--color-border)] bg-[var(--color-background-card)] px-4 py-3"
     >
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-semibold text-[var(--foreground)]">
+          <span className="truncate text-sm font-semibold text-[var(--color-text-primary)]">
             {stepLabel ?? stepId}
           </span>
           <span
@@ -73,9 +74,9 @@ export function TtsClipInspector({
             {STATUS_LABELS[status]}
           </span>
         </div>
-        <div className="mt-1 flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
+        <div className="mt-1 flex items-center gap-3 text-xs text-[var(--color-text-secondary)]">
           <span>{presetName}</span>
-          <span className="text-[var(--border)]">/</span>
+          <span className="text-[var(--color-border)]">/</span>
           <span
             className="font-mono"
             style={{ fontFamily: "JetBrains Mono, monospace", fontSize: "12px" }}
@@ -84,21 +85,22 @@ export function TtsClipInspector({
           </span>
           {cacheHit !== undefined ? (
             <>
-              <span className="text-[var(--border)]">/</span>
+              <span className="text-[var(--color-border)]">/</span>
               <span>{cacheHit ? "Cached" : "Fresh render"}</span>
             </>
           ) : null}
         </div>
       </div>
 
-      <button
-        type="button"
-        className="shrink-0 rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/5 disabled:opacity-50"
+      <AstryxButton
+        variant="secondary"
+        size="sm"
         onClick={onRegenerate}
-        disabled={status === "regenerating"}
+        isDisabled={status === "regenerating"}
+        label="Regenerate voiceover"
       >
         {status === "regenerating" ? "Regenerating..." : "Regenerate"}
-      </button>
+      </AstryxButton>
     </div>
   );
 }

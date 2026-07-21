@@ -1,11 +1,10 @@
 /**
- * Fit-mode knob. Single-select ToggleGroup over the 3 FitModeDto values:
+ * Fit-mode knob. Single-select Astryx ToggleButtonGroup over the 3 FitModeDto values:
  * letterbox / fill-crop / stretch.
  */
 
+import { ToggleButton, ToggleButtonGroup } from "@astryxdesign/core/ToggleButton";
 import type { FitModeDto } from "@storycapture/shared-types";
-
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useOutputPrefsStore } from "@/state/output-prefs";
 
 import { FIT_OPTION_LABELS, LABEL_FIT } from "./copy";
@@ -21,22 +20,20 @@ export function FitModeControl({ disabled }: Props) {
   const setKnob = useOutputPrefsStore((s) => s.setRecordingKnob);
 
   return (
-    <ToggleGroup
-      aria-label={LABEL_FIT}
-      value={[fit]}
-      onValueChange={(next) => {
-        const v = next[0];
-        if (typeof v === "string" && (ORDER as string[]).includes(v)) {
-          setKnob("fit", v as FitModeDto);
+    <ToggleButtonGroup
+      label={LABEL_FIT}
+      value={fit}
+      onChange={(next) => {
+        if (next && (ORDER as string[]).includes(next)) {
+          setKnob("fit", next as FitModeDto);
         }
       }}
-      disabled={disabled}
+      isDisabled={disabled}
+      size="sm"
     >
       {ORDER.map((k) => (
-        <ToggleGroupItem key={k} value={k}>
-          {FIT_OPTION_LABELS[k]}
-        </ToggleGroupItem>
+        <ToggleButton key={k} value={k} label={FIT_OPTION_LABELS[k]} />
       ))}
-    </ToggleGroup>
+    </ToggleButtonGroup>
   );
 }

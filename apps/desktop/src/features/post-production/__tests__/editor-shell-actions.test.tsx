@@ -42,7 +42,7 @@ vi.mock("@/ipc/parse", () => ({
   parseStory: parseMocks.parseStory,
 }));
 
-vi.mock("sonner", () => ({ toast: { warning: toastMocks.warning } }));
+vi.mock("@/lib/notifications", () => ({ notifications: { warning: toastMocks.warning } }));
 
 vi.mock("@/ipc/actions", () => ({
   actionSidecarFps: (actions: { fps_num: number; fps_den: number }) =>

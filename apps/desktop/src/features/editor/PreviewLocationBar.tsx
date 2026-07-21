@@ -1,12 +1,8 @@
-import { ScButton, cn } from "@storycapture/ui";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
 import { ArrowLeft, ArrowRight, Globe, RotateCcw } from "lucide-react";
-
-import {
-  authorPreviewBack,
-  authorPreviewForward,
-  authorPreviewReload,
-} from "@/ipc/preview";
+import { authorPreviewBack, authorPreviewForward, authorPreviewReload } from "@/ipc/preview";
 import { frontendLog } from "@/lib/log";
+import { cn } from "@/lib/utils";
 
 export interface PreviewLocationBarProps {
   streamId: string | null;
@@ -34,54 +30,62 @@ export function PreviewLocationBar({
   return (
     <div
       data-testid="preview-location-bar"
-      className="flex h-8 shrink-0 items-center gap-1 border-b border-[var(--sc-border-2)] bg-[var(--sc-chrome-2)] px-2"
+      className="flex h-8 shrink-0 items-center gap-1 border-b border-[var(--color-border-emphasized)] bg-[var(--color-background-card)] px-2"
     >
-      <ScButton
-        size="icon"
+      <AstryxButton
+        size="sm"
+        isIconOnly
         variant="ghost"
         icon={<ArrowLeft size={14} />}
         aria-label="Back"
-        title="Back"
-        disabled={navDisabled || !canGoBack}
+        tooltip="Back"
+        isDisabled={navDisabled || !canGoBack}
         onClick={() => {
           if (streamId == null) return;
           authorPreviewBack(streamId).catch(logFailure("back"));
         }}
+        label="Back"
       />
-      <ScButton
-        size="icon"
+      <AstryxButton
+        size="sm"
+        isIconOnly
         variant="ghost"
         icon={<ArrowRight size={14} />}
         aria-label="Forward"
-        title="Forward"
-        disabled={navDisabled || !canGoForward}
+        tooltip="Forward"
+        isDisabled={navDisabled || !canGoForward}
         onClick={() => {
           if (streamId == null) return;
           authorPreviewForward(streamId).catch(logFailure("forward"));
         }}
+        label="Forward"
       />
-      <ScButton
-        size="icon"
+      <AstryxButton
+        size="sm"
+        isIconOnly
         variant="ghost"
         icon={<RotateCcw size={14} />}
         aria-label="Reload"
-        title="Reload"
-        disabled={navDisabled}
+        tooltip="Reload"
+        isDisabled={navDisabled}
         onClick={() => {
           if (streamId == null) return;
           authorPreviewReload(streamId).catch(logFailure("reload"));
         }}
+        label="Reload"
       />
+      {/* biome-ignore lint/a11y/useSemanticElements: This is a selectable, read-only URL display rather than an editable field. */}
       <div
         data-testid="preview-url-display"
         role="textbox"
         aria-readonly="true"
         aria-label="Current preview URL"
+        tabIndex={0}
         title={url ?? ""}
         className={cn(
-          "flex h-6 flex-1 items-center gap-1.5 truncate rounded-[var(--radius-sm)]",
-          "border border-[var(--sc-border-2)] bg-[var(--sc-surface-2)] px-2",
-          "font-mono text-[11px] text-[var(--sc-text-2)]",
+          "flex h-6 flex-1 items-center gap-1.5 truncate rounded-[var(--radius-inner)]",
+          "border border-[var(--color-border-emphasized)] bg-[var(--color-background-card)] px-2",
+          "font-mono text-[11px] text-[var(--color-text-secondary)]",
           "cursor-text select-text",
         )}
       >
@@ -89,7 +93,7 @@ export function PreviewLocationBar({
         {url ? (
           <span className="truncate">{url}</span>
         ) : (
-          <span className="truncate text-[var(--sc-text-4)]">—</span>
+          <span className="truncate text-[var(--color-text-disabled)]">—</span>
         )}
       </div>
     </div>

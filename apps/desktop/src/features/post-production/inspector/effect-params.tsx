@@ -5,10 +5,18 @@
  * actions through the undo slice.
  */
 
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { DropdownMenu as AstryxDropdownMenu } from "@astryxdesign/core/DropdownMenu";
+import { NumberInput as AstryxNumberInput } from "@astryxdesign/core/NumberInput";
+import { Selector as AstryxSelector } from "@astryxdesign/core/Selector";
+import { Slider as AstryxSlider } from "@astryxdesign/core/Slider";
+import { Switch as AstryxSwitch } from "@astryxdesign/core/Switch";
+import { Tab as AstryxTab, TabList as AstryxTabList } from "@astryxdesign/core/TabList";
+import { TextArea as AstryxTextArea } from "@astryxdesign/core/TextArea";
+import { TextInput as AstryxTextInput } from "@astryxdesign/core/TextInput";
 import type { ReactNode } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { SelectField } from "@/components/ui/select-field";
 import { createClipId } from "../state/clip-id";
 import {
   CURSOR_CLICK_EFFECT_COLORS,
@@ -67,18 +75,9 @@ import {
 } from "../state/timeline-slice";
 import { TextAppearanceControls } from "./text-appearance-controls";
 
-const FIELD_CLASS =
-  "min-h-10 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]";
-
-const RANGE_CLASS = "w-full accent-[var(--color-accent,#ff5b76)]";
 const SECTION_CLASS =
-  "min-w-0 max-w-full rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3";
+  "min-w-0 max-w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-background-card)] p-3";
 const FIELD_ROW_CLASS = "flex flex-col gap-1.5";
-const SECONDARY_BUTTON_CLASS =
-  "rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-2 text-xs font-medium text-[var(--color-fg)] transition-[background-color,transform,border-color] hover:border-[var(--color-border)] hover:bg-[var(--color-surface-100)] active:scale-[0.98] disabled:opacity-45";
-const TINY_BUTTON_CLASS =
-  "rounded-[6px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-1 text-[10px] font-medium text-[var(--color-fg-muted)] transition-[background-color,color,transform,border-color] hover:border-[var(--color-border)] hover:text-[var(--color-fg)] active:scale-[0.98]";
-
 const FX_LAYER_IDS: TrackId[] = ["annotations", "zoom", "cursor", "sound", "video"];
 
 const PRESET_OPTIONS: ZoomPreset[] = ["DYNAMIC", "CALM", "SUBTLE"];
@@ -271,7 +270,7 @@ interface FieldLabelProps {
 
 function FieldLabel({ children }: FieldLabelProps) {
   return (
-    <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">
+    <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--color-text-secondary)]">
       {children}
     </span>
   );
@@ -279,18 +278,22 @@ function FieldLabel({ children }: FieldLabelProps) {
 
 function ValuePill({ children }: FieldLabelProps) {
   return (
-    <span className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-0.5 font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)] shadow-[inset_0_1px_0_rgba(255,255,255,0.56)]">
+    <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-background-card)] px-2 py-0.5 font-mono text-[10px] tabular-nums text-[var(--color-text-secondary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.56)]">
       {children}
     </span>
   );
 }
 
 function SectionTitle({ children }: FieldLabelProps) {
-  return <legend className="text-xs font-semibold text-[var(--color-fg)]">{children}</legend>;
+  return (
+    <legend className="text-xs font-semibold text-[var(--color-text-primary)]">{children}</legend>
+  );
 }
 
 function SectionCopy({ children }: FieldLabelProps) {
-  return <p className="mt-1 text-[11px] leading-4 text-[var(--color-fg-muted)]">{children}</p>;
+  return (
+    <p className="mt-1 text-[11px] leading-4 text-[var(--color-text-secondary)]">{children}</p>
+  );
 }
 
 function clipTypeLabel(trackId: TrackId): string {
@@ -392,82 +395,82 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
       case "element": {
         const target = clip.target;
         return (
-          <label className={FIELD_ROW_CLASS}>
+          <div className={FIELD_ROW_CLASS}>
             <FieldLabel>Selector</FieldLabel>
-            <input
-              type="text"
-              aria-label="Zoom element selector"
+            <AstryxTextInput
+              label="Zoom element selector"
+              isLabelHidden
               value={target.selector}
-              onChange={(e) => onSetParam(targetPath, "selector", target.selector, e.target.value)}
-              className={FIELD_CLASS}
+              onChange={(value) => onSetParam(targetPath, "selector", target.selector, value)}
+              width="100%"
             />
-          </label>
+          </div>
         );
       }
       case "fixed-region": {
         const target = clip.target;
         return (
           <div className="grid grid-cols-2 gap-2">
-            <label className={FIELD_ROW_CLASS}>
+            <div className={FIELD_ROW_CLASS}>
               <FieldLabel>Region X</FieldLabel>
-              <input
-                type="number"
-                aria-label="Zoom region x"
+              <AstryxNumberInput
+                label="Zoom region x"
+                isLabelHidden
                 value={target.top_left.x}
-                step="0.01"
-                min="0"
-                max="1"
-                onChange={(e) =>
-                  onVec2Change(`${targetPath}.top_left`, target.top_left, "x", e.target.value)
+                step={0.01}
+                min={0}
+                max={1}
+                onChange={(value) =>
+                  onVec2Change(`${targetPath}.top_left`, target.top_left, "x", String(value))
                 }
-                className={FIELD_CLASS}
+                width="100%"
               />
-            </label>
-            <label className={FIELD_ROW_CLASS}>
+            </div>
+            <div className={FIELD_ROW_CLASS}>
               <FieldLabel>Region Y</FieldLabel>
-              <input
-                type="number"
-                aria-label="Zoom region y"
+              <AstryxNumberInput
+                label="Zoom region y"
+                isLabelHidden
                 value={target.top_left.y}
-                step="0.01"
-                min="0"
-                max="1"
-                onChange={(e) =>
-                  onVec2Change(`${targetPath}.top_left`, target.top_left, "y", e.target.value)
+                step={0.01}
+                min={0}
+                max={1}
+                onChange={(value) =>
+                  onVec2Change(`${targetPath}.top_left`, target.top_left, "y", String(value))
                 }
-                className={FIELD_CLASS}
+                width="100%"
               />
-            </label>
-            <label className={FIELD_ROW_CLASS}>
+            </div>
+            <div className={FIELD_ROW_CLASS}>
               <FieldLabel>Width</FieldLabel>
-              <input
-                type="number"
-                aria-label="Zoom region width"
+              <AstryxNumberInput
+                label="Zoom region width"
+                isLabelHidden
                 value={target.size.x}
-                step="0.01"
-                min="0"
-                max="1"
-                onChange={(e) =>
-                  onVec2Change(`${targetPath}.size`, target.size, "x", e.target.value)
+                step={0.01}
+                min={0}
+                max={1}
+                onChange={(value) =>
+                  onVec2Change(`${targetPath}.size`, target.size, "x", String(value))
                 }
-                className={FIELD_CLASS}
+                width="100%"
               />
-            </label>
-            <label className={FIELD_ROW_CLASS}>
+            </div>
+            <div className={FIELD_ROW_CLASS}>
               <FieldLabel>Height</FieldLabel>
-              <input
-                type="number"
-                aria-label="Zoom region height"
+              <AstryxNumberInput
+                label="Zoom region height"
+                isLabelHidden
                 value={target.size.y}
-                step="0.01"
-                min="0"
-                max="1"
-                onChange={(e) =>
-                  onVec2Change(`${targetPath}.size`, target.size, "y", e.target.value)
+                step={0.01}
+                min={0}
+                max={1}
+                onChange={(value) =>
+                  onVec2Change(`${targetPath}.size`, target.size, "y", String(value))
                 }
-                className={FIELD_CLASS}
+                width="100%"
               />
-            </label>
+            </div>
           </div>
         );
       }
@@ -484,10 +487,11 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
       </div>
       <div className={FIELD_ROW_CLASS}>
         <FieldLabel>Target</FieldLabel>
-        <SelectField
-          aria-label="Zoom target"
+        <AstryxSelector
+          label="Zoom target"
+          isLabelHidden
           value={clip.target.kind}
-          onValueChange={(value) => {
+          onChange={(value) => {
             const next = defaultTarget(value as ZoomTarget["kind"]);
             onSetParam(nodePath, "target", clip.target, next);
           }}
@@ -495,61 +499,58 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
         />
       </div>
       {targetControls}
-      <label className={FIELD_ROW_CLASS}>
+      <div className={FIELD_ROW_CLASS}>
         <span className="flex items-center justify-between gap-2">
           <FieldLabel>Scale</FieldLabel>
           <ValuePill>{clip.scale.toFixed(2)}x</ValuePill>
         </span>
-        <input
-          type="range"
-          aria-label="Zoom scale"
+        <AstryxSlider
+          label="Zoom scale"
+          isLabelHidden
           value={clip.scale}
-          min="1"
-          max="3"
-          step="0.05"
-          onChange={(e) => {
-            const next = parseFiniteNumber(e.target.value, clip.scale);
-            if (next !== clip.scale) onSetParam(nodePath, "scale", clip.scale, next);
+          min={1}
+          max={3}
+          step={0.05}
+          onChange={(value: number) => {
+            if (value !== clip.scale) onSetParam(nodePath, "scale", clip.scale, value);
           }}
-          className={RANGE_CLASS}
         />
-      </label>
-      <div className="grid grid-cols-2 gap-2 rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-2">
-        <label className={FIELD_ROW_CLASS}>
+      </div>
+      <div className="grid grid-cols-2 gap-2 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-background-card)] p-2">
+        <div className={FIELD_ROW_CLASS}>
           <FieldLabel>Center X</FieldLabel>
-          <input
-            type="number"
-            aria-label="Zoom center x"
+          <AstryxNumberInput
+            label="Zoom center x"
+            isLabelHidden
             value={clip.center.x}
-            step="0.01"
-            min="0"
-            max="1"
-            onChange={(e) => onVec2Change(centerPath, clip.center, "x", e.target.value)}
-            className={FIELD_CLASS}
+            step={0.01}
+            min={0}
+            max={1}
+            onChange={(value) => onVec2Change(centerPath, clip.center, "x", String(value))}
+            width="100%"
           />
-        </label>
-        <label className={FIELD_ROW_CLASS}>
+        </div>
+        <div className={FIELD_ROW_CLASS}>
           <FieldLabel>Center Y</FieldLabel>
-          <input
-            type="number"
-            aria-label="Zoom center y"
+          <AstryxNumberInput
+            label="Zoom center y"
+            isLabelHidden
             value={clip.center.y}
-            step="0.01"
-            min="0"
-            max="1"
-            onChange={(e) => onVec2Change(centerPath, clip.center, "y", e.target.value)}
-            className={FIELD_CLASS}
+            step={0.01}
+            min={0}
+            max={1}
+            onChange={(value) => onVec2Change(centerPath, clip.center, "y", String(value))}
+            width="100%"
           />
-        </label>
+        </div>
       </div>
       <div className={FIELD_ROW_CLASS}>
         <FieldLabel>Preset</FieldLabel>
-        <SelectField
-          aria-label="Zoom preset"
+        <AstryxSelector
+          label="Zoom preset"
+          isLabelHidden
           value={clip.preset ?? "DYNAMIC"}
-          onValueChange={(value) =>
-            onSetParam(nodePath, "preset", clip.preset, value as ZoomPreset)
-          }
+          onChange={(value) => onSetParam(nodePath, "preset", clip.preset, value as ZoomPreset)}
           options={presetSelectOptions}
         />
       </div>
@@ -631,51 +632,55 @@ function AnnotationParams({ clip, nodePath, onSetParam, onReplaceClip }: Annotat
           <SectionTitle>Text</SectionTitle>
           <SectionCopy>Preset, copy, and fast placement for the selected callout.</SectionCopy>
         </div>
-        <label className={FIELD_ROW_CLASS}>
+        <div className={FIELD_ROW_CLASS}>
           <FieldLabel>Style</FieldLabel>
-          <SelectField
-            aria-label="Text style preset"
+          <AstryxSelector
+            label="Text style preset"
+            isLabelHidden
             value={clip.styleId ?? "callout"}
-            onValueChange={(value) => {
+            onChange={(value) => {
               const nextStyle = value as TextStyleId;
               onReplaceClip(resetAnnotationAppearance(clip, nextStyle));
             }}
             options={textStyleSelectOptions}
           />
-        </label>
-        <button
-          type="button"
-          className={SECONDARY_BUTTON_CLASS}
+        </div>
+        <AstryxButton
+          variant="secondary"
+          size="sm"
+          label="Reset appearance"
           onClick={() => onReplaceClip(resetAnnotationAppearance(clip, clip.styleId ?? "callout"))}
         >
           Reset appearance
-        </button>
-        <label className={FIELD_ROW_CLASS}>
+        </AstryxButton>
+        <div className={FIELD_ROW_CLASS}>
           <FieldLabel>Content</FieldLabel>
-          <textarea
-            aria-label="Annotation text"
+          <AstryxTextArea
+            label="Annotation text"
+            isLabelHidden
             value={clip.text}
             rows={3}
-            onChange={(e) => onSetParam(nodePath, "text", clip.text, e.target.value)}
-            className={`${FIELD_CLASS} resize-y`}
+            onChange={(value) => onSetParam(nodePath, "text", clip.text, value)}
+            width="100%"
           />
-        </label>
+        </div>
         <div className="grid grid-cols-3 gap-2">
           {[
             { label: "Top", pos: { x: 0.5, y: 0.16 } },
             { label: "Center", pos: { x: 0.5, y: 0.5 } },
             { label: "Bottom", pos: { x: 0.5, y: 0.84 } },
           ].map((item) => (
-            <button
+            <AstryxButton
               key={item.label}
-              type="button"
-              className={SECONDARY_BUTTON_CLASS}
+              variant="secondary"
+              size="sm"
+              label={`Place annotation ${item.label.toLowerCase()}`}
               onClick={() => {
                 setScreenPosition(item.pos);
               }}
             >
               {item.label}
-            </button>
+            </AstryxButton>
           ))}
         </div>
       </fieldset>
@@ -691,17 +696,18 @@ function AnnotationParams({ clip, nodePath, onSetParam, onReplaceClip }: Annotat
         />
       </fieldset>
 
-      <details className="rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3">
-        <summary className="cursor-pointer text-xs font-semibold text-[var(--color-fg)]">
+      <details className="rounded-[8px] border border-[var(--color-border)] bg-[var(--color-background-card)] p-3">
+        <summary className="cursor-pointer text-xs font-semibold text-[var(--color-text-primary)]">
           Advanced position and motion
         </summary>
         <div className="mt-3 flex flex-col gap-3">
-          <label className={FIELD_ROW_CLASS}>
+          <div className={FIELD_ROW_CLASS}>
             <FieldLabel>Anchor</FieldLabel>
-            <SelectField
-              aria-label="Text anchor"
+            <AstryxSelector
+              label="Text anchor"
+              isLabelHidden
               value={anchor.kind}
-              onValueChange={(value) => {
+              onChange={(value) => {
                 const kind = value as TextAnchor["kind"];
                 const next: TextAnchor =
                   kind === "safe-area"
@@ -721,13 +727,13 @@ function AnnotationParams({ clip, nodePath, onSetParam, onReplaceClip }: Annotat
               }}
               options={textAnchorKindSelectOptions}
             />
-          </label>
+          </div>
           {anchor.kind === "target" ? (
             <div
               className={`rounded-[8px] border px-3 py-2 text-xs ${
                 targetWarning
                   ? "border-amber-400/28 bg-amber-400/8 text-amber-900 dark:text-amber-100"
-                  : "border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-[var(--color-fg-muted)]"
+                  : "border-[var(--color-border)] bg-[var(--color-background-card)] text-[var(--color-text-secondary)]"
               }`}
             >
               {targetWarning
@@ -736,37 +742,44 @@ function AnnotationParams({ clip, nodePath, onSetParam, onReplaceClip }: Annotat
             </div>
           ) : null}
           <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              className={SECONDARY_BUTTON_CLASS}
+            <AstryxButton
+              variant="secondary"
+              size="sm"
+              label="Fit step"
+              tooltip="Fit annotation to current step"
               onClick={fitToCurrentStep}
-              disabled={!currentStep}
+              isDisabled={!currentStep}
             >
               Fit step
-            </button>
-            <button
-              type="button"
-              className={SECONDARY_BUTTON_CLASS}
+            </AstryxButton>
+            <AstryxButton
+              variant="secondary"
+              size="sm"
+              label="Attach target"
+              tooltip="Attach annotation to current target"
               onClick={attachToCurrentTarget}
-              disabled={!currentStep?.stepId}
+              isDisabled={!currentStep?.stepId}
             >
               Attach target
-            </button>
-            <button
-              type="button"
-              className={SECONDARY_BUTTON_CLASS}
+            </AstryxButton>
+            <AstryxButton
+              variant="secondary"
+              size="sm"
+              label="Avoid"
+              tooltip="Avoid current target or cursor"
               onClick={avoidCurrentTargetOrCursor}
             >
               Avoid
-            </button>
+            </AstryxButton>
           </div>
           {anchor.kind === "target" ? (
-            <label className={FIELD_ROW_CLASS}>
+            <div className={FIELD_ROW_CLASS}>
               <FieldLabel>Target placement</FieldLabel>
-              <SelectField
-                aria-label="Text target placement"
+              <AstryxSelector
+                label="Text target placement"
+                isLabelHidden
                 value={anchor.placement}
-                onValueChange={(value) => {
+                onChange={(value) => {
                   const nextAnchor: TextAnchor = {
                     ...anchor,
                     placement: value as Extract<TextAnchor, { kind: "target" }>["placement"],
@@ -782,15 +795,16 @@ function AnnotationParams({ clip, nodePath, onSetParam, onReplaceClip }: Annotat
                 }}
                 options={textTargetPlacementSelectOptions}
               />
-            </label>
+            </div>
           ) : null}
           {anchor.kind === "safe-area" ? (
-            <label className={FIELD_ROW_CLASS}>
+            <div className={FIELD_ROW_CLASS}>
               <FieldLabel>Safe placement</FieldLabel>
-              <SelectField
-                aria-label="Text safe-area placement"
+              <AstryxSelector
+                label="Text safe-area placement"
+                isLabelHidden
                 value={anchor.placement}
-                onValueChange={(value) => {
+                onChange={(value) => {
                   const placement = value as Extract<
                     TextAnchor,
                     { kind: "safe-area" }
@@ -801,81 +815,80 @@ function AnnotationParams({ clip, nodePath, onSetParam, onReplaceClip }: Annotat
                 }}
                 options={textSafeAreaSelectOptions}
               />
-            </label>
+            </div>
           ) : null}
           {anchor.kind === "cursor" ? (
             <div className="grid grid-cols-2 gap-2">
-              <label className={FIELD_ROW_CLASS}>
+              <div className={FIELD_ROW_CLASS}>
                 <FieldLabel>Cursor offset X</FieldLabel>
-                <input
-                  type="number"
-                  aria-label="Text cursor offset x"
+                <AstryxNumberInput
+                  label="Text cursor offset x"
+                  isLabelHidden
                   value={anchor.offset.x}
-                  step="0.01"
-                  onChange={(e) => {
-                    const next = parseFiniteNumber(e.target.value, anchor.offset.x);
+                  step={0.01}
+                  onChange={(next) => {
                     onSetParam(nodePath, "anchor", clip.anchor, {
                       kind: "cursor",
                       offset: { ...anchor.offset, x: next },
                     });
                   }}
-                  className={FIELD_CLASS}
+                  width="100%"
                 />
-              </label>
-              <label className={FIELD_ROW_CLASS}>
+              </div>
+              <div className={FIELD_ROW_CLASS}>
                 <FieldLabel>Cursor offset Y</FieldLabel>
-                <input
-                  type="number"
-                  aria-label="Text cursor offset y"
+                <AstryxNumberInput
+                  label="Text cursor offset y"
+                  isLabelHidden
                   value={anchor.offset.y}
-                  step="0.01"
-                  onChange={(e) => {
-                    const next = parseFiniteNumber(e.target.value, anchor.offset.y);
+                  step={0.01}
+                  onChange={(next) => {
                     onSetParam(nodePath, "anchor", clip.anchor, {
                       kind: "cursor",
                       offset: { ...anchor.offset, y: next },
                     });
                   }}
-                  className={FIELD_CLASS}
+                  width="100%"
                 />
-              </label>
+              </div>
             </div>
           ) : null}
           <div className="grid grid-cols-2 gap-2">
-            <label className={FIELD_ROW_CLASS}>
+            <div className={FIELD_ROW_CLASS}>
               <FieldLabel>Position X</FieldLabel>
-              <input
-                type="number"
-                aria-label="Annotation position x"
+              <AstryxNumberInput
+                label="Annotation position x"
+                isLabelHidden
                 value={clip.pos.x}
-                step="0.01"
-                min="0"
-                max="1"
-                onChange={(e) => onPosChange("x", e.target.value)}
-                className={FIELD_CLASS}
+                step={0.01}
+                min={0}
+                max={1}
+                onChange={(value) => onPosChange("x", String(value))}
+                width="100%"
               />
-            </label>
-            <label className={FIELD_ROW_CLASS}>
+            </div>
+            <div className={FIELD_ROW_CLASS}>
               <FieldLabel>Position Y</FieldLabel>
-              <input
-                type="number"
-                aria-label="Annotation position y"
+              <AstryxNumberInput
+                label="Annotation position y"
+                isLabelHidden
                 value={clip.pos.y}
-                step="0.01"
-                min="0"
-                max="1"
-                onChange={(e) => onPosChange("y", e.target.value)}
-                className={FIELD_CLASS}
+                step={0.01}
+                min={0}
+                max={1}
+                onChange={(value) => onPosChange("y", String(value))}
+                width="100%"
               />
-            </label>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <label className={FIELD_ROW_CLASS}>
+            <div className={FIELD_ROW_CLASS}>
               <FieldLabel>In</FieldLabel>
-              <SelectField
-                aria-label="Text animation in"
+              <AstryxSelector
+                label="Text animation in"
+                isLabelHidden
                 value={animation.in}
-                onValueChange={(value) =>
+                onChange={(value) =>
                   onSetParam(nodePath, "animation", clip.animation, {
                     ...animation,
                     in: value as TextAnimationKind,
@@ -883,13 +896,14 @@ function AnnotationParams({ clip, nodePath, onSetParam, onReplaceClip }: Annotat
                 }
                 options={textAnimInSelectOptions}
               />
-            </label>
-            <label className={FIELD_ROW_CLASS}>
+            </div>
+            <div className={FIELD_ROW_CLASS}>
               <FieldLabel>Out</FieldLabel>
-              <SelectField
-                aria-label="Text animation out"
+              <AstryxSelector
+                label="Text animation out"
+                isLabelHidden
                 value={animation.out}
-                onValueChange={(value) =>
+                onChange={(value) =>
                   onSetParam(nodePath, "animation", clip.animation, {
                     ...animation,
                     out: value as "none" | "fade",
@@ -897,7 +911,7 @@ function AnnotationParams({ clip, nodePath, onSetParam, onReplaceClip }: Annotat
                 }
                 options={textAnimOutSelectOptions}
               />
-            </label>
+            </div>
           </div>
         </div>
       </details>
@@ -933,19 +947,21 @@ function CursorParams({
       <SectionTitle>Cursor style</SectionTitle>
       <div className={FIELD_ROW_CLASS}>
         <FieldLabel>Skin</FieldLabel>
-        <SelectField
-          aria-label="Cursor skin"
+        <AstryxSelector
+          label="Cursor skin"
+          isLabelHidden
           value={clip.skin}
-          onValueChange={(value) => onSetParam(nodePath, "skin", clip.skin, value as CursorSkin)}
+          onChange={(value) => onSetParam(nodePath, "skin", clip.skin, value as CursorSkin)}
           options={cursorSkinSelectOptions}
         />
       </div>
       <div className={FIELD_ROW_CLASS}>
         <FieldLabel>Motion</FieldLabel>
-        <SelectField
-          aria-label="Cursor motion"
+        <AstryxSelector
+          label="Cursor motion"
+          isLabelHidden
           value={normalizeCursorMotionPreset(clip.motionPreset)}
-          onValueChange={(value) => {
+          onChange={(value) => {
             const preset = value as CursorMotionPreset;
             if (onReflow) onReflow(preset, clip.preserveFullMotion ?? false);
             else
@@ -959,89 +975,86 @@ function CursorParams({
           options={cursorMotionSelectOptions}
         />
       </div>
-      <label className={FIELD_ROW_CLASS}>
+      <div className={FIELD_ROW_CLASS}>
         <span>
           <FieldLabel>Preserve full motion</FieldLabel>
-          <span className="mt-1 block text-[10px] leading-4 text-[var(--color-fg-muted)]">
+          <span className="mt-1 block text-[10px] leading-4 text-[var(--color-text-secondary)]">
             Off by default. Adds an exact source hold only when motion cannot fit before input.
           </span>
         </span>
-        <input
-          type="checkbox"
-          aria-label="Preserve full cursor motion"
-          checked={clip.preserveFullMotion ?? false}
-          onChange={(event) =>
-            onReflow?.(normalizeCursorMotionPreset(clip.motionPreset), event.target.checked)
-          }
+        <AstryxSwitch
+          label="Preserve full cursor motion"
+          isLabelHidden
+          value={clip.preserveFullMotion ?? false}
+          onChange={(value) => onReflow?.(normalizeCursorMotionPreset(clip.motionPreset), value)}
         />
-      </label>
+      </div>
       {!clip.preserveFullMotion && (compressedSegments ?? 0) > 0 ? (
-        <p className="text-[10px] leading-4 text-[var(--color-warning,var(--color-fg-muted))]">
+        <p className="text-[10px] leading-4 text-[var(--color-warning,var(--color-text-secondary))]">
           {compressedSegments} movement{compressedSegments === 1 ? "" : "s"} compressed to keep
           input synchronized.
         </p>
       ) : null}
-      <div className="flex flex-col gap-3 rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-2">
+      <div className="flex flex-col gap-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-background-card)] p-2">
         <div>
           <FieldLabel>Click effect</FieldLabel>
           {!supportsClickEffects ? (
-            <p className="mt-1 text-[10px] leading-4 text-[var(--color-fg-muted)]">
+            <p className="mt-1 text-[10px] leading-4 text-[var(--color-text-secondary)]">
               Click effects require action timing.
             </p>
           ) : null}
         </div>
         <div className={FIELD_ROW_CLASS}>
           <FieldLabel>Style</FieldLabel>
-          <SelectField
-            aria-label="Cursor click effect"
+          <AstryxSelector
+            label="Cursor click effect"
+            isLabelHidden
             value={clickEffect.style}
-            onValueChange={(value) => setClickEffect("style", value as CursorClickEffectStyle)}
+            onChange={(value) => setClickEffect("style", value as CursorClickEffectStyle)}
             options={cursorClickEffectStyleOptions}
-            disabled={!supportsClickEffects}
+            isDisabled={!supportsClickEffects}
           />
         </div>
         <div className={FIELD_ROW_CLASS}>
           <FieldLabel>Color</FieldLabel>
-          <SelectField
-            aria-label="Cursor click effect color"
+          <AstryxSelector
+            label="Cursor click effect color"
+            isLabelHidden
             value={clickEffect.color}
-            onValueChange={(value) => setClickEffect("color", value as CursorClickEffectColor)}
+            onChange={(value) => setClickEffect("color", value as CursorClickEffectColor)}
             options={cursorClickEffectColorOptions}
-            disabled={clickEffectDetailsDisabled}
+            isDisabled={clickEffectDetailsDisabled}
           />
         </div>
         <div className={FIELD_ROW_CLASS}>
           <FieldLabel>Intensity</FieldLabel>
-          <SelectField
-            aria-label="Cursor click effect intensity"
+          <AstryxSelector
+            label="Cursor click effect intensity"
+            isLabelHidden
             value={clickEffect.intensity}
-            onValueChange={(value) =>
-              setClickEffect("intensity", value as CursorClickEffectIntensity)
-            }
+            onChange={(value) => setClickEffect("intensity", value as CursorClickEffectIntensity)}
             options={cursorClickEffectIntensityOptions}
-            disabled={clickEffectDetailsDisabled}
+            isDisabled={clickEffectDetailsDisabled}
           />
         </div>
       </div>
-      <label className={FIELD_ROW_CLASS}>
+      <div className={FIELD_ROW_CLASS}>
         <span className="flex items-center justify-between gap-2">
           <FieldLabel>Size</FieldLabel>
           <ValuePill>{clip.sizeScale.toFixed(1)}x</ValuePill>
         </span>
-        <input
-          type="range"
-          aria-label="Cursor size"
+        <AstryxSlider
+          label="Cursor size"
+          isLabelHidden
           value={clip.sizeScale}
-          min="0.5"
-          max="2.5"
-          step="0.1"
-          onChange={(e) => {
-            const next = parseFiniteNumber(e.target.value, clip.sizeScale);
-            if (next !== clip.sizeScale) onSetParam(nodePath, "sizeScale", clip.sizeScale, next);
+          min={0.5}
+          max={2.5}
+          step={0.1}
+          onChange={(value: number) => {
+            if (value !== clip.sizeScale) onSetParam(nodePath, "sizeScale", clip.sizeScale, value);
           }}
-          className={RANGE_CLASS}
         />
-      </label>
+      </div>
     </fieldset>
   );
 }
@@ -1058,43 +1071,41 @@ function SoundParams({
   return (
     <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
       <SectionTitle>Sound clip</SectionTitle>
-      <label className={FIELD_ROW_CLASS}>
+      <div className={FIELD_ROW_CLASS}>
         <FieldLabel>Path</FieldLabel>
-        <input
-          type="text"
-          aria-label="Sound path"
+        <AstryxTextInput
+          label="Sound path"
+          isLabelHidden
           value={clip.path}
-          onChange={(e) => onSetParam(nodePath, "path", clip.path, e.target.value)}
-          className={FIELD_CLASS}
+          onChange={(value) => onSetParam(nodePath, "path", clip.path, value)}
+          width="100%"
         />
-      </label>
+      </div>
       <div className={FIELD_ROW_CLASS}>
         <FieldLabel>Kind</FieldLabel>
-        <SelectField
-          aria-label="Sound kind"
+        <AstryxSelector
+          label="Sound kind"
+          isLabelHidden
           value={clip.kind}
-          onValueChange={(value) => onSetParam(nodePath, "kind", clip.kind, value as SoundKind)}
+          onChange={(value) => onSetParam(nodePath, "kind", clip.kind, value as SoundKind)}
           options={soundKindSelectOptions}
         />
       </div>
-      <label className={FIELD_ROW_CLASS}>
+      <div className={FIELD_ROW_CLASS}>
         <span className="flex items-center justify-between gap-2">
           <FieldLabel>Gain</FieldLabel>
           <ValuePill>{((clip.gain ?? 1) * 100).toFixed(0)}%</ValuePill>
         </span>
-        <input
-          type="range"
-          aria-label="Sound gain"
+        <AstryxSlider
+          label="Sound gain"
+          isLabelHidden
           value={clip.gain ?? 1}
-          min="0"
-          max="2"
-          step="0.05"
-          onChange={(e) =>
-            onSetParam(nodePath, "gain", clip.gain, parseFiniteNumber(e.target.value, 1))
-          }
-          className={RANGE_CLASS}
+          min={0}
+          max={2}
+          step={0.05}
+          onChange={(value: number) => onSetParam(nodePath, "gain", clip.gain, value)}
         />
-      </label>
+      </div>
     </fieldset>
   );
 }
@@ -1114,10 +1125,11 @@ function VideoParams({
       <SectionTitle>Transition</SectionTitle>
       <div className={FIELD_ROW_CLASS}>
         <FieldLabel>Kind</FieldLabel>
-        <SelectField
-          aria-label="Video transition kind"
+        <AstryxSelector
+          label="Video transition kind"
+          isLabelHidden
           value={transition.kind}
-          onValueChange={(value) =>
+          onChange={(value) =>
             onSetParam(nodePath, "outgoingTransition", clip.outgoingTransition, {
               ...transition,
               kind: value as XfadeKind,
@@ -1126,23 +1138,24 @@ function VideoParams({
           options={transitionKindSelectOptions}
         />
       </div>
-      <label className={FIELD_ROW_CLASS}>
+      <div className={FIELD_ROW_CLASS}>
         <FieldLabel>Duration</FieldLabel>
-        <input
-          type="number"
-          aria-label="Video transition duration"
+        <AstryxNumberInput
+          label="Video transition duration"
+          isLabelHidden
           value={transition.durationMs}
-          min="100"
-          step="100"
-          onChange={(e) =>
+          min={100}
+          step={100}
+          units="ms"
+          onChange={(value) =>
             onSetParam(nodePath, "outgoingTransition", clip.outgoingTransition, {
               ...transition,
-              durationMs: Math.max(100, parseFiniteNumber(e.target.value, 500)),
+              durationMs: Math.max(100, value || 500),
             })
           }
-          className={FIELD_CLASS}
+          width="100%"
         />
-      </label>
+      </div>
     </fieldset>
   );
 }
@@ -1188,38 +1201,31 @@ function LayerTabs({ activeLayer, tracks, onLayerChange }: LayerTabsProps) {
     <section className={SECTION_CLASS}>
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-xs font-semibold text-[var(--color-fg)]">FX layers</h3>
-          <p className="mt-1 text-[11px] leading-4 text-[var(--color-fg-muted)]">
+          <h3 className="text-xs font-semibold text-[var(--color-text-primary)]">FX layers</h3>
+          <p className="mt-1 text-[11px] leading-4 text-[var(--color-text-secondary)]">
             Pick a layer type first, then edit only the selected item in that layer.
           </p>
         </div>
       </div>
-      <div className="grid grid-cols-5 gap-1 rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-1">
+      <AstryxTabList
+        aria-label="FX layers"
+        value={activeLayer}
+        onChange={(value) => onLayerChange(value as TrackId)}
+        layout="fill"
+        size="sm"
+      >
         {FX_LAYER_IDS.map((layerId) => {
-          const active = activeLayer === layerId;
           const count = tracks[layerId].length;
           return (
-            <button
+            <AstryxTab
               key={layerId}
-              type="button"
-              aria-pressed={active}
-              className={`min-w-0 cursor-pointer rounded-[6px] px-1.5 py-2 text-center transition-[background-color,color,transform] active:scale-[0.98] ${
-                active
-                  ? "bg-[var(--color-surface-100)] text-[var(--color-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.58)]"
-                  : "text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-100)] hover:text-[var(--color-fg)]"
-              }`}
-              onClick={() => onLayerChange(layerId)}
-            >
-              <span className="block truncate text-[10px] font-semibold">
-                {clipTypeLabel(layerId)}
-              </span>
-              <span className="mt-1 inline-flex rounded-full border border-[var(--color-border-subtle)] px-1.5 font-mono text-[9px] tabular-nums">
-                {count}
-              </span>
-            </button>
+              value={layerId}
+              label={clipTypeLabel(layerId)}
+              endContent={<span className="font-mono text-[9px] tabular-nums">{count}</span>}
+            />
           );
         })}
-      </div>
+      </AstryxTabList>
     </section>
   );
 }
@@ -1304,17 +1310,17 @@ function LayerClipList({
     <section className={SECTION_CLASS}>
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-xs font-semibold text-[var(--color-fg)]">
+          <h3 className="text-xs font-semibold text-[var(--color-text-primary)]">
             {clipTypeLabel(activeLayer)} layer
           </h3>
-          <p className="mt-1 text-[11px] leading-4 text-[var(--color-fg-muted)]">
+          <p className="mt-1 text-[11px] leading-4 text-[var(--color-text-secondary)]">
             {layerDescription(activeLayer)}
           </p>
         </div>
         <ValuePill>{clips.length}</ValuePill>
       </div>
       {sortedClips.length === 0 ? (
-        <div className="rounded-[8px] border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-xs leading-5 text-[var(--color-fg-muted)]">
+        <div className="rounded-[8px] border border-dashed border-[var(--color-border)] bg-[var(--color-background-card)] p-4 text-xs leading-5 text-[var(--color-text-secondary)]">
           No {clipTypeLabel(activeLayer).toLowerCase()} clips yet.
         </div>
       ) : (
@@ -1327,8 +1333,8 @@ function LayerClipList({
                 key={clip.id}
                 className={`rounded-[8px] border p-2 transition-[background-color,border-color,transform] ${
                   selected
-                    ? "border-[var(--color-accent,#ff5b76)] bg-[var(--color-surface)] shadow-[inset_0_1px_0_rgba(255,255,255,0.58)]"
-                    : "border-[var(--color-border-subtle)] bg-[var(--color-surface)]/70 hover:border-[var(--color-border)]"
+                    ? "border-[var(--color-accent,#ff5b76)] bg-[var(--color-background-card)] shadow-[inset_0_1px_0_rgba(255,255,255,0.58)]"
+                    : "border-[var(--color-border)] bg-[var(--color-background-card)]/70 hover:border-[var(--color-border)]"
                 }`}
               >
                 <button
@@ -1342,63 +1348,61 @@ function LayerClipList({
                     style={{ background: accent }}
                   />
                   <span className="min-w-0">
-                    <span className="block truncate text-xs font-medium text-[var(--color-fg)]">
+                    <span className="block truncate text-xs font-medium text-[var(--color-text-primary)]">
                       {clipListTitle(clip)}
                     </span>
-                    <span className="mt-1 block truncate font-mono text-[10px] text-[var(--color-fg-muted)]">
+                    <span className="mt-1 block truncate font-mono text-[10px] text-[var(--color-text-secondary)]">
                       {(clip.startMs / 1000).toFixed(2)}s · {clipListMeta(clip)}
                     </span>
                   </span>
-                  <span className="rounded-full border border-[var(--color-border-subtle)] px-2 py-0.5 text-[10px] text-[var(--color-fg-muted)]">
+                  <span className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] text-[var(--color-text-secondary)]">
                     {(clip.durationMs / 1000).toFixed(1)}s
                   </span>
                 </button>
                 {clip.trackId === "annotations" ? (
                   <div className="mt-2 grid grid-cols-4 gap-1">
-                    <button
-                      type="button"
-                      className={TINY_BUTTON_CLASS}
+                    <AstryxButton
+                      variant="ghost"
+                      size="sm"
+                      label="Duplicate"
+                      tooltip={`Duplicate ${clipListTitle(clip)}`}
                       onClick={() => duplicateClip(clip)}
                     >
                       Duplicate
-                    </button>
-                    <button
-                      type="button"
-                      className={TINY_BUTTON_CLASS}
+                    </AstryxButton>
+                    <AstryxButton
+                      variant="ghost"
+                      size="sm"
+                      label="Dupe style"
+                      tooltip={`Duplicate style from ${clipListTitle(clip)}`}
                       onClick={() => duplicateStyle(clip)}
                     >
                       Dupe style
-                    </button>
-                    <details className="relative">
-                      <summary
-                        className={`${TINY_BUTTON_CLASS} cursor-pointer list-none text-center`}
-                      >
-                        Apply style
-                      </summary>
-                      <div className="absolute right-0 z-20 mt-1 flex min-w-44 flex-col gap-1 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-lg">
-                        <button
-                          type="button"
-                          className={TINY_BUTTON_CLASS}
-                          onClick={() => applyStyle(clip, "same-style")}
-                        >
-                          Same preset / role
-                        </button>
-                        <button
-                          type="button"
-                          className={TINY_BUTTON_CLASS}
-                          onClick={() => applyStyle(clip, "all")}
-                        >
-                          All text
-                        </button>
-                      </div>
-                    </details>
-                    <button
-                      type="button"
-                      className={TINY_BUTTON_CLASS}
+                    </AstryxButton>
+                    <AstryxDropdownMenu
+                      button={{ label: "Apply style", variant: "ghost", size: "sm" }}
+                      menuWidth={184}
+                      placement="below"
+                      items={[
+                        {
+                          label: "Same preset / role",
+                          onClick: () => applyStyle(clip, "same-style"),
+                        },
+                        {
+                          label: "All text",
+                          onClick: () => applyStyle(clip, "all"),
+                        },
+                      ]}
+                    />
+                    <AstryxButton
+                      variant="destructive"
+                      size="sm"
+                      label="Delete"
+                      tooltip={`Delete ${clipListTitle(clip)}`}
                       onClick={() => deleteClip(clip)}
                     >
                       Delete
-                    </button>
+                    </AstryxButton>
                   </div>
                 ) : null}
               </div>
@@ -1509,18 +1513,18 @@ function EffectParamsBase() {
           onSelectClip={(clip) => selectClip(clip, { scrollToEditor: true })}
           pushAction={pushAction}
         />
-        <div className="rounded-[8px] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-100)] p-5">
+        <div className="rounded-[8px] border border-dashed border-[var(--color-border)] bg-[var(--color-background-card)] p-5">
           <div className="flex items-center gap-2">
             <span
               aria-hidden="true"
               className="h-2 w-2 rounded-full"
               style={{ background: clipTypeAccent(activeLayer) }}
             />
-            <div className="text-sm font-semibold text-[var(--color-fg)]">
+            <div className="text-sm font-semibold text-[var(--color-text-primary)]">
               No {clipTypeLabel(activeLayer).toLowerCase()} selected
             </div>
           </div>
-          <div className="mt-2 max-w-[34ch] text-xs leading-5 text-[var(--color-fg-muted)]">
+          <div className="mt-2 max-w-[34ch] text-xs leading-5 text-[var(--color-text-secondary)]">
             Pick a clip from the {clipTypeLabel(activeLayer).toLowerCase()} layer list above to
             reveal its controls.
           </div>
@@ -1550,9 +1554,9 @@ function EffectParamsBase() {
       />
       <section
         ref={nowEditingRef}
-        className="rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3 shadow-[0_18px_34px_-26px_rgba(0,0,0,0.35)]"
+        className="rounded-[8px] border border-[var(--color-border)] bg-[var(--color-background-card)] p-3 shadow-[0_18px_34px_-26px_rgba(0,0,0,0.35)]"
       >
-        <div className="flex items-start justify-between gap-3 border-b border-[var(--color-border-subtle)] pb-3">
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--color-border)] pb-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span
@@ -1560,46 +1564,45 @@ function EffectParamsBase() {
                 className="h-2 w-2 rounded-full"
                 style={{ background: accent }}
               />
-              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--color-fg-muted)]">
+              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--color-text-secondary)]">
                 Now editing
               </div>
             </div>
-            <div className="mt-1 truncate text-base font-semibold text-[var(--color-fg)]">
+            <div className="mt-1 truncate text-base font-semibold text-[var(--color-text-primary)]">
               {clipTitle}
             </div>
           </div>
-          <div className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
+          <div className="rounded-full border border-[var(--color-border)] bg-[var(--color-background-card)] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--color-text-secondary)]">
             {clipTypeLabel(trackId)}
           </div>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2">
+          <div className="rounded-[8px] border border-[var(--color-border)] bg-[var(--color-background-card)] px-3 py-2">
             <FieldLabel>Start</FieldLabel>
-            <div className="mt-1 font-mono text-xs tabular-nums text-[var(--color-fg)]">
+            <div className="mt-1 font-mono text-xs tabular-nums text-[var(--color-text-primary)]">
               {(clip.startMs / 1000).toFixed(3)} s
             </div>
           </div>
-          <div className="rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2">
+          <div className="rounded-[8px] border border-[var(--color-border)] bg-[var(--color-background-card)] px-3 py-2">
             <FieldLabel>Duration</FieldLabel>
-            <div className="mt-1 font-mono text-xs tabular-nums text-[var(--color-fg)]">
+            <div className="mt-1 font-mono text-xs tabular-nums text-[var(--color-text-primary)]">
               {(clip.durationMs / 1000).toFixed(3)} s
             </div>
           </div>
         </div>
-        <label className={`${FIELD_ROW_CLASS} mt-3`}>
+        <div className={`${FIELD_ROW_CLASS} mt-3`}>
           <FieldLabel>Label</FieldLabel>
-          <input
-            type="text"
-            aria-label="Clip label"
+          <AstryxTextInput
+            label="Clip label"
+            isLabelHidden
             value={clip.label ?? ""}
-            onChange={(e) => {
+            onChange={(next) => {
               const prev = clip.label ?? "";
-              const next = e.target.value;
               onSetParam(nodePath, "label", prev, next);
             }}
-            className={FIELD_CLASS}
+            width="100%"
           />
-        </label>
+        </div>
       </section>
       {clip.trackId === "zoom" ? (
         <ZoomParams clip={clip} nodePath={nodePath} onSetParam={onSetParam} />
@@ -1666,17 +1669,17 @@ function EffectParamsBase() {
       {clip.trackId === "video" ? (
         <VideoParams clip={clip} nodePath={nodePath} onSetParam={onSetParam} />
       ) : null}
-      <details className="group rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-medium text-[var(--color-fg)]">
+      <details className="group rounded-[8px] border border-[var(--color-border)] bg-[var(--color-background-card)]">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-medium text-[var(--color-text-primary)]">
           Parameters
-          <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-fg-muted)] group-open:hidden">
+          <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-secondary)] group-open:hidden">
             Show
           </span>
-          <span className="hidden text-[10px] uppercase tracking-[0.14em] text-[var(--color-fg-muted)] group-open:inline">
+          <span className="hidden text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-secondary)] group-open:inline">
             Hide
           </span>
         </summary>
-        <pre className="max-h-40 overflow-auto border-t border-[var(--color-border-subtle)] p-3 text-[10px] leading-5 text-[var(--color-fg-muted)]">
+        <pre className="max-h-40 overflow-auto border-t border-[var(--color-border)] p-3 text-[10px] leading-5 text-[var(--color-text-secondary)]">
           {JSON.stringify(clipParams(clip), null, 2)}
         </pre>
       </details>

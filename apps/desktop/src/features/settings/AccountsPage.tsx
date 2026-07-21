@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Lock } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { ApiKeyRow } from "./ApiKeyRow";
 import { WebAccountPanel } from "./accounts-panel";
 import AutoUpdaterSettings from "./auto-updater";
@@ -45,21 +45,15 @@ export function AccountsPage() {
     checkAll();
   }, []);
 
-  const handlePresenceChange = useCallback(
-    (providerId: string, present: boolean) => {
-      setProviders((prev) => ({
-        ...prev,
-        [providerId]: { ...prev[providerId], present },
-      }));
-    },
-    [],
-  );
+  const handlePresenceChange = useCallback((providerId: string, present: boolean) => {
+    setProviders((prev) => ({
+      ...prev,
+      [providerId]: { ...prev[providerId], present },
+    }));
+  }, []);
 
   const handleTestStatusChange = useCallback(
-    (
-      providerId: string,
-      status: "valid" | "invalid" | "rate_limited" | "untested",
-    ) => {
+    (providerId: string, status: "valid" | "invalid" | "rate_limited" | "untested") => {
       setProviders((prev) => ({
         ...prev,
         [providerId]: { ...prev[providerId], testStatus: status },
@@ -72,14 +66,14 @@ export function AccountsPage() {
   const ttsProviders = PROVIDERS.filter((p) => p.group === "TTS");
 
   return (
-    <div data-testid="accounts-page" className="grid gap-x-12 gap-y-10 xl:grid-cols-[280px_minmax(0,1fr)]">
-
+    <div
+      data-testid="accounts-page"
+      className="grid gap-x-12 gap-y-10 xl:grid-cols-[280px_minmax(0,1fr)]"
+    >
       {/* --- Row 1: Web account --- */}
       <div className="pt-1">
-        <h2 className="text-sm font-semibold text-[var(--color-fg-primary)]">
-          Web account
-        </h2>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
+        <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Web account</h2>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
           Connect to upload videos and sync projects with the web companion.
         </p>
       </div>
@@ -88,14 +82,12 @@ export function AccountsPage() {
       </div>
 
       {/* Divider */}
-      <div className="col-span-full h-px bg-[var(--color-border-subtle)]" />
+      <div className="col-span-full h-px bg-[var(--color-border)]" />
 
       {/* --- Row 2: API keys --- */}
       <div className="pt-1">
-        <h2 className="text-sm font-semibold text-[var(--color-fg-primary)]">
-          API keys
-        </h2>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
+        <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">API keys</h2>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
           Provider credentials for language models and voice synthesis.
         </p>
         <div className="mt-3 flex items-center gap-1.5 text-xs text-[var(--color-success)]">
@@ -106,7 +98,7 @@ export function AccountsPage() {
       <div className="space-y-6">
         {/* LLM providers */}
         <div>
-          <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-muted)]">
+          <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-text-secondary)]">
             Language models
           </h3>
           <div className="space-y-2">
@@ -117,12 +109,8 @@ export function AccountsPage() {
                 displayName={p.displayName}
                 present={providers[p.id]?.present ?? false}
                 testStatus={providers[p.id]?.testStatus}
-                onPresenceChange={(present) =>
-                  handlePresenceChange(p.id, present)
-                }
-                onTestStatusChange={(status) =>
-                  handleTestStatusChange(p.id, status)
-                }
+                onPresenceChange={(present) => handlePresenceChange(p.id, present)}
+                onTestStatusChange={(status) => handleTestStatusChange(p.id, status)}
               />
             ))}
           </div>
@@ -130,7 +118,7 @@ export function AccountsPage() {
 
         {/* TTS providers */}
         <div>
-          <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-muted)]">
+          <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-text-secondary)]">
             Voice services
           </h3>
           <div className="space-y-2">
@@ -141,12 +129,8 @@ export function AccountsPage() {
                 displayName={p.displayName}
                 present={providers[p.id]?.present ?? false}
                 testStatus={providers[p.id]?.testStatus}
-                onPresenceChange={(present) =>
-                  handlePresenceChange(p.id, present)
-                }
-                onTestStatusChange={(status) =>
-                  handleTestStatusChange(p.id, status)
-                }
+                onPresenceChange={(present) => handlePresenceChange(p.id, present)}
+                onTestStatusChange={(status) => handleTestStatusChange(p.id, status)}
               />
             ))}
           </div>
@@ -154,14 +138,12 @@ export function AccountsPage() {
       </div>
 
       {/* Divider */}
-      <div className="col-span-full h-px bg-[var(--color-border-subtle)]" />
+      <div className="col-span-full h-px bg-[var(--color-border)]" />
 
       {/* --- Row 3: Updates --- */}
       <div className="pt-1">
-        <h2 className="text-sm font-semibold text-[var(--color-fg-primary)]">
-          Updates
-        </h2>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
+        <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Updates</h2>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
           Control when the app checks for new versions.
         </p>
       </div>
@@ -170,14 +152,12 @@ export function AccountsPage() {
       </div>
 
       {/* Divider */}
-      <div className="col-span-full h-px bg-[var(--color-border-subtle)]" />
+      <div className="col-span-full h-px bg-[var(--color-border)]" />
 
       {/* --- Row 4: Automation --- */}
       <div className="pt-1">
-        <h2 className="text-sm font-semibold text-[var(--color-fg-primary)]">
-          Automation
-        </h2>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
+        <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Automation</h2>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
           Any Chromium-based browser works (Chrome, Brave, Edge, Arc, Chromium).
         </p>
       </div>

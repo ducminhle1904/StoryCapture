@@ -1,7 +1,8 @@
+import { Button } from "@astryxdesign/core/Button";
 import { notFound, redirect } from "next/navigation";
+import { AnalyticsDashboard } from "@/components/analytics-dashboard";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { AnalyticsDashboard } from "@/components/analytics-dashboard";
 
 interface AnalyticsPageProps {
   params: Promise<{ videoId: string }>;
@@ -64,21 +65,20 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-100">
+          <h1 className="text-2xl font-semibold text-[var(--color-text-primary)]">
             Analytics: {video.projectName}
           </h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             View performance metrics for this video
           </p>
         </div>
-        <a
+        <Button
           href={`/watch/${video.slug}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="rounded-md bg-zinc-800 px-3 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-zinc-100"
-        >
-          View video
-        </a>
+          label="View video"
+          variant="secondary"
+        />
       </div>
 
       {/* Dashboard */}

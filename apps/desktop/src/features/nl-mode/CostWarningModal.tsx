@@ -6,14 +6,10 @@
  * The suppressForSession flag is held in a Zustand session-scoped store.
  */
 
-import { useState, useCallback, useEffect } from "react";
-import { Dialog } from "@base-ui/react/dialog";
-import { Button } from "@/components/ui/button";
-import {
-  dialogBackdropMotionClassName,
-  dialogCenteredPopupMotionClassName,
-  dialogViewportClassName,
-} from "@/components/ui/dialog-motion";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { Dialog } from "@astryxdesign/core/Dialog";
+import { Switch } from "@astryxdesign/core/Switch";
+import { useCallback, useEffect, useState } from "react";
 
 export interface CostWarningResult {
   proceed: boolean;
@@ -56,43 +52,46 @@ export function CostWarningModal({
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={(nextOpen) => !nextOpen && handleCancel()}>
-      <Dialog.Portal>
-        <Dialog.Backdrop
-          className={`fixed inset-0 z-50 bg-[var(--color-fg-primary)/50] backdrop-blur-sm ${dialogBackdropMotionClassName}`}
-        />
-        <Dialog.Viewport className={dialogViewportClassName}>
-          <Dialog.Popup
-            className={`w-full max-w-md rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-6 shadow-2xl ${dialogCenteredPopupMotionClassName}`}
-          >
-            <Dialog.Title className="text-lg font-semibold text-[var(--color-fg-primary)]">
-            {"This prompt uses a lot of tokens"}
-          </Dialog.Title>
-          <Dialog.Description className="mt-2 text-sm text-[var(--color-fg-muted)]">
-            {`This prompt is estimated to use about ${estimatedTokens.toLocaleString()} tokens. Cost may be higher than usual.`}
-          </Dialog.Description>
+    <Dialog
+      isOpen={open}
+      onOpenChange={(nextOpen) => !nextOpen && handleCancel()}
+      purpose="form"
+      width={448}
+      padding={6}
+      aria-labelledby="cost-warning-title"
+      aria-describedby="cost-warning-description"
+    >
+      <div>
+        <h2
+          id="cost-warning-title"
+          className="text-lg font-semibold text-[var(--color-text-primary)]"
+        >
+          {"This prompt uses a lot of tokens"}
+        </h2>
+        <p
+          id="cost-warning-description"
+          className="mt-2 text-sm text-[var(--color-text-secondary)]"
+        >
+          {`This prompt is estimated to use about ${estimatedTokens.toLocaleString()} tokens. Cost may be higher than usual.`}
+        </p>
 
-          <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-primary)]/60 px-3 py-2 text-sm">
-            <input
-              type="checkbox"
-              checked={dontAskAgain}
-              onChange={(e) => setDontAskAgain(e.target.checked)}
-              className="rounded border-[var(--color-border-subtle)]"
-            />
-            <span>{"Don't ask again for this session"}</span>
-          </label>
+        <div className="mt-5">
+          <Switch
+            label="Don't ask again for this session"
+            value={dontAskAgain}
+            onChange={setDontAskAgain}
+          />
+        </div>
 
-          <div className="mt-6 flex justify-end gap-2">
-            <Button variant="ghost" onClick={handleCancel}>
-              {"Cancel"}
-            </Button>
-            <Button onClick={handleProceed}>
-              {"Continue"}
-            </Button>
-          </div>
-          </Dialog.Popup>
-        </Dialog.Viewport>
-      </Dialog.Portal>
-    </Dialog.Root>
+        <div className="mt-6 flex justify-end gap-2">
+          <AstryxButton variant="ghost" onClick={handleCancel} label="Cancel">
+            {"Cancel"}
+          </AstryxButton>
+          <AstryxButton variant="primary" onClick={handleProceed} label="Continue">
+            {"Continue"}
+          </AstryxButton>
+        </div>
+      </div>
+    </Dialog>
   );
 }

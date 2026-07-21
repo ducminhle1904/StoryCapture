@@ -1,9 +1,10 @@
+import { Badge as AstryxBadge } from "@astryxdesign/core/Badge";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { Switch as AstryxSwitch } from "@astryxdesign/core/Switch";
 import { open } from "@tauri-apps/plugin-dialog";
 import { FolderArchive } from "lucide-react";
-import { toast } from "sonner";
-import { ScBadge, ScButton, ScSwitch } from "@storycapture/ui";
-
 import { exportDiagnosticBundle, type PrivacySettings } from "@/ipc/settings";
+import { notifications } from "@/lib/notifications";
 import { useAppSettingsStore } from "@/state/app-settings";
 import { SettingsCard, SettingsPanel, SettingsRow } from "../settings-row";
 
@@ -14,9 +15,9 @@ export function PrivacyCategory() {
   const savePrivacy = async (patch: Partial<PrivacySettings>) => {
     try {
       await patchPrivacy(patch);
-      toast.success("Privacy settings saved");
+      notifications.success("Privacy settings saved");
     } catch (err) {
-      toast.error("Could not save privacy settings", {
+      notifications.error("Could not save privacy settings", {
         description: err instanceof Error ? err.message : String(err),
       });
     }
@@ -31,11 +32,11 @@ export function PrivacyCategory() {
     if (typeof selected !== "string") return;
     try {
       const result = await exportDiagnosticBundle(selected);
-      toast.success("Diagnostic bundle exported", {
+      notifications.success("Diagnostic bundle exported", {
         description: result.path,
       });
     } catch (err) {
-      toast.error("Could not export diagnostic bundle", {
+      notifications.error("Could not export diagnostic bundle", {
         description: err instanceof Error ? err.message : String(err),
       });
     }
@@ -54,22 +55,22 @@ export function PrivacyCategory() {
         <SettingsRow
           label="Crash reports"
           hint="Local log capture only; no automatic upload."
-          control={<ScBadge tone="muted">Off</ScBadge>}
+          control={<AstryxBadge variant="neutral" label="Off" />}
         />
         <SettingsRow
           label="Usage analytics"
           hint="No product analytics are collected."
-          control={<ScBadge tone="muted">Off</ScBadge>}
+          control={<AstryxBadge variant="neutral" label="Off" />}
         />
         <SettingsRow
           label="Prompt redaction"
           hint="Redact user prompt content from local diagnostic exports where possible."
           control={
-            <ScSwitch
-              checked={settings.privacy.prompt_redaction_enabled}
-              onCheckedChange={(checked) =>
-                void savePrivacy({ prompt_redaction_enabled: checked })
-              }
+            <AstryxSwitch
+              label="Prompt redaction"
+              isLabelHidden
+              value={settings.privacy.prompt_redaction_enabled}
+              onChange={(checked) => void savePrivacy({ prompt_redaction_enabled: checked })}
             />
           }
         />
@@ -78,20 +79,21 @@ export function PrivacyCategory() {
           hint="Exports logs and app metadata only."
           control={
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <ScSwitch
-                checked={settings.privacy.diagnostic_bundle_enabled}
-                onCheckedChange={(checked) =>
-                  void savePrivacy({ diagnostic_bundle_enabled: checked })
-                }
+              <AstryxSwitch
+                label="Diagnostic bundle"
+                isLabelHidden
+                value={settings.privacy.diagnostic_bundle_enabled}
+                onChange={(checked) => void savePrivacy({ diagnostic_bundle_enabled: checked })}
               />
-              <ScButton
+              <AstryxButton
                 size="sm"
                 variant="ghost"
                 onClick={() => void exportBundle()}
-                disabled={!settings.privacy.diagnostic_bundle_enabled}
+                isDisabled={!settings.privacy.diagnostic_bundle_enabled}
+                label="Export"
               >
                 <FolderArchive size={12} /> Export
-              </ScButton>
+              </AstryxButton>
             </div>
           }
           last

@@ -30,6 +30,15 @@ allowBuilds:
   sharp: true
 minimumReleaseAge: 10080
 minimumReleaseAgeExclude:
+  # Astryx Gothic rollout pins the reviewed 0.1.6 release while the upstream
+  # packages are still inside the workspace quarantine window.
+  - '@astryxdesign/cli@0.1.6'
+  - '@astryxdesign/core@0.1.6'
+  - '@astryxdesign/theme-gothic@0.1.6'
+  # Local-only font assets required by the Gothic theme; no runtime CDN fetch.
+  - '@fontsource-variable/fustat@5.3.0'
+  - '@fontsource-variable/jetbrains-mono@5.3.0'
+  - '@fontsource/manufacturing-consent@5.3.0'
   # Turbo 2.10.5 was already locked before this quarantine policy was enabled.
   - '@turbo/darwin-64@2.10.5'
   - '@turbo/darwin-arm64@2.10.5'

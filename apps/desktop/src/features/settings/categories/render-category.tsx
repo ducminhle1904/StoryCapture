@@ -1,7 +1,12 @@
+import {
+  SegmentedControl as AstryxSegmentedControl,
+  SegmentedControlItem as AstryxSegmentedControlItem,
+} from "@astryxdesign/core/SegmentedControl";
+import { Slider as AstryxSlider } from "@astryxdesign/core/Slider";
+import { Switch as AstryxSwitch } from "@astryxdesign/core/Switch";
 import type { OutputResolutionDto } from "@storycapture/shared-types";
-import { ScSegmented, ScSlider, ScSwitch } from "@storycapture/ui";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { notifications } from "@/lib/notifications";
 import { useAppSettingsStore } from "@/state/app-settings";
 import { useOutputPrefsStore } from "@/state/output-prefs";
 import { SettingsCard, SettingsPanel, SettingsRow } from "../settings-row";
@@ -46,11 +51,11 @@ export function RenderCategory() {
     if (parallel_renders === savedParallelRenders) return;
     try {
       await patchRender({ parallel_renders });
-      toast.success("Render defaults saved", {
+      notifications.success("Render defaults saved", {
         description: "Open projects will use this the next time they are opened.",
       });
     } catch (err) {
-      toast.error("Could not save render defaults", {
+      notifications.error("Could not save render defaults", {
         description: err instanceof Error ? err.message : String(err),
       });
     }
@@ -63,49 +68,84 @@ export function RenderCategory() {
           label="Recording policy"
           hint="Strict publishes only verified 1080p60 takes; Standard completes with truthful degraded evidence."
           control={
-            <ScSegmented
+            <AstryxSegmentedControl
               size="sm"
               value={recordingDeliveryPolicy}
-              onValueChange={(value) =>
+              onChange={(value) =>
                 setRecordingDeliveryPolicy(value === "strict" ? "strict" : "best_effort")
               }
-              options={[
+              label="Recording policy"
+            >
+              {[
                 { value: "best_effort", label: "Standard" },
                 { value: "strict", label: "Strict" },
-              ]}
-            />
+              ].map((option) => (
+                <AstryxSegmentedControlItem
+                  key={option.value}
+                  value={option.value}
+                  label={typeof option.label === "string" ? option.label : option.value}
+                  icon={typeof option.label === "string" ? undefined : option.label}
+                />
+              ))}
+            </AstryxSegmentedControl>
           }
         />
         <SettingsRow
           label="Resolution"
           control={
-            <ScSegmented
+            <AstryxSegmentedControl
               size="sm"
               value={resoKey === "other" ? "p1080" : resoKey}
-              onValueChange={(v) => setRecordingKnob("resolution", fromResoKey(v as ResoKey))}
-              options={[
+              onChange={(v) => setRecordingKnob("resolution", fromResoKey(v as ResoKey))}
+              label="Resolution"
+            >
+              {[
                 { value: "p720", label: "720" },
                 { value: "p1080", label: "1080" },
                 { value: "p1440", label: "1440" },
                 { value: "p2160", label: "4K" },
-              ]}
-            />
+              ].map((option) => (
+                <AstryxSegmentedControlItem
+                  key={option.value}
+                  value={option.value}
+                  label={typeof option.label === "string" ? option.label : option.value}
+                  icon={typeof option.label === "string" ? undefined : option.label}
+                />
+              ))}
+            </AstryxSegmentedControl>
           }
         />
         <SettingsRow
           label="Codec"
           hint="Current encoder path ships H.264."
           control={
-            <ScSegmented size="sm" value={codec} options={[{ value: "h264", label: "H.264" }]} />
+            <AstryxSegmentedControl
+              size="sm"
+              value={codec}
+              label="Codec"
+              onChange={() => {}}
+              isDisabled
+            >
+              {[{ value: "h264", label: "H.264" }].map((option) => (
+                <AstryxSegmentedControlItem
+                  key={option.value}
+                  value={option.value}
+                  label={typeof option.label === "string" ? option.label : option.value}
+                  icon={typeof option.label === "string" ? undefined : option.label}
+                />
+              ))}
+            </AstryxSegmentedControl>
           }
         />
         <SettingsRow
           label="HW encoder"
           hint="Auto-detect VideoToolbox / NVENC / QSV / AMF"
           control={
-            <ScSwitch
-              checked={hwOn}
-              onCheckedChange={(next) => setExportKnob("hwEncoder", next ? "auto" : "software")}
+            <AstryxSwitch
+              label="HW encoder"
+              isLabelHidden
+              value={hwOn}
+              onChange={(next) => setExportKnob("hwEncoder", next ? "auto" : "software")}
             />
           }
         />
@@ -114,18 +154,20 @@ export function RenderCategory() {
           hint="Cap background jobs"
           control={
             <div style={{ display: "flex", alignItems: "center", gap: 10, width: 190 }}>
-              <ScSlider
+              <AstryxSlider
+                label="Parallel renders"
+                isLabelHidden
                 value={settings?.render.parallel_renders ?? 2}
                 min={1}
                 max={6}
                 step={1}
-                onValueChange={(value) => {
+                onChange={(value: number) => {
                   if (typeof value === "number") setParallelDraft(value);
                 }}
-                onValueCommitted={() => void saveParallelRenders(parallelDraft)}
+                onChangeEnd={() => void saveParallelRenders(parallelDraft)}
                 onBlur={() => void saveParallelRenders(parallelDraft)}
               />
-              <span style={{ width: 18, fontSize: 12, color: "var(--sc-text-3)" }}>
+              <span style={{ width: 18, fontSize: 12, color: "var(--color-text-secondary)" }}>
                 {parallelDraft}
               </span>
             </div>

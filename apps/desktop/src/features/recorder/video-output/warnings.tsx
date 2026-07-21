@@ -34,7 +34,7 @@ export function Warnings({ captureDims }: Props) {
         {soft.map((msg) => (
           <p
             key={msg}
-            className="inline-flex items-start gap-1.5 rounded-[var(--radius-sm)] border-l-2 border-[var(--color-warning)] bg-[var(--color-warning)]/5 px-3 py-1.5 text-[11px] text-[var(--color-fg-secondary)]"
+            className="inline-flex items-start gap-1.5 rounded-[var(--radius-inner)] border-l-2 border-[var(--color-warning)] bg-[var(--color-warning)]/5 px-3 py-1.5 text-[11px] text-[var(--color-text-secondary)]"
           >
             <TriangleAlert
               size={13}

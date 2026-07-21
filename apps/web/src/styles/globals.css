@@ -1,11 +1,17 @@
-@import "tailwindcss";
-@import "@storycapture/ui/claude-design/tokens.css";
-@import "@storycapture/ui/tokens.css";
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "@astryxdesign/core/reset.css" layer(astryx-base);
+@import "@astryxdesign/core/astryx.css" layer(components);
+@import "@storycapture/ui/theme.css" layer(astryx-theme);
+@import "@storycapture/ui/fonts.css" layer(theme);
+@import "@storycapture/ui/product-tokens.css" layer(astryx-theme);
+@import "@astryxdesign/core/tailwind-theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
 
 body {
-  background: var(--sc-bg);
-  color: var(--sc-text);
-  font-family: var(--font-geist), var(--sc-font-ui);
+  background: var(--color-background-body);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -86,51 +92,60 @@ body {
   }
 }
 
-.sc-reveal {
+.story-reveal {
   animation: storycapture-reveal 720ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: var(--sc-delay, 0ms);
+  animation-delay: var(--story-entry-delay, 0ms);
 }
 
-.sc-window-in {
+.story-window-in {
   animation: storycapture-window-in 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
   animation-delay: 180ms;
   transform-origin: 60% 45%;
   will-change: transform, opacity;
 }
 
-.sc-float {
+.story-float {
   animation: storycapture-float 6s ease-in-out infinite;
 }
 
-.sc-window-in.sc-float {
+.story-window-in.story-float {
   animation:
     storycapture-window-in 900ms cubic-bezier(0.16, 1, 0.3, 1) 180ms both,
     storycapture-float 6s ease-in-out 1.1s infinite;
 }
 
-.sc-track-fill {
+.story-track-fill {
   animation: storycapture-track 5.6s ease-in-out infinite;
   transform-origin: left center;
   will-change: transform;
 }
 
-.sc-caret-scan {
+.story-caret-scan {
   animation: storycapture-caret-scan 3.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
   will-change: transform, opacity;
 }
 
-.sc-status-dot {
+.story-status-dot {
   animation: storycapture-status-breathe 2.4s ease-in-out infinite;
   will-change: transform, opacity;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sc-reveal,
-  .sc-window-in,
-  .sc-float,
-  .sc-track-fill,
-  .sc-caret-scan,
-  .sc-status-dot {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .story-reveal,
+  .story-window-in,
+  .story-float,
+  .story-track-fill,
+  .story-caret-scan,
+  .story-status-dot {
     animation: none;
   }
 }

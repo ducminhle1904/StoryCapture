@@ -5,23 +5,16 @@
  */
 
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { Globe, Monitor, Smartphone, Tablet } from "lucide-react";
 import { motion } from "motion/react";
-import { Globe, Monitor, Tablet, Smartphone } from "lucide-react";
 import { useState } from "react";
-
-import { useEditorStore, type PreviewViewport } from "@/state/editor";
-import { useSelectorValidation } from "@/features/editor/SelectorValidatorOverlay";
-import { useSimulatorStore } from "@/state/simulator-store";
-import {
-  PickingBanner,
-  PreviewPickerButton,
-} from "@/features/editor/PreviewPickerButton";
 import { useAuthorDriverStore } from "@/features/editor/authorDriverStore";
+import { PickingBanner, PreviewPickerButton } from "@/features/editor/PreviewPickerButton";
+import { useSelectorValidation } from "@/features/editor/SelectorValidatorOverlay";
+import { type PreviewViewport, useEditorStore } from "@/state/editor";
+import { useSimulatorStore } from "@/state/simulator-store";
 
-const VIEWPORT_SIZES: Record<
-  PreviewViewport,
-  { label: string; w: number; h: number }
-> = {
+const VIEWPORT_SIZES: Record<PreviewViewport, { label: string; w: number; h: number }> = {
   desktop: { label: "Desktop", w: 1280, h: 800 },
   tablet: { label: "Tablet", w: 768, h: 1024 },
   mobile: { label: "Mobile", w: 375, h: 667 },
@@ -46,7 +39,7 @@ export function PreviewPanel({
   const currentOrd = useSimulatorStore((s) => s.currentFrameOrdinal);
   const frames = useSimulatorStore((s) => s.frames);
   const activeFrame =
-    runState !== "idle" && currentOrd != null ? frames[currentOrd - 1] ?? null : null;
+    runState !== "idle" && currentOrd != null ? (frames[currentOrd - 1] ?? null) : null;
 
   // Aggregate validator chip counts for the footer's "2G / 1Y / 0R"
   // summary, sourced from the SelectorValidatorOverlay's store.
@@ -56,22 +49,22 @@ export function PreviewPanel({
   const isPicking = useAuthorDriverStore((s) => s.variant === "picking");
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-[var(--color-surface-100)]">
-      <header className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-3 py-1.5">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-[var(--color-background-card)]">
+      <header className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-1.5">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
             Preview
           </span>
           <PreviewPickerButton />
         </div>
         <div className="flex items-center gap-3">
-          <span className="font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+          <span className="font-mono text-[10px] tabular-nums text-[var(--color-text-secondary)]">
             {size.w} x {size.h}
           </span>
           <div
             role="radiogroup"
             aria-label="Preview viewport"
-            className="flex gap-px rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-300)] p-px"
+            className="flex gap-px rounded-[var(--radius-inner)] border border-[var(--color-border)] bg-[var(--color-background-popover)] p-px"
           >
             <ViewportButton
               icon={<Monitor size={13} aria-hidden="true" />}
@@ -99,9 +92,9 @@ export function PreviewPanel({
           an active pick. */}
       {isPicking ? <PickingBanner variant="active" /> : null}
 
-      <div className="flex min-h-0 flex-1 items-center justify-center bg-[var(--color-surface-200)] p-4">
-        <div
-          className="relative w-full overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-fg-primary)] shadow-[0_12px_30px_rgba(0,0,0,0.10)]"
+      <div className="flex min-h-0 flex-1 items-center justify-center bg-[var(--color-background-surface)] p-4">
+        <section
+          className="relative w-full overflow-hidden rounded-[var(--radius-container)] border border-[var(--color-border)] bg-[var(--color-text-primary)] shadow-[0_12px_30px_rgba(0,0,0,0.10)]"
           style={{
             aspectRatio: `${size.w} / ${size.h}`,
             maxWidth: "min(100%, 640px)",
@@ -110,11 +103,11 @@ export function PreviewPanel({
           aria-label={`Preview viewport: ${size.label} (${size.w}x${size.h})`}
         >
           <div className="absolute left-3 top-3 z-10 flex items-center gap-1.5 text-[9px] uppercase tracking-[0.14em]">
-            <span className="rounded-[var(--radius-xs)] border border-white/10 bg-black/50 px-1.5 py-0.5 text-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+            <span className="rounded-[var(--radius-inner)] border border-white/10 bg-black/50 px-1.5 py-0.5 text-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
               {size.label}
             </span>
             {sceneName ? (
-              <span className="rounded-[var(--radius-xs)] border border-white/10 bg-black/50 px-1.5 py-0.5 text-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+              <span className="rounded-[var(--radius-inner)] border border-white/10 bg-black/50 px-1.5 py-0.5 text-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
                 {sceneName}
               </span>
             ) : null}
@@ -134,24 +127,23 @@ export function PreviewPanel({
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-white/40">
               <Globe size={36} aria-hidden="true" />
-              <span className="text-[10px] tracking-wide">
-                Preview will render here
-              </span>
+              <span className="text-[10px] tracking-wide">Preview will render here</span>
             </div>
           )}
-        </div>
+        </section>
       </div>
 
-      <div className="flex items-center justify-between border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-2 text-[10px] text-[var(--color-fg-muted)]">
+      <div className="flex items-center justify-between border-t border-[var(--color-border)] bg-[var(--color-background-card)] px-3 py-2 text-[10px] text-[var(--color-text-secondary)]">
         <span className="truncate">{sceneName ?? "Select a scene to inspect its framing"}</span>
         <div className="flex items-center gap-2 font-mono tabular-nums">
           {sceneMeta ? <span>{sceneMeta}</span> : null}
-          <span className="text-[var(--color-border-default)]">/</span>
+          <span className="text-[var(--color-border)]">/</span>
           <span>{statusLabel}</span>
           {chipCounts.total > 0 ? (
             <>
-              <span className="text-[var(--color-border-default)]">/</span>
+              <span className="text-[var(--color-border)]">/</span>
               <span
+                role="status"
                 aria-label="Selector validator summary"
                 data-testid="validator-summary"
                 className="flex items-center gap-2"
@@ -168,7 +160,7 @@ export function PreviewPanel({
                 <span>{chipCounts.yellow}</span>
                 <span
                   className="h-1.5 w-1.5 rounded-full"
-                  style={{ background: "var(--color-danger)" }}
+                  style={{ background: "var(--color-error)" }}
                 />
                 <span>{chipCounts.red}</span>
               </span>
@@ -184,9 +176,14 @@ export function PreviewPanel({
  * Aggregate the chip-state counts for the preview footer.
  * `total === 0` means the validator hasn't run; the caller hides the chunk.
  */
-function summarizeValidation(entries: Map<number, {
-  status: { status: string } | null;
-}>): { green: number; yellow: number; red: number; grey: number; total: number } {
+function summarizeValidation(
+  entries: Map<
+    number,
+    {
+      status: { status: string } | null;
+    }
+  >,
+): { green: number; yellow: number; red: number; grey: number; total: number } {
   let green = 0;
   let yellow = 0;
   let red = 0;
@@ -258,7 +255,7 @@ export function SimulatorFrameView({
             top: `${(frame.matched_bbox.y / natural.h) * 100}%`,
             width: `${(frame.matched_bbox.w / natural.w) * 100}%`,
             height: `${(frame.matched_bbox.h / natural.h) * 100}%`,
-            border: "2px solid var(--color-accent-primary)",
+            border: "2px solid var(--color-accent)",
             pointerEvents: "none",
           }}
         />
@@ -275,8 +272,7 @@ export function SimulatorFrameView({
             width: 10,
             height: 10,
             borderRadius: 5,
-            border:
-              "2px solid color-mix(in oklch, var(--color-warning) 70%, transparent)",
+            border: "2px solid color-mix(in oklch, var(--color-warning) 70%, transparent)",
             background: "transparent",
             transform: "translate(-50%, -50%)",
             pointerEvents: "none",
@@ -313,15 +309,17 @@ function ViewportButton({
   onClick: () => void;
 }) {
   return (
+    // biome-ignore lint/a11y/useSemanticElements: This button is a member of a keyboard-managed radio group.
     <button
+      type="button"
       role="radio"
       aria-checked={active}
       aria-label={`Preview as ${label}`}
       onClick={onClick}
-      className={`inline-flex items-center rounded-[var(--radius-xs)] px-1.5 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)] ${
+      className={`inline-flex items-center rounded-[var(--radius-inner)] px-1.5 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] ${
         active
-          ? "bg-[var(--color-surface-100)] text-[var(--color-fg-primary)] shadow-sm"
-          : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg-primary)]"
+          ? "bg-[var(--color-background-card)] text-[var(--color-text-primary)] shadow-sm"
+          : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
       }`}
     >
       {icon}

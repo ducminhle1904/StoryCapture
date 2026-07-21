@@ -112,15 +112,15 @@ export const storyDslStreamLanguage = StreamLanguage.define({
 
 /** Highlight style backed by design tokens. */
 export const storyDslHighlightStyle = HighlightStyle.define([
-  { tag: t.keyword, color: "var(--sc-accent-500)", fontWeight: "600" },
-  { tag: t.atom, color: "var(--sc-accent-600)", fontWeight: "600" },
-  { tag: t.propertyName, color: "var(--sc-text)" },
-  { tag: t.typeName, color: "var(--sc-info)" },
-  { tag: t.variableName, color: "var(--sc-text)" },
-  { tag: t.string, color: "var(--sc-success)" },
-  { tag: t.number, color: "var(--sc-warn)" },
-  { tag: t.comment, color: "var(--sc-text-3)", fontStyle: "italic" },
-  { tag: t.punctuation, color: "var(--sc-text-2)" },
+  { tag: t.keyword, color: "var(--color-syntax-keyword)", fontWeight: "600" },
+  { tag: t.atom, color: "var(--color-syntax-constant)", fontWeight: "600" },
+  { tag: t.propertyName, color: "var(--color-syntax-property)" },
+  { tag: t.typeName, color: "var(--color-syntax-type)" },
+  { tag: t.variableName, color: "var(--color-syntax-variable)" },
+  { tag: t.string, color: "var(--color-syntax-string)" },
+  { tag: t.number, color: "var(--color-syntax-number)" },
+  { tag: t.comment, color: "var(--color-syntax-comment)", fontStyle: "italic" },
+  { tag: t.punctuation, color: "var(--color-syntax-punctuation)" },
 ]);
 
 /** Language + highlight bundle. */

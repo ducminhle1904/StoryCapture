@@ -81,10 +81,10 @@ export function VideoTransitionControls({ clips, pxPerMs }: VideoTransitionContr
                 right.label ?? right.id
               }`}
               aria-expanded={open}
-              className={`flex h-5 w-5 items-center justify-center rounded-[var(--radius-pill)] border text-[var(--color-fg-primary)] shadow-sm transition-[transform,background-color,border-color] active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
+              className={`flex h-5 w-5 items-center justify-center rounded-[var(--radius-full)] border text-[var(--color-text-primary)] shadow-sm transition-[transform,background-color,border-color] active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
                 currentKind
                   ? "border-[var(--color-accent,#ff5b76)] bg-[var(--color-accent,#ff5b76)]"
-                  : "border-[var(--color-border-strong)] bg-[var(--color-surface-100)] hover:bg-[var(--color-surface-200)]"
+                  : "border-[var(--color-border-emphasized)] bg-[var(--color-background-card)] hover:bg-[var(--color-background-surface)]"
               }`}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {
@@ -98,7 +98,7 @@ export function VideoTransitionControls({ clips, pxPerMs }: VideoTransitionContr
               <div
                 role="menu"
                 aria-label="Transition picker"
-                className="absolute left-1/2 top-7 z-[2] w-32 -translate-x-1/2 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-1 shadow-lg"
+                className="absolute left-1/2 top-7 z-[2] w-32 -translate-x-1/2 rounded-[var(--radius-element)] border border-[var(--color-border)] bg-[var(--color-background-card)] p-1 shadow-lg"
                 onPointerDown={(event) => event.stopPropagation()}
               >
                 {TRANSITION_OPTIONS.map((option) => (
@@ -106,10 +106,10 @@ export function VideoTransitionControls({ clips, pxPerMs }: VideoTransitionContr
                     key={option.kind}
                     type="button"
                     role="menuitem"
-                    className={`flex w-full items-center rounded-[var(--radius-sm)] px-2 py-1.5 text-left text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
+                    className={`flex w-full items-center rounded-[var(--radius-inner)] px-2 py-1.5 text-left text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
                       currentKind === option.kind
-                        ? "bg-[var(--color-surface-300)] text-[var(--color-fg-primary)]"
-                        : "text-[var(--color-fg-secondary)] hover:bg-[var(--color-surface-200)] hover:text-[var(--color-fg-primary)]"
+                        ? "bg-[var(--color-background-popover)] text-[var(--color-text-primary)]"
+                        : "text-[var(--color-text-secondary)] hover:bg-[var(--color-background-surface)] hover:text-[var(--color-text-primary)]"
                     }`}
                     onClick={() =>
                       setOutgoingTransition(left, {

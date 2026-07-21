@@ -4,14 +4,7 @@
  * flips the activePreset automatically).
  */
 
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Selector as AstryxSelector } from "@astryxdesign/core/Selector";
 import { type PresetName, useOutputPrefsStore } from "@/state/output-prefs";
 import { LABEL_PRESET, PRESET_OPTION_LABELS } from "./copy";
 
@@ -26,30 +19,20 @@ export function PresetSelect({ disabled }: Props) {
   const applyPreset = useOutputPrefsStore((s) => s.applyPreset);
 
   return (
-    <Select
+    <AstryxSelector
+      label={LABEL_PRESET}
+      isLabelHidden
       value={activePreset}
-      onValueChange={(raw) => {
-        if (typeof raw !== "string") return;
+      options={[
+        ...APPLICABLE.map((name) => ({ value: name, label: PRESET_OPTION_LABELS[name] })),
+        { value: "Custom", label: PRESET_OPTION_LABELS.Custom, disabled: true },
+      ]}
+      onChange={(raw) => {
         if (raw === "Custom") return;
         applyPreset(raw as Exclude<PresetName, "Custom">);
       }}
-      disabled={disabled}
-    >
-      <SelectTrigger aria-label={LABEL_PRESET} className="w-full min-w-0">
-        <SelectValue>{PRESET_OPTION_LABELS[activePreset]}</SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        <SelectGroup>
-          {APPLICABLE.map((name) => (
-            <SelectItem key={name} value={name}>
-              {PRESET_OPTION_LABELS[name]}
-            </SelectItem>
-          ))}
-          <SelectItem value="Custom" disabled>
-            {PRESET_OPTION_LABELS.Custom}
-          </SelectItem>
-        </SelectGroup>
-      </SelectContent>
-    </Select>
+      isDisabled={disabled}
+      width="100%"
+    />
   );
 }

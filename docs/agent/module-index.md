@@ -209,14 +209,18 @@ Use this for task routing after reading the short root guide.
 ## Shared UI And Styling
 
 - Desktop styling entry: `apps/desktop/src/styles.css`.
-- Shared package entry and base tokens: `packages/ui/src/index.ts`,
-  `packages/ui/src/tokens.css`.
-- Claude design docs/tokens: `packages/ui/src/claude-design/README.md`,
-  `packages/ui/src/claude-design/tokens.css`,
-  `packages/ui/src/claude-design/app.css`.
-- Primitives: `packages/ui/src/claude-design/primitives/` and
-  exports from `packages/ui/src/claude-design/index.ts`.
-- Desktop local wrappers/components: `apps/desktop/src/components/ui/`.
+- Web cascade declaration: `apps/web/src/styles/layers.css`; web global styles:
+  `apps/web/src/styles/globals.css`.
+- Theme contract and provider: `packages/ui/src/theme/index.ts`,
+  `packages/ui/src/theme/provider.tsx`.
+- Theme source: `packages/ui/src/theme/storycapture-gothic.ts`; generate with
+  `pnpm --dir packages/ui run theme:build` and verify with `theme:check`.
+- Generated theme CSS/JS/types: `packages/ui/src/theme/generated/`; do not edit
+  these files manually.
+- Product tokens and local fonts: `packages/ui/src/theme/product-tokens.css`,
+  `packages/ui/src/theme/fonts.css`.
+- Generic UI imports come directly from `@astryxdesign/core/<Component>`.
+- Product-specific renderer compounds remain near their owning feature.
 
 ## Shared Contracts
 

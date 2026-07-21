@@ -1,8 +1,10 @@
 "use client";
 
+import { Badge } from "@astryxdesign/core/Badge";
+import { Spinner } from "@astryxdesign/core/Spinner";
 import { useEffect, useState } from "react";
-import { RecordingStatus } from "@/components/recording-status";
 import { ProjectMirror } from "@/components/project-mirror";
+import { RecordingStatus } from "@/components/recording-status";
 
 /**
  * Desktop sync dashboard — recording-status banner, synced project mirror,
@@ -78,10 +80,10 @@ export default function SyncPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-50">Desktop Sync</h1>
-          <p className="mt-1 text-sm text-zinc-400">
-            Loading workspace...
-          </p>
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Desktop Sync</h1>
+          <div className="mt-2">
+            <Spinner label="Loading workspace" size="sm" />
+          </div>
         </div>
       </div>
     );
@@ -91,8 +93,8 @@ export default function SyncPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-50">Desktop Sync</h1>
-          <p className="mt-1 text-sm text-zinc-400">
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Desktop Sync</h1>
+          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             Live view of desktop project metadata and recording status
           </p>
         </div>
@@ -101,13 +103,11 @@ export default function SyncPage() {
       </div>
 
       {/* Recording status banner */}
-      {sseToken && (
-        <RecordingStatus workspaceId={workspaceId} sseToken={sseToken} />
-      )}
+      {sseToken && <RecordingStatus workspaceId={workspaceId} sseToken={sseToken} />}
 
       {/* Synced projects */}
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-zinc-200">
+        <h2 className="mb-3 text-lg font-semibold text-[var(--color-text-primary)]">
           Synced Projects
         </h2>
         <ProjectMirror workspaceId={workspaceId} sseToken={sseToken} />
@@ -118,15 +118,9 @@ export default function SyncPage() {
 
 function ConnectionIndicator({ connected }: { connected: boolean }) {
   return (
-    <div className="flex items-center gap-2">
-      <span
-        className={`h-2 w-2 rounded-full ${
-          connected ? "bg-green-500" : "bg-zinc-600"
-        }`}
-      />
-      <span className="text-xs text-zinc-400">
-        {connected ? "Connected to desktop" : "Desktop offline"}
-      </span>
-    </div>
+    <Badge
+      variant={connected ? "success" : "neutral"}
+      label={connected ? "Connected to desktop" : "Desktop offline"}
+    />
   );
 }

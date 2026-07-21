@@ -5,7 +5,7 @@
  * the recorder-state field resets to false on mount and after reset().
  */
 
-import { useId } from "react";
+import { Switch } from "@astryxdesign/core/Switch";
 import { isChromiumFamily } from "@/features/settings/browser-presets";
 
 interface ChromeHidingToggleProps {
@@ -25,43 +25,21 @@ export function ChromeHidingToggle({
 }: ChromeHidingToggleProps) {
   const chromiumOk = isChromiumFamily(browserPreset);
   const effectiveDisabled = disabled || !chromiumOk;
-  const id = useId();
-
   return (
-    <label
-      htmlFor={id}
-      className={`flex items-center justify-between text-[var(--color-fg-secondary)] ${
-        effectiveDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-      }`}
-      title={
+    <Switch
+      label="Hide browser chrome"
+      description="Launch Chromium in app mode without tabs or the URL bar."
+      value={checked}
+      onChange={onChange}
+      isDisabled={effectiveDisabled}
+      disabledMessage={
         chromiumOk
-          ? "Launch Chromium in app mode — no tab bar, no URL bar."
-          : "Chrome-hiding requires a Chromium-family browser (Chrome/Edge/Brave)."
+          ? "Recording controls are currently locked"
+          : "Chrome-hiding requires Chrome, Edge, Brave, or another Chromium browser"
       }
-    >
-      <span>Hide browser chrome</span>
-      <button
-        id={id}
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label="Hide browser chrome during recording"
-        disabled={effectiveDisabled}
-        onClick={() => {
-          if (!effectiveDisabled) onChange(!checked);
-        }}
-        className={`relative h-4 w-7 rounded-full transition-colors duration-150 ${
-          checked && !effectiveDisabled
-            ? "bg-[var(--color-accent-primary)]"
-            : "bg-[var(--color-surface-400)]"
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 left-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform duration-150 ${
-            checked ? "translate-x-3" : "translate-x-0"
-          }`}
-        />
-      </button>
-    </label>
+      labelPosition="start"
+      labelSpacing="spread"
+      width="100%"
+    />
   );
 }

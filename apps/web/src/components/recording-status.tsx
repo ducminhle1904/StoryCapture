@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
-import { useTRPC } from "@/trpc/client";
+import { Badge } from "@astryxdesign/core/Badge";
+import { Banner } from "@astryxdesign/core/Banner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useTRPC } from "@/trpc/client";
 
 /**
  * Live recording status indicator.
@@ -23,16 +25,11 @@ interface RecordingEvent {
   projectName?: string;
 }
 
-export function RecordingStatus({
-  workspaceId,
-  sseToken,
-}: RecordingStatusProps) {
+export function RecordingStatus({ workspaceId, sseToken }: RecordingStatusProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
-  const [statuses, setStatuses] = useState<Map<string, RecordingEvent>>(
-    new Map(),
-  );
+  const [statuses, setStatuses] = useState<Map<string, RecordingEvent>>(new Map());
   const [isPolling, setIsPolling] = useState(false);
   const failCountRef = useRef(0);
   const MAX_SSE_FAILURES = 3;
@@ -146,39 +143,21 @@ export function RecordingStatus({
   }
 
   return (
-    <div className="rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3">
-      <div className="flex items-center gap-2">
-        {/* Pulsing red dot */}
-        <span className="relative flex h-3 w-3">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-          <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
-        </span>
-
-        <span className="text-sm font-medium text-red-200">
-          Recording in progress
-        </span>
-
-        {isPolling && (
-          <span className="text-xs text-zinc-500">(polling)</span>
-        )}
-      </div>
-
+    <Banner
+      status="error"
+      title="Recording in progress"
+      description={isPolling ? "Live stream unavailable; using polling." : undefined}
+      defaultIsExpanded
+    >
       <div className="mt-2 space-y-1">
         {activeRecordings.map((r) => (
-          <div
-            key={r.desktopId}
-            className="flex items-center justify-between text-sm"
-          >
-            <span className="text-zinc-300">
-              {r.projectName ?? r.desktopId}
-            </span>
-            <span className="font-mono text-xs text-red-300">
-              {formatStatus(r.status)}
-            </span>
+          <div key={r.desktopId} className="flex items-center justify-between text-sm">
+            <span className="text-[var(--color-text-primary)]">{r.projectName ?? r.desktopId}</span>
+            <Badge variant="error" label={formatStatus(r.status)} />
           </div>
         ))}
       </div>
-    </div>
+    </Banner>
   );
 }
 

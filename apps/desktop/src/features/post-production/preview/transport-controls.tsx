@@ -5,10 +5,9 @@
  * of truth for toggling.
  */
 
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { memo } from "react";
-
-import { Button } from "@/components/ui/button";
 import { useEditorStore } from "../state/store";
 
 export interface TransportControlsProps {
@@ -26,40 +25,46 @@ function TransportControlsBase({ playing, onTogglePlay }: TransportControlsProps
 
   return (
     <div role="toolbar" aria-label="Preview transport" className="flex items-center gap-1.5">
-      <Button
+      <AstryxButton
         variant="ghost"
-        size="icon"
+        size="sm"
+        isIconOnly
         aria-label="Jump back 5 seconds"
-        disabled={!canJumpBack}
+        isDisabled={!canJumpBack}
         onClick={() => setPlayhead(Math.max(0, playheadMs - 5000))}
-        className="h-8 w-8 rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)] text-[var(--sc-text-2)] hover:bg-[var(--sc-surface-2)] active:scale-[0.98] disabled:cursor-default disabled:opacity-45"
+        className="h-8 w-8 rounded-[var(--radius-container)] border border-[var(--color-border)] bg-[var(--color-background-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-background-card)] active:scale-[0.98] disabled:cursor-default disabled:opacity-45"
+        label="Jump back 5 seconds"
       >
         <SkipBack className="h-4 w-4" />
-      </Button>
-      <Button
-        variant="default"
-        size="icon"
+      </AstryxButton>
+      <AstryxButton
+        variant="primary"
+        size="sm"
+        isIconOnly
         aria-label={playing ? "Pause" : "Play"}
         onClick={onTogglePlay}
-        className="h-8 w-8 rounded-[var(--sc-r-lg)] bg-[var(--sc-text)] text-[var(--sc-bg)] hover:bg-[var(--sc-text-2)] active:scale-[0.98]"
+        className="h-8 w-8 rounded-[var(--radius-container)] bg-[var(--color-text-primary)] text-[var(--color-background-body)] hover:bg-[var(--color-text-secondary)] active:scale-[0.98]"
+        label={playing ? "Pause" : "Play"}
       >
         {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-      </Button>
-      <Button
+      </AstryxButton>
+      <AstryxButton
         variant="ghost"
-        size="icon"
+        size="sm"
+        isIconOnly
         aria-label="Jump forward 5 seconds"
-        disabled={!canJumpForward}
+        isDisabled={!canJumpForward}
         onClick={() =>
           setPlayhead(
             maxPlayheadMs > 0 ? Math.min(maxPlayheadMs, playheadMs + 5000) : playheadMs + 5000,
           )
         }
-        className="h-8 w-8 rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)] text-[var(--sc-text-2)] hover:bg-[var(--sc-surface-2)] active:scale-[0.98] disabled:cursor-default disabled:opacity-45"
+        className="h-8 w-8 rounded-[var(--radius-container)] border border-[var(--color-border)] bg-[var(--color-background-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-background-card)] active:scale-[0.98] disabled:cursor-default disabled:opacity-45"
+        label="Jump forward 5 seconds"
       >
         <SkipForward className="h-4 w-4" />
-      </Button>
-      <span className="ml-1 min-w-[56px] rounded-full border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-2.5 py-1 text-center text-xs tabular-nums text-[var(--sc-text-3)]">
+      </AstryxButton>
+      <span className="ml-1 min-w-[56px] rounded-full border border-[var(--color-border)] bg-[var(--color-background-card)] px-2.5 py-1 text-center text-xs tabular-nums text-[var(--color-text-secondary)]">
         {(playheadMs / 1000).toFixed(2)}s
       </span>
     </div>

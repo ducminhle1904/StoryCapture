@@ -36,7 +36,7 @@ describe("ProjectCard", () => {
 
     expect(
       screen.getByRole("button", { name: "More actions for Demo Project (coming soon)" }),
-    ).toBeDisabled();
+    ).toHaveAttribute("aria-disabled", "true");
     expect(screen.queryByRole("button", { name: "Remove Demo Project from dashboard" })).toBeNull();
   });
 });

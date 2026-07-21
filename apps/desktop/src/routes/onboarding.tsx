@@ -1,4 +1,6 @@
-import { ScBadge, ScButton } from "@storycapture/ui";
+import { Badge as AstryxBadge } from "@astryxdesign/core/Badge";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { TextInput as AstryxTextInput } from "@astryxdesign/core/TextInput";
 import {
   ArrowRight,
   ChevronLeft,
@@ -9,7 +11,7 @@ import {
   Sparkles,
   Target,
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -123,10 +125,10 @@ function StepDots({ activeIndex }: { activeIndex: number }) {
             <span
               className={`block h-1.5 rounded-full transition-[width,background-color] duration-300 ${
                 active
-                  ? "w-12 bg-[var(--sc-text)]"
+                  ? "w-12 bg-[var(--color-text-primary)]"
                   : complete
-                    ? "w-5 bg-[var(--sc-accent-500)]"
-                    : "w-5 bg-[var(--sc-border-2)]"
+                    ? "w-5 bg-[var(--color-accent)]"
+                    : "w-5 bg-[var(--color-border-emphasized)]"
               }`}
             />
           </li>
@@ -137,13 +139,14 @@ function StepDots({ activeIndex }: { activeIndex: number }) {
 }
 
 function ArtworkPanel({ src, alt }: { src: string; alt: string }) {
+  const reduceMotion = useReducedMotion();
   return (
-    <div className="relative grid h-full min-h-0 place-items-center overflow-hidden bg-[var(--sc-chrome-2)] px-8">
-      <div className="absolute inset-y-0 left-0 w-px bg-[var(--sc-border)]" />
-      <div className="absolute right-8 top-8 hidden h-[calc(100%-64px)] w-10 border-l border-[var(--sc-border-2)] lg:block">
+    <div className="relative grid h-full min-h-0 place-items-center overflow-hidden bg-[var(--color-background-card)] px-8">
+      <div className="absolute inset-y-0 left-0 w-px bg-[var(--color-border)]" />
+      <div className="absolute right-8 top-8 hidden h-[calc(100%-64px)] w-10 border-l border-[var(--color-border-emphasized)] lg:block">
         <div className="mt-2 grid gap-4 pl-3">
           {rulerTicks.map((tick) => (
-            <span key={tick} className="h-px w-5 bg-[var(--sc-border-strong)]" />
+            <span key={tick} className="h-px w-5 bg-[var(--color-border-emphasized)]" />
           ))}
         </div>
       </div>
@@ -152,11 +155,11 @@ function ArtworkPanel({ src, alt }: { src: string; alt: string }) {
           key={src}
           src={src}
           alt={alt}
-          initial={{ opacity: 0, scale: 0.965, y: 16 }}
+          initial={reduceMotion ? false : { opacity: 0, scale: 0.965, y: 16 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.985, y: -10 }}
+          exit={reduceMotion ? undefined : { opacity: 0, scale: 0.985, y: -10 }}
           transition={{ type: "spring", stiffness: 120, damping: 24 }}
-          className="relative h-auto max-h-[min(74vh,680px)] w-full max-w-[740px] rounded-[34px] object-contain shadow-[var(--sc-sh-3)]"
+          className="relative h-auto max-h-[min(74vh,680px)] w-full max-w-[740px] rounded-[34px] object-contain shadow-[var(--shadow-high)]"
         />
       </AnimatePresence>
     </div>
@@ -165,10 +168,12 @@ function ArtworkPanel({ src, alt }: { src: string; alt: string }) {
 
 function MicroSequence() {
   return (
-    <div className="grid grid-cols-3 overflow-hidden rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)]">
+    <div className="grid grid-cols-3 overflow-hidden rounded-[var(--radius-container)] border border-[var(--color-border)] bg-[var(--color-background-surface)]">
       {["Write", "Preview", "Record"].map((item, index) => (
-        <div key={item} className="border-r border-[var(--sc-border)] px-3 py-3 last:border-r-0">
-          <div className="font-mono text-[10px] text-[var(--sc-text-4)]">0{index + 1}</div>
+        <div key={item} className="border-r border-[var(--color-border)] px-3 py-3 last:border-r-0">
+          <div className="font-mono text-[10px] text-[var(--color-text-secondary)]">
+            0{index + 1}
+          </div>
           <div className="mt-2 text-[12px] font-semibold">{item}</div>
         </div>
       ))}
@@ -177,6 +182,7 @@ function MicroSequence() {
 }
 
 export default function OnboardingRoute() {
+  const reduceMotion = useReducedMotion();
   const navigate = useNavigate();
   const requestNewProject = useDashboardStore((s) => s.requestNewProject);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -259,35 +265,39 @@ export default function OnboardingRoute() {
   return (
     <main
       id="main-content"
-      className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--sc-bg)] text-[var(--sc-text)]"
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--color-background-body)] text-[var(--color-text-primary)]"
     >
-      <header className="sc-window-chrome grid h-[68px] shrink-0 grid-cols-[220px_1fr_160px] items-center border-b border-[var(--sc-border)] bg-[var(--sc-chrome)] px-7">
+      <header className="story-window-chrome grid h-[68px] shrink-0 grid-cols-[220px_1fr_160px] items-center border-b border-[var(--color-border)] bg-[var(--story-native-chrome)] px-7">
         <div className="flex items-center gap-3">
-          <div className="grid h-9 w-9 place-items-center rounded-full bg-[var(--sc-text)] text-[var(--sc-text-inverse)]">
+          <div className="grid h-9 w-9 place-items-center rounded-full bg-[var(--color-text-primary)] text-[var(--color-on-accent)]">
             <Film size={17} aria-hidden="true" />
           </div>
           <div>
             <div className="text-[13px] font-semibold">StoryCapture</div>
-            <div className="font-mono text-[10.5px] text-[var(--sc-text-4)]">First run</div>
+            <div className="font-mono text-[10.5px] text-[var(--color-text-secondary)]">
+              First run
+            </div>
           </div>
         </div>
         <div className="flex justify-center">
           <StepDots activeIndex={activeIndex} />
         </div>
-        <button
-          type="button"
-          className="justify-self-end rounded-full px-3 py-2 text-[12px] text-[var(--sc-text-3)] transition hover:bg-[var(--sc-hover)] active:translate-y-px"
+        <AstryxButton
+          variant="ghost"
+          size="sm"
+          className="justify-self-end"
           onClick={() => finish(false)}
+          label="Skip setup"
         >
           Skip setup
-        </button>
+        </AstryxButton>
       </header>
 
       <section className="grid min-h-0 flex-1 lg:grid-cols-[minmax(420px,0.9fr)_minmax(480px,1.1fr)]">
         <div className="relative flex min-h-0 flex-col justify-center overflow-hidden px-8 py-7 lg:px-14">
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -left-8 top-8 font-mono text-[128px] font-semibold leading-none text-[var(--sc-border)]"
+            className="pointer-events-none absolute -left-8 top-8 font-mono text-[128px] font-semibold leading-none text-[var(--color-text-secondary)]"
           >
             {String(activeIndex + 1).padStart(2, "0")}
           </div>
@@ -295,16 +305,16 @@ export default function OnboardingRoute() {
           <AnimatePresence mode="wait">
             <motion.div
               key={activeStep.id}
-              initial={{ opacity: 0, x: -18 }}
+              initial={reduceMotion ? false : { opacity: 0, x: -18 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 12 }}
+              exit={reduceMotion ? undefined : { opacity: 0, x: 12 }}
               transition={{ type: "spring", stiffness: 140, damping: 24 }}
               className="relative"
             >
-              <div className="font-mono text-[11px] uppercase text-[var(--sc-accent-700)]">
+              <div className="font-mono text-[11px] uppercase text-[var(--color-text-accent)]">
                 {activeStep.label} / {String(activeIndex + 1).padStart(2, "0")}
               </div>
-              <div className="mt-3 max-w-[520px] text-[13px] leading-6 text-[var(--sc-text-3)]">
+              <div className="mt-3 max-w-[520px] text-[13px] leading-6 text-[var(--color-text-secondary)]">
                 {activeStep.eyebrow}
               </div>
               <h1
@@ -318,12 +328,12 @@ export default function OnboardingRoute() {
 
           {activeStep.id === "outcome" && (
             <motion.div
-              initial={{ opacity: 0, y: 12 }}
+              initial={reduceMotion ? false : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.08, type: "spring", stiffness: 120, damping: 22 }}
               className="mt-6 max-w-[470px]"
             >
-              <p className="text-[14px] leading-7 text-[var(--sc-text-3)]">
+              <p className="text-[14px] leading-7 text-[var(--color-text-secondary)]">
                 StoryCapture turns a written story into a real browser recording. First we show the
                 loop, then we ask you to create a project.
               </p>
@@ -335,7 +345,7 @@ export default function OnboardingRoute() {
 
           {activeStep.id === "goal" && (
             <motion.div
-              initial={{ opacity: 0, y: 12 }}
+              initial={reduceMotion ? false : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.08, type: "spring", stiffness: 120, damping: 22 }}
               className="mt-7 grid max-w-[620px] gap-2 sm:grid-cols-2"
@@ -349,20 +359,22 @@ export default function OnboardingRoute() {
                     onClick={() => setGoalId(item.id)}
                     className={`group relative overflow-hidden rounded-[18px] border p-4 text-left transition duration-300 active:translate-y-px ${
                       selected
-                        ? "border-[var(--sc-accent-500)] bg-[oklch(0.78_0.14_var(--sc-accent-h)/0.14)] text-[var(--sc-text)] shadow-[var(--sc-sh-1)]"
-                        : "border-[var(--sc-border)] bg-[var(--sc-surface-2)] hover:border-[var(--sc-border-2)] hover:bg-[var(--sc-surface-3)]"
+                        ? "border-[var(--color-border-emphasized)] bg-[var(--color-accent-muted)] text-[var(--color-text-primary)] shadow-[var(--shadow-low)]"
+                        : "border-[var(--color-border)] bg-[var(--color-background-card)] hover:border-[var(--color-border-emphasized)] hover:bg-[var(--color-background-muted)]"
                     }`}
                   >
                     <div
                       className={`absolute right-3 top-3 h-2 w-2 rounded-full ${
-                        selected ? "bg-[var(--sc-accent-400)]" : "bg-[var(--sc-text-4)]"
+                        selected ? "bg-[var(--color-accent)]" : "bg-[var(--color-text-disabled)]"
                       }`}
                     />
                     <div className="flex items-center gap-2 pr-5 text-[13px] font-semibold">
                       <Target
                         size={14}
                         className={
-                          selected ? "text-[var(--sc-accent-300)]" : "text-[var(--sc-text-3)]"
+                          selected
+                            ? "text-[var(--color-text-accent)]"
+                            : "text-[var(--color-text-secondary)]"
                         }
                         aria-hidden="true"
                       />
@@ -370,7 +382,9 @@ export default function OnboardingRoute() {
                     </div>
                     <div
                       className={`mt-2 text-[12px] leading-5 ${
-                        selected ? "text-[var(--sc-text-2)]" : "text-[var(--sc-text-3)]"
+                        selected
+                          ? "text-[var(--color-text-secondary)]"
+                          : "text-[var(--color-text-secondary)]"
                       }`}
                     >
                       {item.body}
@@ -383,40 +397,38 @@ export default function OnboardingRoute() {
 
           {activeStep.id === "target" && (
             <motion.div
-              initial={{ opacity: 0, y: 12 }}
+              initial={reduceMotion ? false : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.08, type: "spring", stiffness: 120, damping: 22 }}
               className="mt-7 max-w-[540px]"
             >
-              <label className="grid gap-2 text-[13px] font-semibold" htmlFor="onboarding-url">
-                Product URL
-                <input
-                  id="onboarding-url"
-                  type="url"
-                  value={targetUrl}
-                  onChange={(event) => {
-                    setTargetUrl(event.target.value);
-                    setUseSample(false);
-                  }}
-                  placeholder="https://app.yourproduct.com/signup"
-                  className="h-12 rounded-[16px] border border-[var(--sc-border-2)] bg-[var(--sc-surface-2)] px-4 text-[13px] font-normal text-[var(--sc-text)] outline-none transition placeholder:text-[var(--sc-text-4)] focus:border-[var(--sc-focus)] focus:bg-[var(--sc-surface)]"
-                />
-              </label>
+              <AstryxTextInput
+                label="Product URL"
+                value={targetUrl}
+                onChange={(value) => {
+                  setTargetUrl(value);
+                  setUseSample(false);
+                }}
+                placeholder="https://app.yourproduct.com/signup"
+                size="lg"
+                width="100%"
+              />
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <ScButton
+                <AstryxButton
                   icon={<Sparkles size={13} aria-hidden="true" />}
                   onClick={() => {
                     setUseSample(true);
                     setTargetUrl("");
                     setError(null);
                   }}
+                  label="Use sample"
                 >
                   Use sample
-                </ScButton>
-                {useSample && <ScBadge tone="success">Sample selected</ScBadge>}
+                </AstryxButton>
+                {useSample && <AstryxBadge variant="success" label="Sample selected" />}
               </div>
               {error && (
-                <p role="alert" className="mt-3 text-[12px] text-[var(--sc-record)]">
+                <p role="alert" className="mt-3 text-[12px] text-[var(--story-recording)]">
                   {error}
                 </p>
               )}
@@ -425,22 +437,24 @@ export default function OnboardingRoute() {
 
           {activeStep.id === "permissions" && (
             <motion.div
-              initial={{ opacity: 0, y: 12 }}
+              initial={reduceMotion ? false : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.08, type: "spring", stiffness: 120, damping: 22 }}
-              className="mt-7 max-w-[560px] divide-y divide-[var(--sc-border)] overflow-hidden rounded-[20px] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] shadow-[var(--sc-sh-1)]"
+              className="mt-7 max-w-[560px] divide-y divide-[var(--color-border)] overflow-hidden rounded-[20px] border border-[var(--color-border)] bg-[var(--color-background-card)] shadow-[var(--shadow-low)]"
             >
               {permissionRows.map(([title, body]) => (
                 <div key={title} className="grid gap-1 px-4 py-3.5">
                   <div className="flex items-center gap-2 text-[13px] font-semibold">
                     <ShieldCheck
                       size={14}
-                      className="text-[var(--sc-accent-300)]"
+                      className="text-[var(--color-text-accent)]"
                       aria-hidden="true"
                     />
                     {title}
                   </div>
-                  <div className="text-[12px] leading-5 text-[var(--sc-text-3)]">{body}</div>
+                  <div className="text-[12px] leading-5 text-[var(--color-text-secondary)]">
+                    {body}
+                  </div>
                 </div>
               ))}
             </motion.div>
@@ -448,15 +462,15 @@ export default function OnboardingRoute() {
 
           {activeStep.id === "preview" && (
             <motion.div
-              initial={{ opacity: 0, y: 12 }}
+              initial={reduceMotion ? false : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.08, type: "spring", stiffness: 120, damping: 22 }}
               className="mt-7 max-w-[500px]"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--sc-text)] text-[var(--sc-text-inverse)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-text-primary)] text-[var(--color-on-accent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
                 <Play size={18} fill="currentColor" aria-hidden="true" />
               </div>
-              <p className="mt-4 text-[14px] leading-7 text-[var(--sc-text-3)]">
+              <p className="mt-4 text-[14px] leading-7 text-[var(--color-text-secondary)]">
                 The preview proves the core loop before folder selection. Next, create the local
                 project and record the first clip.
               </p>
@@ -467,26 +481,27 @@ export default function OnboardingRoute() {
         <ArtworkPanel src={artwork.src} alt={artwork.alt} />
       </section>
 
-      <footer className="grid h-[76px] shrink-0 grid-cols-[160px_1fr_220px] items-center border-t border-[var(--sc-border)] bg-[var(--sc-chrome)] px-7">
-        <ScButton
+      <footer className="grid h-[76px] shrink-0 grid-cols-[160px_1fr_220px] items-center border-t border-[var(--color-border)] bg-[var(--story-native-chrome)] px-7">
+        <AstryxButton
           icon={<ChevronLeft size={13} aria-hidden="true" />}
-          disabled={activeIndex === 0}
+          isDisabled={activeIndex === 0}
           onClick={goBack}
+          label="Back"
         >
           Back
-        </ScButton>
+        </AstryxButton>
         <div className="grid justify-self-center gap-1 text-center">
-          <div className="font-mono text-[10.5px] text-[var(--sc-text-4)]">
+          <div className="font-mono text-[10.5px] text-[var(--color-text-secondary)]">
             {progress}% complete
           </div>
-          <div className="h-1 w-[180px] overflow-hidden rounded-full bg-[var(--sc-surface-4)]">
+          <div className="h-1 w-[180px] overflow-hidden rounded-full bg-[var(--color-background-muted)]">
             <div
-              className="h-full rounded-full bg-[var(--sc-text)] transition-[width] duration-300"
+              className="h-full rounded-full bg-[var(--color-text-primary)] transition-[width] duration-300"
               style={{ width: `${progress}%` }}
             />
           </div>
         </div>
-        <ScButton
+        <AstryxButton
           variant="primary"
           icon={
             activeStep.id === "preview" ? (
@@ -496,9 +511,10 @@ export default function OnboardingRoute() {
             )
           }
           onClick={goNext}
+          label={String(activeStep.id === "preview" ? "Create project" : "Continue")}
         >
           {activeStep.id === "preview" ? "Create project" : "Continue"}
-        </ScButton>
+        </AstryxButton>
       </footer>
     </main>
   );

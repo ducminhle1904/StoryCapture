@@ -1,5 +1,7 @@
 "use client";
 
+import { Selector } from "@astryxdesign/core/Selector";
+import { Spinner } from "@astryxdesign/core/Spinner";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTRPC } from "@/trpc/client";
@@ -33,39 +35,24 @@ export function TemplateGrid({ onUseTemplate }: TemplateGridProps) {
 
   return (
     <div className="space-y-6">
-      {/* Category filter tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-2">
-        <button
-          type="button"
-          onClick={() => setActiveCategory(null)}
-          className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-            activeCategory === null
-              ? "bg-zinc-100 text-zinc-900"
-              : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300"
-          }`}
-        >
-          All
-        </button>
-        {ALL_CATEGORIES.map((cat) => (
-          <button
-            key={cat}
-            type="button"
-            onClick={() => setActiveCategory(cat)}
-            className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-              activeCategory === cat
-                ? "bg-zinc-100 text-zinc-900"
-                : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300"
-            }`}
-          >
-            {formatCategoryLabel(cat)}
-          </button>
-        ))}
-      </div>
+      <Selector
+        label="Template category"
+        value={activeCategory ?? "ALL"}
+        onChange={(value) => setActiveCategory(value === "ALL" ? null : value)}
+        options={[
+          { value: "ALL", label: "All categories" },
+          ...ALL_CATEGORIES.map((category) => ({
+            value: category,
+            label: formatCategoryLabel(category),
+          })),
+        ]}
+        width={260}
+      />
 
       {/* Loading state */}
       {isLoading && (
         <div className="flex justify-center py-12">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300" />
+          <Spinner label="Loading templates" />
         </div>
       )}
 
@@ -74,7 +61,7 @@ export function TemplateGrid({ onUseTemplate }: TemplateGridProps) {
         <div className="space-y-10">
           {Object.entries(data.grouped).map(([category, templates]) => (
             <section key={category}>
-              <h3 className="mb-4 text-lg font-semibold text-zinc-200">
+              <h3 className="mb-4 text-lg font-semibold text-[var(--color-text-primary)]">
                 {formatCategoryLabel(category)}
               </h3>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -99,7 +86,9 @@ export function TemplateGrid({ onUseTemplate }: TemplateGridProps) {
           ))}
 
           {Object.keys(data.grouped).length === 0 && (
-            <p className="py-12 text-center text-sm text-zinc-500">No templates found.</p>
+            <p className="py-12 text-center text-sm text-[var(--color-text-secondary)]">
+              No templates found.
+            </p>
           )}
         </div>
       )}

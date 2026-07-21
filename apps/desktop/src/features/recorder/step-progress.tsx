@@ -16,30 +16,27 @@ export function StepProgress() {
       aria-valuemax={steps.length}
       aria-valuenow={currentStep}
       aria-label={`Step ${currentStep + 1} of ${steps.length}`}
-      className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-4"
+      className="rounded-[var(--radius-page)] border border-[var(--color-border)] bg-[var(--color-background-card)] px-4 py-4"
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-center">
         <div>
           <div className="flex items-center justify-between gap-4">
-            <span className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
+            <span className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-text-secondary)]">
               Step {currentStep + 1}/{steps.length}
             </span>
-            <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-secondary)]">
+            <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-secondary)]">
               {activeStep?.verb ?? "waiting"}
             </span>
           </div>
-          <div className="mt-3 flex gap-1 overflow-hidden rounded-full bg-[var(--color-surface-100)] p-[3px]">
-            {steps.map((step, i) => {
-              let cls = "bg-[var(--color-surface-300)]";
-              if (step.status === "running")
-                cls = "bg-[var(--color-accent-primary)]/70 animate-pulse";
-              else if (step.status === "succeeded")
-                cls = "bg-[var(--color-success)]";
-              else if (step.status === "failed")
-                cls = "bg-[var(--color-danger)]";
+          <div className="mt-3 flex gap-1 overflow-hidden rounded-full bg-[var(--color-background-card)] p-[3px]">
+            {steps.map((step) => {
+              let cls = "bg-[var(--color-background-popover)]";
+              if (step.status === "running") cls = "bg-[var(--color-accent)]/70 animate-pulse";
+              else if (step.status === "succeeded") cls = "bg-[var(--color-success)]";
+              else if (step.status === "failed") cls = "bg-[var(--color-error)]";
               return (
                 <div
-                  key={i}
+                  key={step.index}
                   className={`h-2 flex-1 min-w-[4px] rounded-full transition-colors ${cls}`}
                   title={`${step.verb} — ${step.status}`}
                   aria-hidden="true"
@@ -50,10 +47,10 @@ export function StepProgress() {
         </div>
 
         <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-          {steps.slice(Math.max(0, currentStep - 1), currentStep + 2).map((step, index) => (
+          {steps.slice(Math.max(0, currentStep - 1), currentStep + 2).map((step) => (
             <span
-              key={`${step.verb}-${index}`}
-              className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-secondary)]"
+              key={step.index}
+              className="rounded-full border border-[var(--color-border)] bg-[var(--color-background-muted)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-secondary)]"
             >
               {step.verb}
             </span>

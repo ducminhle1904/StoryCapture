@@ -1,10 +1,11 @@
 /**
- * InspectorPanel — tabbed side panel: Presets | Effects | Sound. Built
- * with a thin button-group + conditional render rather than a heavy Tabs
- * primitive; keyboard navigation works out of the box with native
- * buttons + Tab.
+ * InspectorPanel — Astryx-tabbed side panel: Presets | Effects | Sound.
+ * Content remains product-owned while TabList supplies roving focus and
+ * keyboard navigation.
  */
 
+import { Button } from "@astryxdesign/core/Button";
+import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Layers3, Music2, Palette, SlidersHorizontal } from "lucide-react";
 import type { ComponentType } from "react";
 import { useMemo } from "react";
@@ -44,17 +45,17 @@ export function InspectorPanel() {
         return <BackgroundPanel />;
       case "sound":
         return (
-          <div className="p-3 text-sm text-[var(--sc-text-3)]">
+          <div className="p-3 text-sm text-[var(--color-text-secondary)]">
             <p className="mb-3 text-xs leading-5">
               Add cues and background music from the library.
             </p>
-            <button
-              type="button"
-              className="w-full rounded-[var(--sc-r-md)] border border-[var(--sc-border)] bg-[var(--sc-surface)] px-3 py-2 text-xs font-medium text-[var(--sc-text)] transition-[background-color,transform] hover:bg-[var(--sc-surface-2)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-focus-ring)]"
+            <Button
+              label="Open Sound Library"
+              variant="secondary"
+              size="sm"
+              className="w-full"
               onClick={() => setSoundDrawerOpen(true)}
-            >
-              Open Sound Library
-            </button>
+            />
           </div>
         );
     }
@@ -65,44 +66,42 @@ export function InspectorPanel() {
       aria-label="Inspector"
       className="grid h-full min-h-0 w-full grid-cols-[52px_minmax(0,1fr)] bg-transparent"
     >
-      <div
-        role="tablist"
+      <TabList
         aria-label="Inspector sections"
-        className="flex flex-col items-center gap-1 border-r border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-1.5 py-2"
+        value={selectedTab}
+        onChange={(value) => setSelectedTab(value as InspectorTab)}
+        orientation="vertical"
+        size="sm"
+        className="flex flex-col items-center gap-1 border-r border-[var(--color-border)] bg-[var(--color-background-card)] px-1.5 py-2"
       >
         {TABS.map((t) => {
-          const active = t.id === selectedTab;
           const Icon = t.icon;
           return (
-            <button
+            <Tab
               key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={active}
+              value={t.id}
+              label={t.label}
+              isLabelHidden
+              icon={
+                <span className="flex flex-col items-center gap-0.5">
+                  <Icon size={14} aria-hidden="true" />
+                  <span aria-hidden="true">{t.short}</span>
+                </span>
+              }
               aria-controls={`inspector-panel-${t.id}`}
               id={`inspector-tab-${t.id}`}
-              tabIndex={active ? 0 : -1}
-              title={t.label}
-              className={`flex h-11 w-10 flex-col items-center justify-center gap-0.5 rounded-[var(--sc-r-md)] text-[9px] font-semibold uppercase tracking-[0.08em] transition-[background-color,color,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-focus-ring)] active:scale-[0.96] ${
-                active
-                  ? "bg-[var(--sc-surface)] text-[var(--sc-text)] shadow-[inset_0_0_0_1px_var(--sc-border)]"
-                  : "text-[var(--sc-text-4)] hover:bg-[var(--sc-surface)] hover:text-[var(--sc-text-2)]"
-              }`}
-              onClick={() => setSelectedTab(t.id)}
-            >
-              <Icon size={14} aria-hidden="true" />
-              <span>{t.short}</span>
-            </button>
+              className="h-11 w-10 text-[9px] font-semibold uppercase tracking-[0.08em]"
+            />
           );
         })}
-      </div>
+      </TabList>
       <div className="flex min-h-0 min-w-0 flex-col">
-        <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-[var(--sc-border)] px-3">
+        <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-[var(--color-border)] px-3">
           <div className="min-w-0">
-            <div className="truncate text-[12px] font-semibold text-[var(--sc-text)]">
+            <div className="truncate text-[12px] font-semibold text-[var(--color-text-primary)]">
               {activeTab.label}
             </div>
-            <div className="truncate font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+            <div className="truncate font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-disabled)]">
               {selectedClipId ? "Clip Selected" : "No Clip"}
             </div>
           </div>

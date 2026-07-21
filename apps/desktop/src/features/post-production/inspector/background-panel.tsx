@@ -1,10 +1,9 @@
+import { Slider } from "@astryxdesign/core/Slider";
 import {
   EXPORT_FOREGROUND_SCALE_MAX,
   EXPORT_FOREGROUND_SCALE_MIN,
 } from "@storycapture/shared-types";
 import { useEffect, useMemo, useRef, useState } from "react";
-
-import { Slider } from "@/components/ui/slider";
 import gradientManifest from "../../../../../../assets/gradient-presets/manifest.json";
 import {
   DEFAULT_BACKGROUND,
@@ -116,13 +115,6 @@ const VIDEO_SIZE_PRESETS = [
   { label: "Balanced", percent: 85 },
   { label: "Large", percent: 95 },
 ] as const;
-
-const VIDEO_SIZE_FORMAT: Intl.NumberFormatOptions = {
-  style: "unit",
-  unit: "percent",
-  unitDisplay: "narrow",
-  maximumFractionDigits: 0,
-};
 
 function clampByte(n: number): number {
   if (!Number.isFinite(n)) return 0;
@@ -289,23 +281,23 @@ export function BackgroundPanel() {
   const modeButtonClass = (selected: boolean) =>
     `group grid min-h-[92px] grid-rows-[1fr_auto] overflow-hidden rounded-xl border text-left transition duration-200 ease-out active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
       selected
-        ? "border-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10 shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--color-accent-primary)_72%,transparent)]"
-        : "border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] hover:border-[color-mix(in_oklch,var(--color-fg-muted)_44%,var(--color-border-subtle))]"
+        ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10 shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--color-accent)_72%,transparent)]"
+        : "border-[var(--color-border)] bg-[var(--color-background-card)] hover:border-[color-mix(in_oklch,var(--color-text-secondary)_44%,var(--color-border))]"
     }`;
 
   return (
-    <div className="space-y-4 p-4 text-sm text-[var(--color-fg-secondary)]">
+    <div className="space-y-4 p-4 text-sm text-[var(--color-text-secondary)]">
       <section className="space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-secondary)]">
               Background
             </div>
-            <div className="mt-1 text-xs text-[var(--color-fg-muted)]">
+            <div className="mt-1 text-xs text-[var(--color-text-secondary)]">
               Choose the canvas treatment behind the video frame.
             </div>
           </div>
-          <div className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">
+          <div className="rounded-full border border-[var(--color-border)] bg-[var(--color-background-card)] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--color-text-secondary)]">
             {modeLabel(activeMode)}
           </div>
         </div>
@@ -323,16 +315,18 @@ export function BackgroundPanel() {
               aria-hidden="true"
               className="block min-h-12 border-b border-white/10"
               style={{
-                backgroundColor: "var(--color-surface)",
+                backgroundColor: "var(--color-background-card)",
                 backgroundImage:
-                  "linear-gradient(45deg, color-mix(in oklch,var(--color-fg-muted)_16%,transparent) 25%, transparent 25%), linear-gradient(-45deg, color-mix(in oklch,var(--color-fg-muted)_16%,transparent) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, color-mix(in oklch,var(--color-fg-muted)_16%,transparent) 75%), linear-gradient(-45deg, transparent 75%, color-mix(in oklch,var(--color-fg-muted)_16%,transparent) 75%)",
+                  "linear-gradient(45deg, color-mix(in oklch,var(--color-text-secondary)_16%,transparent) 25%, transparent 25%), linear-gradient(-45deg, color-mix(in oklch,var(--color-text-secondary)_16%,transparent) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, color-mix(in oklch,var(--color-text-secondary)_16%,transparent) 75%), linear-gradient(-45deg, transparent 75%, color-mix(in oklch,var(--color-text-secondary)_16%,transparent) 75%)",
                 backgroundPosition: "0 0, 0 6px, 6px -6px, -6px 0",
                 backgroundSize: "12px 12px",
               }}
             />
             <span className="flex items-center justify-between gap-2 px-3 py-2">
-              <span className="text-xs font-medium text-[var(--color-fg)]">Transparent</span>
-              <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+              <span className="text-xs font-medium text-[var(--color-text-primary)]">
+                Transparent
+              </span>
+              <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
                 Ambient
               </span>
             </span>
@@ -355,8 +349,8 @@ export function BackgroundPanel() {
               style={{ background: solidHex }}
             />
             <span className="flex items-center justify-between gap-2 px-3 py-2">
-              <span className="text-xs font-medium text-[var(--color-fg)]">Solid</span>
-              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--color-fg-muted)]">
+              <span className="text-xs font-medium text-[var(--color-text-primary)]">Solid</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--color-text-secondary)]">
                 {solidHex}
               </span>
             </span>
@@ -383,8 +377,8 @@ export function BackgroundPanel() {
               }}
             />
             <span className="flex items-center justify-between gap-2 px-3 py-2">
-              <span className="text-xs font-medium text-[var(--color-fg)]">Gradient</span>
-              <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+              <span className="text-xs font-medium text-[var(--color-text-primary)]">Gradient</span>
+              <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
                 Presets
               </span>
             </span>
@@ -413,8 +407,8 @@ export function BackgroundPanel() {
               }}
             />
             <span className="flex items-center justify-between gap-2 px-3 py-2">
-              <span className="text-xs font-medium text-[var(--color-fg)]">Image</span>
-              <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+              <span className="text-xs font-medium text-[var(--color-text-primary)]">Image</span>
+              <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
                 Gallery
               </span>
             </span>
@@ -424,18 +418,21 @@ export function BackgroundPanel() {
 
       <section
         aria-labelledby="video-size-heading"
-        className="space-y-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3"
+        className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-background-card)] p-3"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div id="video-size-heading" className="text-xs font-medium text-[var(--color-fg)]">
+            <div
+              id="video-size-heading"
+              className="text-xs font-medium text-[var(--color-text-primary)]"
+            >
               Video size
             </div>
-            <div className="mt-1 text-xs leading-5 text-[var(--color-fg-muted)]">
+            <div className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">
               Scale the video within the background canvas.
             </div>
           </div>
-          <div className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+          <div className="rounded-full border border-[var(--color-border)] bg-[var(--color-background-surface)] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
             {sourceFillActive ? "Source fill" : (activeSizePreset?.label ?? "Custom")}
           </div>
         </div>
@@ -451,8 +448,8 @@ export function BackgroundPanel() {
                 aria-pressed={selected}
                 className={`rounded-lg border px-2 py-2 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
                   selected
-                    ? "border-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10 text-[var(--color-fg)]"
-                    : "border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+                    ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-text-primary)]"
+                    : "border-[var(--color-border)] bg-[var(--color-background-surface)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
                 }`}
                 onClick={() => {
                   enableFramedSizing();
@@ -471,24 +468,25 @@ export function BackgroundPanel() {
             <span id="video-size-slider-label" className="sr-only">
               Video size percentage
             </span>
-            <span className="text-xs text-[var(--color-fg-muted)]">Custom size</span>
+            <span className="text-xs text-[var(--color-text-secondary)]">Custom size</span>
             <output
               aria-live="polite"
-              className="font-mono text-xs font-medium text-[var(--color-fg)]"
+              className="font-mono text-xs font-medium text-[var(--color-text-primary)]"
             >
               {foregroundPercent}%
             </output>
           </div>
           <Slider
+            label="Video size"
+            isLabelHidden
             id="video-size-slider"
-            aria-labelledby="video-size-slider-label"
             min={EXPORT_FOREGROUND_SCALE_MIN * 100}
             max={EXPORT_FOREGROUND_SCALE_MAX * 100}
             step={1}
             value={foregroundPercent}
-            format={VIDEO_SIZE_FORMAT}
-            onValueChange={updateForegroundScale}
-            onValueCommitted={commitForegroundScaleGesture}
+            formatValue={(value) => `${Math.round(value)}%`}
+            onChange={updateForegroundScale}
+            onChangeEnd={commitForegroundScaleGesture}
             onKeyDownCapture={(event) => handleScaleKeyDown(event.key)}
             onKeyUpCapture={(event) => handleScaleKeyUp(event.key)}
             onBlurCapture={finishInterruptedScaleGesture}
@@ -498,14 +496,14 @@ export function BackgroundPanel() {
         </div>
 
         {sourceFillActive ? (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] p-2.5">
-            <p className="text-xs leading-5 text-[var(--color-fg-muted)]">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-background-surface)] p-2.5">
+            <p className="text-xs leading-5 text-[var(--color-text-secondary)]">
               Source fill is full-bleed and currently overrides your saved {foregroundPercent}%
               size.
             </p>
             <button
               type="button"
-              className="shrink-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-100)] px-2.5 py-1.5 text-xs font-medium text-[var(--color-fg)] transition hover:border-[var(--color-accent-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
+              className="shrink-0 rounded-md border border-[var(--color-border)] bg-[var(--color-background-card)] px-2.5 py-1.5 text-xs font-medium text-[var(--color-text-primary)] transition hover:border-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
               onClick={enableFramedSizing}
             >
               Use cinematic frame
@@ -515,21 +513,23 @@ export function BackgroundPanel() {
       </section>
 
       {activeMode === "transparent" ? (
-        <section className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3">
-          <div className="text-xs font-medium text-[var(--color-fg)]">Transparent canvas</div>
-          <div className="mt-1 text-xs leading-5 text-[var(--color-fg-muted)]">
+        <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background-card)] p-3">
+          <div className="text-xs font-medium text-[var(--color-text-primary)]">
+            Transparent canvas
+          </div>
+          <div className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">
             Preview uses the live ambient backdrop while export keeps the canvas transparent.
           </div>
         </section>
       ) : null}
 
       {activeMode === "solid" ? (
-        <label className="block space-y-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3">
-          <span className="text-xs font-medium text-[var(--color-fg)]">Solid color</span>
+        <label className="block space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-background-card)] p-3">
+          <span className="text-xs font-medium text-[var(--color-text-primary)]">Solid color</span>
           <span className="flex items-center gap-3">
             <span
               aria-hidden="true"
-              className="h-7 w-7 shrink-0 rounded-md border border-[var(--color-border-subtle)]"
+              className="h-7 w-7 shrink-0 rounded-md border border-[var(--color-border)]"
               style={{ background: solidHex }}
             />
             <input
@@ -551,7 +551,9 @@ export function BackgroundPanel() {
 
       {activeMode === "gradient" ? (
         <fieldset className="space-y-3">
-          <legend className="text-xs font-medium text-[var(--color-fg)]">Gradient presets</legend>
+          <legend className="text-xs font-medium text-[var(--color-text-primary)]">
+            Gradient presets
+          </legend>
           <div className="grid grid-cols-2 gap-2">
             {GRADIENT_PRESETS.map((preset) => {
               const selected = activeMode === "gradient" && activePreset === preset.id;
@@ -561,10 +563,10 @@ export function BackgroundPanel() {
                   type="button"
                   aria-label={`Gradient preset ${preset.label}`}
                   aria-pressed={selected}
-                  className={`group overflow-hidden rounded-lg border bg-[var(--color-surface-100)] text-left transition duration-200 ease-out active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
+                  className={`group overflow-hidden rounded-lg border bg-[var(--color-background-card)] text-left transition duration-200 ease-out active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
                     selected
-                      ? "border-[var(--color-accent-primary)] shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--color-accent-primary)_82%,transparent)]"
-                      : "border-[var(--color-border-subtle)] hover:border-[color-mix(in_oklch,var(--color-fg-muted)_48%,var(--color-border-subtle))]"
+                      ? "border-[var(--color-accent)] shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--color-accent)_82%,transparent)]"
+                      : "border-[var(--color-border)] hover:border-[color-mix(in_oklch,var(--color-text-secondary)_48%,var(--color-border))]"
                   }`}
                   onClick={() =>
                     commit({
@@ -584,15 +586,15 @@ export function BackgroundPanel() {
                     }}
                   />
                   <span className="flex items-center justify-between gap-2 px-3 py-2">
-                    <span className="truncate text-xs font-medium text-[var(--color-fg)]">
+                    <span className="truncate text-xs font-medium text-[var(--color-text-primary)]">
                       {preset.label}
                     </span>
                     <span
                       aria-hidden="true"
                       className={`h-1.5 w-1.5 rounded-full transition ${
                         selected
-                          ? "bg-[var(--color-accent-primary)]"
-                          : "bg-[var(--color-border-subtle)] group-hover:bg-[var(--color-fg-muted)]"
+                          ? "bg-[var(--color-accent)]"
+                          : "bg-[var(--color-border)] group-hover:bg-[var(--color-text-secondary)]"
                       }`}
                     />
                   </span>
@@ -605,8 +607,10 @@ export function BackgroundPanel() {
 
       {activeMode === "image" ? (
         <fieldset className="space-y-3">
-          <legend className="text-xs font-medium text-[var(--color-fg)]">Image backgrounds</legend>
-          <div className="grid grid-cols-3 gap-1 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-1">
+          <legend className="text-xs font-medium text-[var(--color-text-primary)]">
+            Image backgrounds
+          </legend>
+          <div className="grid grid-cols-3 gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-background-card)] p-1">
             {IMAGE_TABS.map((tab) => {
               const selected = activeImageTab === tab.id;
               return (
@@ -617,8 +621,8 @@ export function BackgroundPanel() {
                   aria-selected={selected}
                   className={`rounded-md px-2 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
                     selected
-                      ? "bg-[var(--color-surface-200)] text-[var(--color-fg)] shadow-sm"
-                      : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+                      ? "bg-[var(--color-background-surface)] text-[var(--color-text-primary)] shadow-sm"
+                      : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
                   }`}
                   onClick={() => setActiveImageTab(tab.id)}
                 >
@@ -639,10 +643,10 @@ export function BackgroundPanel() {
                   type="button"
                   aria-label={`Image background ${preset.label}`}
                   aria-pressed={selected}
-                  className={`group overflow-hidden rounded-lg border bg-[var(--color-surface-100)] text-left transition duration-200 ease-out active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
+                  className={`group overflow-hidden rounded-lg border bg-[var(--color-background-card)] text-left transition duration-200 ease-out active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
                     selected
-                      ? "border-[var(--color-accent-primary)] shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--color-accent-primary)_82%,transparent)]"
-                      : "border-[var(--color-border-subtle)] hover:border-[color-mix(in_oklch,var(--color-fg-muted)_48%,var(--color-border-subtle))]"
+                      ? "border-[var(--color-accent)] shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--color-accent)_82%,transparent)]"
+                      : "border-[var(--color-border)] hover:border-[color-mix(in_oklch,var(--color-text-secondary)_48%,var(--color-border))]"
                   }`}
                   onClick={() =>
                     commit({
@@ -659,15 +663,15 @@ export function BackgroundPanel() {
                     style={{ backgroundImage: `url("${preset.src}")` }}
                   />
                   <span className="flex items-center justify-between gap-2 px-3 py-2">
-                    <span className="truncate text-xs font-medium text-[var(--color-fg)]">
+                    <span className="truncate text-xs font-medium text-[var(--color-text-primary)]">
                       {preset.label}
                     </span>
                     <span
                       aria-hidden="true"
                       className={`h-1.5 w-1.5 rounded-full transition ${
                         selected
-                          ? "bg-[var(--color-accent-primary)]"
-                          : "bg-[var(--color-border-subtle)] group-hover:bg-[var(--color-fg-muted)]"
+                          ? "bg-[var(--color-accent)]"
+                          : "bg-[var(--color-border)] group-hover:bg-[var(--color-text-secondary)]"
                       }`}
                     />
                   </span>

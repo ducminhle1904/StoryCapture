@@ -39,7 +39,8 @@ through `CLAUDE.md`.
   Runtime parsing/simulation still lives in desktop IPC/host code.
 - `packages/shared-types`: browser presets, IPC compatibility types, Recording
   V2 contracts, web account types, and checked-in generated effect types.
-- `packages/ui`: shared tokens, `claude-design` CSS, and `Sc*` primitives.
+- `packages/ui`: StoryCapture Gothic theme source/generated artifacts, local
+  fonts, product tokens, and the app theme provider. Astryx owns generic UI.
 - `packages/config`: shared TypeScript base config.
 - `packages/glob-compat`, `packages/lodash-isequal-compat`, and
   `packages/rimraf-compat`: private CommonJS shims used by transitive dependency
@@ -68,6 +69,9 @@ through `CLAUDE.md`.
 - Generated Prisma client: `apps/web/src/generated/prisma/**`.
 - Checked-in generated effect types:
   `packages/shared-types/src/generated/effects.ts`.
+- Checked-in Astryx theme artifacts:
+  `packages/ui/src/theme/generated/**`; regenerate from
+  `packages/ui/src/theme/storycapture-gothic.ts`, never hand-edit.
 - Benchmark fixtures: `scripts/benchmark/fixtures/`.
 - Vendored or build outputs under helper scripts unless the task is directly
   about those scripts.

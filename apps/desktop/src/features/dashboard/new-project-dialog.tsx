@@ -1,5 +1,11 @@
-import { Dialog } from "@base-ui/react/dialog";
-import { ScButton, ScSegmented } from "@storycapture/ui";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { Dialog } from "@astryxdesign/core/Dialog";
+import {
+  SegmentedControl as AstryxSegmentedControl,
+  SegmentedControlItem as AstryxSegmentedControlItem,
+} from "@astryxdesign/core/SegmentedControl";
+import { TextArea as AstryxTextArea } from "@astryxdesign/core/TextArea";
+import { TextInput as AstryxTextInput } from "@astryxdesign/core/TextInput";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   BookOpen,
@@ -20,11 +26,6 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import {
-  dialogBackdropMotionClassName,
-  dialogCenteredPopupMotionClassName,
-  dialogViewportClassName,
-} from "@/components/ui/dialog-motion";
 import {
   buildWorkflowState,
   buildWorkflowStory,
@@ -144,100 +145,106 @@ export function NewProjectDialog({ open, onOpenChange, onCreated }: NewProjectDi
   };
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Backdrop
-          className={`fixed inset-0 z-40 bg-zinc-950/58 backdrop-blur-sm ${dialogBackdropMotionClassName}`}
-        />
-        <Dialog.Viewport className={dialogViewportClassName}>
-          <Dialog.Popup
-            className={`max-h-[90dvh] w-[min(1120px,calc(100vw-24px))] overflow-hidden rounded-[18px] border border-[var(--sc-border-2)] bg-[var(--color-bg-surface)] shadow-[0_24px_80px_-36px_rgba(0,0,0,0.55)] ${dialogCenteredPopupMotionClassName}`}
+    <Dialog
+      isOpen={open}
+      onOpenChange={onOpenChange}
+      purpose="form"
+      width="min(1120px, calc(100vw - 24px))"
+      maxHeight="90dvh"
+      padding={0}
+      aria-labelledby="new-project-dialog-title"
+      aria-describedby="new-project-dialog-description"
+    >
+      <form onSubmit={submit} className="flex max-h-[90dvh] min-h-0 flex-col">
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--color-border-emphasized)] px-5 py-4">
+          <div className="min-w-0">
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-background-card)] px-2.5 py-1 font-mono text-[10px] uppercase text-[var(--color-text-disabled)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
+              Desktop local first
+            </div>
+            <h2
+              id="new-project-dialog-title"
+              className="text-lg font-semibold tracking-tight text-[var(--color-text-primary)]"
+            >
+              Create Story
+            </h2>
+            <p
+              id="new-project-dialog-description"
+              className="mt-1 max-w-[56ch] text-sm leading-5 text-[var(--color-text-secondary)]"
+            >
+              Choose a focused roadmap, fill only the useful blanks, then open the editor with
+              scenes already drafted.
+            </p>
+          </div>
+          <AstryxButton
+            label="Close dialog"
+            icon={<X size={18} aria-hidden="true" />}
+            isIconOnly
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+          />
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="grid min-h-[560px] lg:grid-cols-[292px_1fr]">
+            <ProjectSetupPane
+              name={name}
+              parent={parent}
+              mode={mode}
+              guidedStepCount={selectedWorkflow.roadmapSteps.length}
+              guidedInputCount={selectedWorkflow.requiredInputs.length}
+              filledInputCount={filledInputCount}
+              onNameChange={setName}
+              onPickParent={pickParent}
+              onModeChange={setMode}
+            />
+
+            {mode === "guided" ? (
+              <GuidedWorkflowSetup
+                selectedWorkflow={selectedWorkflow}
+                selectedWorkflowId={selectedWorkflowId}
+                inputs={inputs}
+                onSelectWorkflow={(id) => setSelectedWorkflowId(id)}
+                onInputChange={(key, value) =>
+                  setInputs((current) => ({ ...current, [key]: value }))
+                }
+              />
+            ) : (
+              <FreestylePane />
+            )}
+          </div>
+        </div>
+
+        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--color-border-emphasized)] bg-[var(--story-native-chrome)] px-5 py-4">
+          <div
+            className="min-w-0 truncate text-sm text-[var(--story-recording)]"
+            role={error ? "alert" : undefined}
           >
-            <form onSubmit={submit} className="flex max-h-[90dvh] min-h-0 flex-col">
-              <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--sc-border-2)] px-5 py-4">
-                <div className="min-w-0">
-                  <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-2.5 py-1 font-mono text-[10px] uppercase text-[var(--sc-text-4)]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--sc-accent-400)]" />
-                    Desktop local first
-                  </div>
-                  <Dialog.Title className="text-lg font-semibold tracking-tight text-[var(--color-fg-primary)]">
-                    Create Story
-                  </Dialog.Title>
-                  <Dialog.Description className="mt-1 max-w-[56ch] text-sm leading-5 text-[var(--color-fg-muted)]">
-                    Choose a focused roadmap, fill only the useful blanks, then open the editor with
-                    scenes already drafted.
-                  </Dialog.Description>
-                </div>
-                <Dialog.Close
-                  aria-label="Close dialog"
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[var(--color-fg-muted)] transition hover:bg-[var(--sc-surface-2)] hover:text-[var(--color-fg-primary)] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
-                >
-                  <X size={18} aria-hidden="true" />
-                </Dialog.Close>
-              </header>
-
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="grid min-h-[560px] lg:grid-cols-[292px_1fr]">
-                  <ProjectSetupPane
-                    name={name}
-                    parent={parent}
-                    mode={mode}
-                    guidedStepCount={selectedWorkflow.roadmapSteps.length}
-                    guidedInputCount={selectedWorkflow.requiredInputs.length}
-                    filledInputCount={filledInputCount}
-                    onNameChange={setName}
-                    onPickParent={pickParent}
-                    onModeChange={setMode}
-                  />
-
-                  {mode === "guided" ? (
-                    <GuidedWorkflowSetup
-                      selectedWorkflow={selectedWorkflow}
-                      selectedWorkflowId={selectedWorkflowId}
-                      inputs={inputs}
-                      onSelectWorkflow={(id) => setSelectedWorkflowId(id)}
-                      onInputChange={(key, value) =>
-                        setInputs((current) => ({ ...current, [key]: value }))
-                      }
-                    />
-                  ) : (
-                    <FreestylePane />
-                  )}
-                </div>
-              </div>
-
-              <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--sc-border-2)] bg-[var(--sc-chrome)] px-5 py-4">
-                <div
-                  className="min-w-0 truncate text-sm text-[var(--sc-record)]"
-                  role={error ? "alert" : undefined}
-                >
-                  {error}
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Dialog.Close className="rounded-md border border-[var(--color-border-default)] bg-transparent px-4 py-2 text-sm text-[var(--color-fg-secondary)] transition hover:bg-[var(--sc-surface-2)] hover:text-[var(--color-fg-primary)] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]">
-                    Cancel
-                  </Dialog.Close>
-                  <ScButton
-                    type="submit"
-                    variant="primary"
-                    disabled={create.isPending}
-                    icon={
-                      create.isPending ? (
-                        <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-                      ) : (
-                        <CheckCircle2 size={14} aria-hidden="true" />
-                      )
-                    }
-                  >
-                    Create Story
-                  </ScButton>
-                </div>
-              </footer>
-            </form>
-          </Dialog.Popup>
-        </Dialog.Viewport>
-      </Dialog.Portal>
-    </Dialog.Root>
+            {error}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <AstryxButton variant="secondary" onClick={() => onOpenChange(false)} label="Cancel">
+              Cancel
+            </AstryxButton>
+            <AstryxButton
+              type="submit"
+              variant="primary"
+              isDisabled={create.isPending}
+              icon={
+                create.isPending ? (
+                  <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <CheckCircle2 size={14} aria-hidden="true" />
+                )
+              }
+              label="Create Story"
+            >
+              Create Story
+            </AstryxButton>
+          </div>
+        </footer>
+      </form>
+    </Dialog>
   );
 }
 
@@ -263,56 +270,65 @@ function ProjectSetupPane({
   onModeChange: (mode: CreateMode) => void;
 }) {
   return (
-    <aside className="border-b border-[var(--sc-border-2)] bg-[var(--sc-chrome)] p-4 lg:border-r lg:border-b-0">
+    <aside className="border-b border-[var(--color-border-emphasized)] bg-[var(--story-native-chrome)] p-4 lg:border-r lg:border-b-0">
       <div className="grid gap-4">
-        <label className="flex flex-col gap-2 text-sm">
-          <span className="font-medium text-[var(--color-fg-secondary)]">Name</span>
-          <input
-            required
-            minLength={1}
-            value={name}
-            onChange={(event) => onNameChange(event.target.value)}
-            placeholder="Customer onboarding demo"
-            className="h-10 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-3 text-[var(--color-fg-primary)] transition focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
-          />
-        </label>
+        <AstryxTextInput
+          label="Name"
+          isRequired
+          value={name}
+          onChange={onNameChange}
+          placeholder="Customer onboarding demo"
+          size="lg"
+          width="100%"
+        />
 
-        <label className="flex flex-col gap-2 text-sm">
-          <span className="font-medium text-[var(--color-fg-secondary)]">Parent folder</span>
+        <div className="flex flex-col gap-2 text-sm">
+          <span className="font-medium text-[var(--color-text-secondary)]">Parent folder</span>
           <div className="grid grid-cols-[1fr_auto] gap-2">
-            <input
-              readOnly
+            <AstryxTextInput
+              label="Parent folder path"
+              isLabelHidden
+              isDisabled
+              disabledMessage="Use Browse to choose the project folder"
               value={parent}
               placeholder="Pick a folder"
-              aria-label="Parent folder path"
-              className="h-10 min-w-0 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-3 text-sm text-[var(--color-fg-primary)]"
+              size="lg"
+              width="100%"
             />
-            <button
-              type="button"
+            <AstryxButton
+              variant="secondary"
+              size="lg"
               onClick={onPickParent}
-              aria-label="Browse for parent folder"
-              className="inline-flex h-10 items-center gap-1.5 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] px-3 text-sm text-[var(--color-fg-primary)] transition hover:bg-[var(--color-bg-surface)] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
+              label="Browse for parent folder"
             >
               <FolderOpen size={16} aria-hidden="true" />
               Browse
-            </button>
+            </AstryxButton>
           </div>
-        </label>
-
-        <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-[var(--color-fg-secondary)]">Mode</span>
-          <ScSegmented
-            value={mode}
-            aria-label="Creation mode"
-            options={[
-              { value: "guided", label: "Guided" },
-              { value: "freestyle", label: "Freestyle" },
-            ]}
-            onValueChange={(value) => onModeChange(value as CreateMode)}
-          />
         </div>
 
-        <div className="divide-y divide-[var(--sc-border)] rounded-[var(--sc-r-md)] border border-[var(--sc-border)] bg-[var(--sc-surface)]">
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-medium text-[var(--color-text-secondary)]">Mode</span>
+          <AstryxSegmentedControl
+            value={mode}
+            label="Creation mode"
+            onChange={(value) => onModeChange(value as CreateMode)}
+          >
+            {[
+              { value: "guided", label: "Guided" },
+              { value: "freestyle", label: "Freestyle" },
+            ].map((option) => (
+              <AstryxSegmentedControlItem
+                key={option.value}
+                value={option.value}
+                label={typeof option.label === "string" ? option.label : option.value}
+                icon={typeof option.label === "string" ? undefined : option.label}
+              />
+            ))}
+          </AstryxSegmentedControl>
+        </div>
+
+        <div className="divide-y divide-[var(--color-border)] rounded-[var(--radius-element)] border border-[var(--color-border)] bg-[var(--color-background-surface)]">
           <OutputMetric
             icon={mode === "guided" ? Sparkles : HelpCircle}
             label={mode === "guided" ? "Output" : "Starter"}
@@ -347,14 +363,16 @@ function OutputMetric({
 }) {
   return (
     <div className="flex items-center gap-3 px-3 py-2.5">
-      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-[var(--sc-r-sm)] bg-[var(--sc-surface-2)] text-[var(--sc-text-3)]">
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-[var(--radius-inner)] bg-[var(--color-background-card)] text-[var(--color-text-secondary)]">
         <Icon size={14} aria-hidden="true" />
       </span>
       <span className="min-w-0">
-        <span className="block font-mono text-[10px] uppercase text-[var(--sc-text-4)]">
+        <span className="block font-mono text-[10px] uppercase text-[var(--color-text-disabled)]">
           {label}
         </span>
-        <span className="block truncate text-xs font-medium text-[var(--sc-text)]">{value}</span>
+        <span className="block truncate text-xs font-medium text-[var(--color-text-primary)]">
+          {value}
+        </span>
       </span>
     </div>
   );
@@ -380,18 +398,18 @@ function GuidedWorkflowSetup({
       className="grid min-w-0 gap-0 xl:grid-cols-[minmax(0,1fr)_340px]"
       aria-label="Guided workflows"
     >
-      <div className="min-w-0 border-b border-[var(--sc-border-2)] p-4 xl:border-r xl:border-b-0">
+      <div className="min-w-0 border-b border-[var(--color-border-emphasized)] p-4 xl:border-r xl:border-b-0">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--sc-text)]">
-              <SelectedIcon size={16} aria-hidden="true" className="text-[var(--sc-accent-400)]" />
+            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)]">
+              <SelectedIcon size={16} aria-hidden="true" className="text-[var(--color-accent)]" />
               <span className="truncate">{selectedWorkflow.title}</span>
             </div>
-            <p className="mt-1 text-xs leading-5 text-[var(--sc-text-3)]">
+            <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">
               {selectedWorkflow.bestFor}
             </p>
           </div>
-          <span className="shrink-0 rounded-full border border-[var(--sc-border)] px-2.5 py-1 font-mono text-[10px] uppercase text-[var(--sc-text-4)]">
+          <span className="shrink-0 rounded-full border border-[var(--color-border)] px-2.5 py-1 font-mono text-[10px] uppercase text-[var(--color-text-disabled)]">
             {selectedWorkflow.durationTarget}
           </span>
         </div>
@@ -407,31 +425,31 @@ function GuidedWorkflowSetup({
                 onClick={() => onSelectWorkflow(entry.id)}
                 aria-pressed={active}
                 className={[
-                  "group min-w-0 rounded-[var(--sc-r-md)] border p-3 text-left transition duration-200 active:scale-[0.99]",
+                  "group min-w-0 rounded-[var(--radius-element)] border p-3 text-left transition duration-200 active:scale-[0.99]",
                   active
-                    ? "border-[var(--sc-accent-400)] bg-[var(--sc-accent-400)]/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
-                    : "border-[var(--sc-border)] bg-[var(--sc-surface)] hover:-translate-y-[1px] hover:border-[var(--sc-border-2)] hover:bg-[var(--sc-surface-2)]",
+                    ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+                    : "border-[var(--color-border)] bg-[var(--color-background-surface)] hover:-translate-y-[1px] hover:border-[var(--color-border-emphasized)] hover:bg-[var(--color-background-card)]",
                 ].join(" ")}
               >
                 <div className="flex items-start gap-3">
                   <span
                     className={[
-                      "grid h-8 w-8 shrink-0 place-items-center rounded-[var(--sc-r-sm)] border transition",
+                      "grid h-8 w-8 shrink-0 place-items-center rounded-[var(--radius-inner)] border transition",
                       active
-                        ? "border-[var(--sc-accent-400)] bg-[var(--sc-accent-400)]/12 text-[var(--sc-text)]"
-                        : "border-[var(--sc-border)] bg-[var(--sc-surface-2)] text-[var(--sc-text-3)] group-hover:text-[var(--sc-text)]",
+                        ? "border-[var(--color-accent)] bg-[var(--color-accent)]/12 text-[var(--color-text-primary)]"
+                        : "border-[var(--color-border)] bg-[var(--color-background-card)] text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]",
                     ].join(" ")}
                   >
                     <Icon size={16} aria-hidden="true" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-[var(--sc-text)]">
+                    <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">
                       {entry.title}
                     </span>
-                    <span className="mt-1 block line-clamp-2 min-h-8 text-xs leading-4 text-[var(--sc-text-3)]">
+                    <span className="mt-1 block line-clamp-2 min-h-8 text-xs leading-4 text-[var(--color-text-secondary)]">
                       {entry.bestFor}
                     </span>
-                    <span className="mt-2 inline-flex rounded-full border border-[var(--sc-border)] px-2 py-0.5 font-mono text-[10px] uppercase text-[var(--sc-text-4)]">
+                    <span className="mt-2 inline-flex rounded-full border border-[var(--color-border)] px-2 py-0.5 font-mono text-[10px] uppercase text-[var(--color-text-disabled)]">
                       {entry.durationTarget}
                     </span>
                   </span>
@@ -441,24 +459,24 @@ function GuidedWorkflowSetup({
           })}
         </div>
 
-        <div className="mt-4 overflow-hidden rounded-[var(--sc-r-md)] border border-[var(--sc-border)]">
-          <div className="flex items-center gap-2 border-b border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-3 py-2">
-            <ClipboardList size={15} aria-hidden="true" className="text-[var(--sc-accent-400)]" />
-            <h3 className="text-sm font-semibold text-[var(--sc-text)]">
+        <div className="mt-4 overflow-hidden rounded-[var(--radius-element)] border border-[var(--color-border)]">
+          <div className="flex items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-background-card)] px-3 py-2">
+            <ClipboardList size={15} aria-hidden="true" className="text-[var(--color-accent)]" />
+            <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
               {selectedWorkflow.title} roadmap
             </h3>
           </div>
-          <ol className="divide-y divide-[var(--sc-border)] bg-[var(--sc-surface)]">
+          <ol className="divide-y divide-[var(--color-border)] bg-[var(--color-background-surface)]">
             {selectedWorkflow.roadmapSteps.map((step, index) => (
               <li key={step.id} className="grid grid-cols-[28px_1fr] gap-3 px-3 py-3">
-                <span className="grid h-6 w-6 place-items-center rounded-full bg-[var(--sc-surface-3)] font-mono text-[10px] text-[var(--sc-text-3)]">
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-[var(--color-background-muted)] font-mono text-[10px] text-[var(--color-text-secondary)]">
                   {index + 1}
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-xs font-semibold text-[var(--sc-text)]">
+                  <span className="block text-xs font-semibold text-[var(--color-text-primary)]">
                     {step.title}
                   </span>
-                  <span className="mt-0.5 block text-xs leading-5 text-[var(--sc-text-3)]">
+                  <span className="mt-0.5 block text-xs leading-5 text-[var(--color-text-secondary)]">
                     {step.notes}
                   </span>
                 </span>
@@ -468,43 +486,39 @@ function GuidedWorkflowSetup({
         </div>
       </div>
 
-      <div className="min-w-0 bg-[var(--sc-chrome)] p-4">
+      <div className="min-w-0 bg-[var(--story-native-chrome)] p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <UserRoundCheck size={15} aria-hidden="true" className="text-[var(--sc-accent-400)]" />
-            <h3 className="text-sm font-semibold text-[var(--sc-text)]">Inputs</h3>
+            <UserRoundCheck size={15} aria-hidden="true" className="text-[var(--color-accent)]" />
+            <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Inputs</h3>
           </div>
-          <span className="font-mono text-[10px] uppercase text-[var(--sc-text-4)]">
+          <span className="font-mono text-[10px] uppercase text-[var(--color-text-disabled)]">
             Minimum context
           </span>
         </div>
         <div className="space-y-3">
-          {selectedWorkflow.requiredInputs.map((input) => (
-            <label
-              key={input.key}
-              htmlFor={`workflow-input-${input.key}`}
-              className="flex flex-col gap-2 text-sm"
-            >
-              <span className="font-medium text-[var(--color-fg-secondary)]">{input.label}</span>
-              {input.multiline ? (
-                <textarea
-                  id={`workflow-input-${input.key}`}
-                  value={inputs[input.key] ?? ""}
-                  onChange={(event) => onInputChange(input.key, event.target.value)}
-                  placeholder={input.placeholder}
-                  className="min-h-20 resize-none rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-3 py-2 text-sm text-[var(--color-fg-primary)] transition focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
-                />
-              ) : (
-                <input
-                  id={`workflow-input-${input.key}`}
-                  value={inputs[input.key] ?? ""}
-                  onChange={(event) => onInputChange(input.key, event.target.value)}
-                  placeholder={input.placeholder}
-                  className="h-9 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-3 text-sm text-[var(--color-fg-primary)] transition focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
-                />
-              )}
-            </label>
-          ))}
+          {selectedWorkflow.requiredInputs.map((input) =>
+            input.multiline ? (
+              <AstryxTextArea
+                key={input.key}
+                label={input.label}
+                value={inputs[input.key] ?? ""}
+                onChange={(value) => onInputChange(input.key, value)}
+                placeholder={input.placeholder}
+                rows={3}
+                width="100%"
+              />
+            ) : (
+              <AstryxTextInput
+                key={input.key}
+                label={input.label}
+                value={inputs[input.key] ?? ""}
+                onChange={(value) => onInputChange(input.key, value)}
+                placeholder={input.placeholder}
+                width="100%"
+              />
+            ),
+          )}
         </div>
       </div>
     </section>
@@ -514,30 +528,36 @@ function GuidedWorkflowSetup({
 function FreestylePane() {
   return (
     <section className="grid min-h-[460px] place-items-center p-6" aria-label="Freestyle">
-      <div className="w-full max-w-md overflow-hidden rounded-[var(--sc-r-lg)] border border-dashed border-[var(--sc-border-2)] bg-[var(--sc-surface)]">
-        <div className="border-b border-[var(--sc-border)] p-5">
-          <div className="grid h-10 w-10 place-items-center rounded-[var(--sc-r-md)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] text-[var(--sc-text-2)]">
+      <div className="w-full max-w-md overflow-hidden rounded-[var(--radius-container)] border border-dashed border-[var(--color-border-emphasized)] bg-[var(--color-background-surface)]">
+        <div className="border-b border-[var(--color-border)] p-5">
+          <div className="grid h-10 w-10 place-items-center rounded-[var(--radius-element)] border border-[var(--color-border)] bg-[var(--color-background-card)] text-[var(--color-text-secondary)]">
             <HelpCircle size={18} aria-hidden="true" />
           </div>
-          <h3 className="mt-4 text-base font-semibold tracking-tight text-[var(--sc-text)]">
+          <h3 className="mt-4 text-base font-semibold tracking-tight text-[var(--color-text-primary)]">
             Blank story
           </h3>
-          <p className="mt-1 text-sm leading-6 text-[var(--sc-text-3)]">
+          <p className="mt-1 text-sm leading-6 text-[var(--color-text-secondary)]">
             Start with the current pause-only starter and shape the script manually.
           </p>
         </div>
-        <div className="grid grid-cols-3 divide-x divide-[var(--sc-border)] text-center">
+        <div className="grid grid-cols-3 divide-x divide-[var(--color-border)] text-center">
           <div className="p-3">
-            <div className="font-mono text-[10px] uppercase text-[var(--sc-text-4)]">Scenes</div>
-            <div className="mt-1 text-sm font-semibold text-[var(--sc-text)]">1</div>
+            <div className="font-mono text-[10px] uppercase text-[var(--color-text-disabled)]">
+              Scenes
+            </div>
+            <div className="mt-1 text-sm font-semibold text-[var(--color-text-primary)]">1</div>
           </div>
           <div className="p-3">
-            <div className="font-mono text-[10px] uppercase text-[var(--sc-text-4)]">Roadmap</div>
-            <div className="mt-1 text-sm font-semibold text-[var(--sc-text)]">Off</div>
+            <div className="font-mono text-[10px] uppercase text-[var(--color-text-disabled)]">
+              Roadmap
+            </div>
+            <div className="mt-1 text-sm font-semibold text-[var(--color-text-primary)]">Off</div>
           </div>
           <div className="p-3">
-            <div className="font-mono text-[10px] uppercase text-[var(--sc-text-4)]">Mode</div>
-            <div className="mt-1 text-sm font-semibold text-[var(--sc-text)]">Open</div>
+            <div className="font-mono text-[10px] uppercase text-[var(--color-text-disabled)]">
+              Mode
+            </div>
+            <div className="mt-1 text-sm font-semibold text-[var(--color-text-primary)]">Open</div>
           </div>
         </div>
       </div>

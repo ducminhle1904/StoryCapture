@@ -1,0 +1,30 @@
+[data-astryx-theme="storycapture-gothic"] {
+  color-scheme: dark;
+  --story-recording: var(--color-error);
+  --story-ready: var(--color-success);
+  --story-warning: var(--color-warning);
+  --story-playhead: var(--color-syntax-constant);
+  --story-selection: var(--color-background-blue);
+  --story-track-video: var(--color-data-categorical-blue);
+  --story-track-audio: var(--color-data-categorical-purple);
+  --story-track-text: var(--color-data-categorical-orange);
+  --story-track-cursor: var(--color-data-categorical-teal);
+  --story-native-chrome: var(--color-background-body);
+  --story-native-chrome-border: var(--color-border);
+  --story-window-chrome-height: 40px;
+  --story-window-control-left-inset: 78px;
+  --story-window-control-right-inset: 138px;
+  --story-row-height: 32px;
+  --story-padding-inline: 12px;
+  --story-padding-block: 8px;
+  --story-gap: 8px;
+  --story-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --story-ease-spring: cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+[data-density="compact"] {
+  --story-row-height: 28px;
+  --story-padding-inline: 10px;
+  --story-padding-block: 6px;
+  --story-gap: 6px;
+}

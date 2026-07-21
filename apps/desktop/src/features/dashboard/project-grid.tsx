@@ -1,4 +1,4 @@
-import { ScCard } from "@storycapture/ui";
+import { Card as AstryxCard } from "@astryxdesign/core/Card";
 import { Plus } from "lucide-react";
 
 import type { Project } from "@/ipc/projects";
@@ -41,7 +41,7 @@ export function ProjectGrid({
         </li>
       ))}
       <li>
-        <ScCard
+        <AstryxCard
           role="button"
           tabIndex={0}
           aria-label="Create new story"
@@ -60,7 +60,7 @@ export function ProjectGrid({
             justifyContent: "center",
             minHeight: 232,
             borderStyle: "dashed",
-            borderColor: "var(--sc-border-2)",
+            borderColor: "var(--color-border-emphasized)",
             cursor: "default",
           }}
         >
@@ -69,19 +69,19 @@ export function ProjectGrid({
               width: 36,
               height: 36,
               borderRadius: 99,
-              background: "var(--sc-surface-3)",
+              background: "var(--color-background-muted)",
               display: "grid",
               placeItems: "center",
               marginBottom: 10,
             }}
           >
-            <Plus size={16} style={{ color: "var(--sc-text-3)" }} aria-hidden="true" />
+            <Plus size={16} style={{ color: "var(--color-text-secondary)" }} aria-hidden="true" />
           </div>
           <div style={{ fontSize: 13, fontWeight: 500 }}>New Story</div>
-          <div style={{ fontSize: 11, color: "var(--sc-text-4)", marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: "var(--color-text-disabled)", marginTop: 2 }}>
             ⌘N · blank, template, or import .story
           </div>
-        </ScCard>
+        </AstryxCard>
       </li>
     </ul>
   );

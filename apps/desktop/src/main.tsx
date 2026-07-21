@@ -1,3 +1,4 @@
+import { StoryCaptureThemeProvider } from "@storycapture/ui/theme";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -10,12 +11,10 @@ import { PreviewPlayer } from "./features/post-production/preview/preview-player
 import { queryClient } from "./ipc/query-client";
 import { frontendLog, installGlobalErrorHandlers } from "./lib/log";
 import { initOutputPrefs } from "./lib/output-prefs-persist";
-import { applyPersistedTheme } from "./lib/theme";
 import { useAppSettingsStore } from "./state/app-settings";
 import { applyCaptureFpsDefault } from "./state/output-prefs";
 
 installGlobalErrorHandlers();
-applyPersistedTheme();
 
 const container = document.getElementById("root");
 if (!container) {
@@ -52,9 +51,11 @@ async function bootstrap() {
   root.render(
     <StrictMode>
       <ErrorBoundary source="root">
-        <QueryClientProvider client={queryClient}>
-          <App />
-        </QueryClientProvider>
+        <StoryCaptureThemeProvider>
+          <QueryClientProvider client={queryClient}>
+            <App />
+          </QueryClientProvider>
+        </StoryCaptureThemeProvider>
       </ErrorBoundary>
     </StrictMode>,
   );

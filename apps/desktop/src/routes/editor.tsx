@@ -1,4 +1,9 @@
-import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
+import { Badge as AstryxBadge } from "@astryxdesign/core/Badge";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import {
+  SegmentedControl as AstryxSegmentedControl,
+  SegmentedControlItem as AstryxSegmentedControlItem,
+} from "@astryxdesign/core/SegmentedControl";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import {
   AlertTriangle,
@@ -12,8 +17,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { toast } from "sonner";
-
 import { PageContentTransition } from "@/components/page-content-transition";
 import { deriveVariant, useAuthorDriverStore } from "@/features/editor/authorDriverStore";
 import { EditorBreadcrumb } from "@/features/editor/editor-breadcrumb";
@@ -34,13 +37,14 @@ import { ensureAllStepIds, formatEditableStory } from "@/features/editor/story-u
 import { useEditorLivePreview } from "@/features/editor/use-editor-live-preview";
 import { parseStory, type Story } from "@/ipc/parse";
 import { fetchProjectFolder, type ProjectFolderInfo, useProjectRecordings } from "@/ipc/projects";
+import { notifications } from "@/lib/notifications";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
 import { useAppSettingsStore } from "@/state/app-settings";
 import { EMPTY_DIAGNOSTICS, useEditorStore } from "@/state/editor";
 import { useSimulatorStore } from "@/state/simulator-store";
 
 function showDiskConflictToast(description: string, onReload: () => void): void {
-  toast.warning("Story changed on disk", {
+  notifications.warning("Story changed on disk", {
     description,
     action: { label: "Reload", onClick: onReload },
     cancel: { label: "Keep mine", onClick: () => {} },
@@ -232,7 +236,7 @@ export default function EditorRoute() {
           }
         })
         .catch(() => {
-          if (!cancelled) toast.error("Failed to save polish settings");
+          if (!cancelled) notifications.error("Failed to save polish settings");
         });
     }, 350);
     return () => {
@@ -362,15 +366,15 @@ export default function EditorRoute() {
 
   if (loadError) {
     return (
-      <main id="main-content" className="sc-window-chrome h-full p-8" role="alert">
-        <div className="mx-auto flex max-w-2xl items-start gap-3 rounded-[var(--radius-md)] border border-[var(--sc-record)]/40 bg-[var(--sc-record)]/8 p-4 text-sm text-[var(--sc-record)]">
+      <main id="main-content" className="story-window-chrome h-full p-8" role="alert">
+        <div className="mx-auto flex max-w-2xl items-start gap-3 rounded-[var(--radius-element)] border border-[var(--story-recording)]/40 bg-[var(--story-recording)]/8 p-4 text-sm text-[var(--story-recording)]">
           <AlertTriangle size={16} aria-hidden="true" className="mt-0.5" />
           <div>
             <p className="font-medium">Failed to open project</p>
-            <p className="mt-1 text-[var(--sc-text-2)]">{loadError}</p>
+            <p className="mt-1 text-[var(--color-text-secondary)]">{loadError}</p>
             <Link
               to="/"
-              className="mt-3 inline-flex items-center gap-1 text-[var(--sc-accent-400)] hover:underline"
+              className="mt-3 inline-flex items-center gap-1 text-[var(--color-accent)] hover:underline"
             >
               <ArrowLeft size={14} aria-hidden="true" /> Back to dashboard
             </Link>
@@ -381,7 +385,10 @@ export default function EditorRoute() {
   }
 
   return (
-    <main id="main-content" className="relative flex h-full flex-col bg-[var(--sc-bg)]">
+    <main
+      id="main-content"
+      className="relative flex h-full flex-col bg-[var(--color-background-body)]"
+    >
       <div
         aria-hidden="true"
         className="pointer-events-none fixed inset-0 z-50 opacity-[0.03] mix-blend-overlay"
@@ -391,7 +398,7 @@ export default function EditorRoute() {
         }}
       />
       {/* ─── Toolbar ─── */}
-      <div className="sc-toolbar sc-window-chrome">
+      <div className="story-toolbar story-window-chrome">
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <Link
             to="/"
@@ -399,20 +406,28 @@ export default function EditorRoute() {
             style={{
               display: "inline-flex",
               alignItems: "center",
-              color: "var(--sc-text-2)",
+              color: "var(--color-text-secondary)",
               marginRight: 2,
             }}
           >
             <ArrowLeft size={14} aria-hidden="true" />
           </Link>
-          <FolderOpen size={14} style={{ color: "var(--sc-text-3)" }} aria-hidden="true" />
+          <FolderOpen
+            size={14}
+            style={{ color: "var(--color-text-secondary)" }}
+            aria-hidden="true"
+          />
           <Link
             to="/"
-            style={{ fontSize: 12.5, color: "var(--sc-text-3)", textDecoration: "none" }}
+            style={{ fontSize: 12.5, color: "var(--color-text-secondary)", textDecoration: "none" }}
           >
             Projects
           </Link>
-          <ChevronRight size={10} style={{ color: "var(--sc-text-4)" }} aria-hidden="true" />
+          <ChevronRight
+            size={10}
+            style={{ color: "var(--color-text-disabled)" }}
+            aria-hidden="true"
+          />
           <span style={{ fontSize: 13, fontWeight: 600 }}>{folder?.name ?? "Loading..."}</span>
           {story && cursor && (
             <EditorBreadcrumb
@@ -422,63 +437,68 @@ export default function EditorRoute() {
             />
           )}
           {errorCount > 0 && (
-            <ScBadge tone="record">
-              {errorCount} {errorCount === 1 ? "error" : "errors"}
-            </ScBadge>
+            <AstryxBadge
+              variant="error"
+              label={`${errorCount} ${errorCount === 1 ? "error" : "errors"}`}
+            />
           )}
           {warningCount > 0 && (
-            <ScBadge tone="warn">
-              {warningCount} {warningCount === 1 ? "warning" : "warnings"}
-            </ScBadge>
+            <AstryxBadge
+              variant="warning"
+              label={`${warningCount} ${warningCount === 1 ? "warning" : "warnings"}`}
+            />
           )}
         </div>
-        <span className="sc-spacer" />
+        <span className="story-spacer" />
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {projectId && (
             <>
-              <Link
-                to={`/recorder/${projectId}`}
-                className={`sc-btn ghost sm ${recordingBlocked ? "pointer-events-none opacity-50" : ""}`}
-                aria-disabled={recordingBlocked}
-                tabIndex={recordingBlocked ? -1 : undefined}
-                title={
+              <AstryxButton
+                as={Link}
+                href={`/recorder/${projectId}`}
+                label="Record"
+                variant="ghost"
+                size="sm"
+                isDisabled={recordingBlocked}
+                tooltip={
                   recordingBlocked ? "Fix story validation errors before recording" : undefined
                 }
-                onClick={(event) => {
-                  if (recordingBlocked) event.preventDefault();
-                }}
+                icon={<Video size={12} aria-hidden="true" />}
               >
-                <Video size={12} aria-hidden="true" />
                 Record
-              </Link>
-              <ScButton
+              </AstryxButton>
+              <AstryxButton
                 size="sm"
-                variant="success"
-                disabled={recordPolishStarting || recordingBlocked}
+                variant="primary"
+                isDisabled={recordPolishStarting || recordingBlocked}
                 icon={<Sparkles size={12} aria-hidden="true" />}
                 onClick={handleRecordAndPolish}
+                label={String(recordPolishStarting ? "Preparing..." : "Record with Polish")}
               >
                 {recordPolishStarting ? "Preparing..." : "Record with Polish"}
-              </ScButton>
+              </AstryxButton>
               {(folder?.session_count ?? 0) > 0 ? (
-                <Link
-                  to={`/post-production/${projectId}`}
-                  className="sc-btn ghost sm"
-                  aria-label="Send to Post-Production"
-                >
-                  <Scissors size={12} aria-hidden="true" />
-                  Fine-tune Video
-                </Link>
-              ) : (
-                <ScButton
+                <AstryxButton
+                  as={Link}
+                  href={`/post-production/${projectId}`}
+                  label="Fine-tune Video"
+                  variant="ghost"
                   size="sm"
-                  disabled
+                  icon={<Scissors size={12} aria-hidden="true" />}
+                >
+                  Fine-tune Video
+                </AstryxButton>
+              ) : (
+                <AstryxButton
+                  size="sm"
+                  isDisabled
                   icon={<Scissors size={12} aria-hidden="true" />}
                   aria-label="Send to Post-Production"
-                  title="Record a story first"
+                  tooltip="Record a story first"
+                  label="Send to Post-Production"
                 >
                   Fine-tune Video
-                </ScButton>
+                </AstryxButton>
               )}
             </>
           )}
@@ -488,11 +508,11 @@ export default function EditorRoute() {
       {/* ─── Main workspace ─── */}
       {!ready ? (
         <div
-          className="flex min-h-0 flex-1 items-center justify-center bg-[var(--sc-bg)]"
+          className="flex min-h-0 flex-1 items-center justify-center bg-[var(--color-background-body)]"
           role="status"
           aria-live="polite"
         >
-          <span className="text-xs text-[var(--sc-text-4)]">Opening project…</span>
+          <span className="text-xs text-[var(--color-text-disabled)]">Opening project…</span>
         </div>
       ) : (
         <>
@@ -507,10 +527,10 @@ export default function EditorRoute() {
             <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-2">
               {/* Script editor — primary workspace */}
               <section
-                className="min-h-0 min-w-0 overflow-hidden border-r border-[var(--sc-border-2)]"
+                className="min-h-0 min-w-0 overflow-hidden border-r border-[var(--color-border-emphasized)]"
                 aria-label="Story"
               >
-                <div className="flex h-full min-h-0 flex-col bg-[var(--sc-surface)]">
+                <div className="flex h-full min-h-0 flex-col bg-[var(--color-background-surface)]">
                   {/* File tabs strip — single tab reflects real single-buffer state. */}
                   <div
                     style={{
@@ -518,8 +538,8 @@ export default function EditorRoute() {
                       alignItems: "center",
                       height: 30,
                       paddingLeft: 8,
-                      background: "var(--sc-chrome-2)",
-                      borderBottom: "1px solid var(--sc-border-2)",
+                      background: "var(--color-background-card)",
+                      borderBottom: "1px solid var(--color-border-emphasized)",
                     }}
                   >
                     <div
@@ -529,12 +549,12 @@ export default function EditorRoute() {
                         display: "inline-flex",
                         alignItems: "center",
                         gap: 6,
-                        background: "var(--sc-surface)",
-                        borderRight: "1px solid var(--sc-border-2)",
+                        background: "var(--color-background-surface)",
+                        borderRight: "1px solid var(--color-border-emphasized)",
                         fontSize: 12,
-                        color: "var(--sc-text)",
-                        borderTop: "1.5px solid var(--sc-accent-400)",
-                        fontFamily: "var(--sc-font-mono)",
+                        color: "var(--color-text-primary)",
+                        borderTop: "1.5px solid var(--color-accent)",
+                        fontFamily: "var(--font-family-code)",
                       }}
                     >
                       <File size={11} aria-hidden="true" />
@@ -546,29 +566,37 @@ export default function EditorRoute() {
                           width: 6,
                           height: 6,
                           borderRadius: 99,
-                          background: "var(--sc-text-4)",
+                          background: "var(--color-text-disabled)",
                           marginLeft: 4,
                           opacity: 0.6,
                         }}
                       />
                     </div>
                     <span style={{ flex: 1 }} />
-                    <ScSegmented
+                    <AstryxSegmentedControl
                       size="sm"
                       value={editorMode}
-                      aria-label="Editor mode"
-                      options={[
+                      label="Editor mode"
+                      onChange={(value) => setEditorMode(value as "ui" | "code")}
+                    >
+                      {[
                         { value: "ui", label: "UI" },
                         { value: "code", label: "Code" },
-                      ]}
-                      onValueChange={(value) => setEditorMode(value as "ui" | "code")}
-                    />
+                      ].map((option) => (
+                        <AstryxSegmentedControlItem
+                          key={option.value}
+                          value={option.value}
+                          label={typeof option.label === "string" ? option.label : option.value}
+                          icon={typeof option.label === "string" ? undefined : option.label}
+                        />
+                      ))}
+                    </AstryxSegmentedControl>
                     <span
                       style={{
                         fontSize: 11,
-                        color: "var(--sc-text-4)",
+                        color: "var(--color-text-disabled)",
                         padding: "0 10px",
-                        fontFamily: "var(--sc-font-mono)",
+                        fontFamily: "var(--font-family-code)",
                       }}
                     >
                       {cursor ? `Ln ${cursor.line}, Col ${cursor.col}` : "Ln —, Col —"} · SC-DSL ·

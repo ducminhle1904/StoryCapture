@@ -1,29 +1,26 @@
-@import "tailwindcss";
+@layer reset, theme, base, astryx-base, astryx-theme, components, utilities;
 
-/* Fonts — Geist Sans + Geist Mono. Variable fonts, offline. */
-@import "@fontsource-variable/geist";
-@import "@fontsource-variable/geist-mono";
-
-/* Canonical Claude Design tokens + primitive CSS. */
-@import "@storycapture/ui/claude-design/tokens.css";
-@import "@storycapture/ui/claude-design/app.css";
-
-/* TRANSITIONAL alias layer — maps legacy --color-* onto --sc-* for
-   existing routes/features not yet ported to sc-* directly. */
-@import "@storycapture/ui/tokens.css";
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "@astryxdesign/core/reset.css" layer(astryx-base);
+@import "@astryxdesign/core/astryx.css" layer(components);
+@import "@storycapture/ui/theme.css" layer(astryx-theme);
+@import "@storycapture/ui/fonts.css" layer(theme);
+/* Export/preview compositor contract: keep the pre-rollout Geist assets available. */
+@import "@fontsource-variable/geist/index.css" layer(theme);
+@import "@fontsource-variable/geist-mono/index.css" layer(theme);
+@import "@storycapture/ui/product-tokens.css" layer(astryx-theme);
+@import "@astryxdesign/core/tailwind-theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
 
 :root {
   color-scheme: dark;
 }
 
-:root[data-theme="light"] {
-  color-scheme: light;
-}
-
 body {
-  background: var(--sc-bg);
-  color: var(--sc-text);
-  font-family: var(--sc-font-ui);
+  background: var(--color-background-body);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   margin: 0;
@@ -34,9 +31,92 @@ body {
   min-height: 100vh;
 }
 
-/* Legacy font utilities — collapsed onto Inter + JetBrains Mono. */
+@layer components {
+  .story-window-chrome {
+    -webkit-app-region: drag;
+    min-height: var(--story-window-chrome-height);
+    padding-left: max(var(--story-window-control-left-inset), 16px);
+    padding-right: max(var(--story-window-control-right-inset), 16px);
+    user-select: none;
+  }
+
+  .story-window-sidebar {
+    -webkit-app-region: drag;
+  }
+
+  [data-platform="darwin"] .story-window-sidebar {
+    padding-top: var(--story-window-chrome-height);
+  }
+
+  :is(.story-window-chrome, .story-window-sidebar)
+    :is(a, button, input, select, textarea, [role="button"], [contenteditable="true"]),
+  .no-window-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  .story-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2, 8px);
+    height: var(--story-window-chrome-height);
+    flex-shrink: 0;
+    padding: 10px var(--story-padding-inline);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-background-body);
+  }
+
+  .story-toolbar-title {
+    font-family: var(--font-family-heading);
+    font-size: var(--text-label-size);
+    font-weight: var(--text-heading-6-weight);
+    line-height: var(--text-label-leading);
+  }
+
+  .story-spacer {
+    flex: 1;
+  }
+
+  .story-scroll {
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .story-section-heading {
+    color: var(--color-text-secondary);
+    font-family: var(--font-family-heading);
+    font-size: var(--text-supporting-size);
+    font-weight: var(--text-supporting-weight);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .story-recording-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--story-gap);
+  }
+
+  .story-recording-pulse {
+    animation: story-recording-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes story-recording-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+
+/* Product font utilities. */
 .font-serif {
-  font-family: var(--sc-font-ui);
+  font-family: var(--font-family-heading);
 }
 
 .font-mono,
@@ -44,7 +124,7 @@ code,
 pre,
 kbd,
 samp {
-  font-family: var(--sc-font-mono);
+  font-family: var(--font-family-code);
 }
 
 button,
@@ -54,25 +134,25 @@ select {
   font-family: inherit;
 }
 
-/* Display heading utilities — remapped to Inter. */
+/* Display heading utilities use Gothic's signature display face. */
 .text-display-hero {
-  font-family: var(--sc-font-ui);
+  font-family: "Manufacturing Consent", "UnifrakturMaguntia", "Old English Text MT", serif;
   font-size: 4.5rem;
   font-weight: 600;
-  line-height: 1.10;
+  line-height: 1.1;
   letter-spacing: -2.16px;
 }
 
 .text-display-section {
-  font-family: var(--sc-font-ui);
+  font-family: "Manufacturing Consent", "UnifrakturMaguntia", "Old English Text MT", serif;
   font-size: 2.25rem;
   font-weight: 600;
-  line-height: 1.20;
+  line-height: 1.2;
   letter-spacing: -0.72px;
 }
 
 .text-display-sub {
-  font-family: var(--sc-font-ui);
+  font-family: var(--font-family-body);
   font-size: 1.625rem;
   font-weight: 600;
   line-height: 1.25;
@@ -80,22 +160,22 @@ select {
 }
 
 .text-display-title {
-  font-family: var(--sc-font-ui);
+  font-family: var(--font-family-body);
   font-size: 1.375rem;
   font-weight: 600;
-  line-height: 1.30;
+  line-height: 1.3;
   letter-spacing: -0.11px;
 }
 
 .text-body-serif {
-  font-family: var(--sc-font-ui);
+  font-family: var(--font-family-body);
   font-size: 1.2rem;
   font-weight: 500;
-  line-height: 1.50;
+  line-height: 1.5;
 }
 
 .text-body-serif-sm {
-  font-family: var(--sc-font-ui);
+  font-family: var(--font-family-body);
   font-size: 1.08rem;
   font-weight: 400;
   line-height: 1.35;
@@ -106,8 +186,8 @@ select {
   position: absolute;
   left: -9999px;
   top: 0;
-  background: var(--sc-accent-500);
-  color: var(--sc-text-inverse);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
   padding: 0.5rem 1rem;
   z-index: 100;
   border-radius: 0 0 0.375rem 0;
@@ -118,32 +198,43 @@ select {
 
 /* Global focus-visible baseline. */
 :focus-visible {
-  outline: 2px solid var(--sc-focus);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
 /* App shell */
 .app-shell {
   min-height: 100vh;
-  background: var(--sc-bg);
+  background: var(--color-background-body);
 }
 
 /* Elevated card panels (legacy utility — retained for un-ported features). */
 .brand-panel {
-  background: var(--sc-surface);
-  border: 1px solid var(--sc-border);
-  box-shadow: var(--sc-sh-2);
-  border-radius: var(--sc-r-md);
+  background: var(--color-background-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-med);
+  border-radius: var(--radius-element);
 }
 
 .brand-button {
-  background: var(--sc-surface-3);
-  color: var(--sc-text);
-  border-radius: var(--sc-r-md);
+  background: var(--color-background-muted);
+  color: var(--color-text-primary);
+  border-radius: var(--radius-element);
   padding: 10px 14px;
   transition: color 150ms ease;
 }
 
 .brand-button:hover {
-  color: var(--sc-accent-400);
+  color: var(--color-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

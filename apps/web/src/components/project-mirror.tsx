@@ -1,5 +1,10 @@
 "use client";
 
+import { Badge } from "@astryxdesign/core/Badge";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Card } from "@astryxdesign/core/Card";
+import { Collapsible } from "@astryxdesign/core/Collapsible";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { formatWorkflowType, summarizeWorkflowState, workflowSteps } from "@/lib/workflows";
@@ -175,28 +180,31 @@ export function ProjectMirror({ workspaceId, sseToken }: ProjectMirrorProps) {
 
   if (projectList.length === 0) {
     return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-center">
-        <p className="text-sm text-zinc-500">
-          No synced projects yet. Start the desktop app and sync a project.
-        </p>
-      </div>
+      <EmptyState
+        title="No synced projects yet"
+        description="Start the desktop app and sync a project."
+      />
     );
   }
 
   return (
     <div className="space-y-3">
       {isPolling && (
-        <p className="text-xs text-zinc-500">
-          Live updates unavailable. Refreshing every 5 seconds (polling).
-        </p>
+        <Banner
+          status="warning"
+          title="Live updates unavailable"
+          description="Refreshing every 5 seconds."
+        />
       )}
 
       {projectList.map((p) => (
-        <div key={p.desktopId} className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+        <Card key={p.desktopId} padding={4}>
           <div className="flex items-start justify-between">
             <div>
-              <h3 className="text-sm font-medium text-zinc-100">{p.projectName}</h3>
-              <p className="mt-0.5 text-xs text-zinc-500">
+              <h3 className="text-sm font-medium text-[var(--color-text-primary)]">
+                {p.projectName}
+              </h3>
+              <p className="mt-0.5 text-xs text-[var(--color-text-secondary)]">
                 Last synced: {formatTimestamp(p.lastSyncedAt)}
               </p>
             </div>
@@ -205,20 +213,19 @@ export function ProjectMirror({ workspaceId, sseToken }: ProjectMirrorProps) {
           </div>
 
           {p.storySource && (
-            <details className="mt-3">
-              <summary className="cursor-pointer text-xs text-zinc-400 hover:text-zinc-300">
-                Story source (read-only)
-              </summary>
-              <pre className="mt-2 max-h-48 overflow-auto rounded border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-400">
-                {p.storySource}
-              </pre>
-            </details>
+            <div className="mt-3">
+              <Collapsible trigger="Story source (read-only)" defaultIsOpen={false}>
+                <pre className="mt-2 max-h-48 overflow-auto rounded-[var(--radius-element)] border border-[var(--color-border)] bg-[var(--color-background-body)] p-3 font-mono text-xs text-[var(--color-text-secondary)]">
+                  {p.storySource}
+                </pre>
+              </Collapsible>
+            </div>
           )}
 
           {p.workflowType && (
             <WorkflowSummary workflowType={p.workflowType} workflowState={p.workflowState} />
           )}
-        </div>
+        </Card>
       ))}
     </div>
   );
@@ -236,53 +243,62 @@ function WorkflowSummary({
   const label = formatWorkflowType(workflowType) ?? workflowType;
 
   return (
-    <details className="mt-3 rounded border border-zinc-800 bg-zinc-950/50 p-3">
-      <summary className="cursor-pointer text-xs text-zinc-300">
-        {label}
-        {Object.keys(counts).length > 0 && (
-          <span className="ml-2 text-zinc-500">
-            {Object.entries(counts)
-              .map(([status, count]) => `${status}: ${count}`)
-              .join(" · ")}
+    <div className="mt-3">
+      <Collapsible
+        defaultIsOpen={false}
+        trigger={
+          <span className="text-xs text-[var(--color-text-primary)]">
+            {label}
+            {Object.keys(counts).length > 0 && (
+              <span className="ml-2 text-[var(--color-text-secondary)]">
+                {Object.entries(counts)
+                  .map(([status, count]) => `${status}: ${count}`)
+                  .join(" · ")}
+              </span>
+            )}
           </span>
+        }
+      >
+        {steps.length > 0 && (
+          <ol className="mt-3 space-y-2">
+            {steps.map((step) => (
+              <li
+                key={step.id}
+                className="rounded-[var(--radius-element)] border border-[var(--color-border)] bg-[var(--color-background-muted)] p-2 text-xs"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-[var(--color-text-primary)]">{step.title}</span>
+                  <Badge variant="neutral" label={step.status} />
+                </div>
+                {step.sceneName && (
+                  <p className="mt-1 text-[var(--color-text-secondary)]">Scene: {step.sceneName}</p>
+                )}
+              </li>
+            ))}
+          </ol>
         )}
-      </summary>
-      {steps.length > 0 && (
-        <ol className="mt-3 space-y-2">
-          {steps.map((step) => (
-            <li key={step.id} className="rounded border border-zinc-800 bg-zinc-900 p-2 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-zinc-200">{step.title}</span>
-                <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-zinc-400">
-                  {step.status}
-                </span>
-              </div>
-              {step.sceneName && <p className="mt-1 text-zinc-500">Scene: {step.sceneName}</p>}
-            </li>
-          ))}
-        </ol>
-      )}
-    </details>
+      </Collapsible>
+    </div>
   );
 }
 
 function StatusBadge({ status }: { status?: string }) {
   if (!status || status === "idle") {
-    return <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-500">Idle</span>;
+    return <Badge variant="neutral" label="Idle" />;
   }
 
   if (status === "recording" || status.startsWith("step:")) {
     return (
-      <span className="flex items-center gap-1.5 rounded-full bg-red-950/50 px-2 py-0.5 text-xs text-red-300">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-400" />
-        {status === "recording" ? "Recording" : `Step ${status.slice(5).replace("/", " of ")}`}
-      </span>
+      <Badge
+        variant="error"
+        label={
+          status === "recording" ? "Recording" : `Step ${status.slice(5).replace("/", " of ")}`
+        }
+      />
     );
   }
 
-  return (
-    <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">{status}</span>
-  );
+  return <Badge variant="neutral" label={status} />;
 }
 
 function formatTimestamp(iso: string): string {

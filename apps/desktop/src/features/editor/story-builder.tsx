@@ -1,4 +1,13 @@
-import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
+import { Badge as AstryxBadge } from "@astryxdesign/core/Badge";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { NumberInput as AstryxNumberInput } from "@astryxdesign/core/NumberInput";
+import {
+  SegmentedControl as AstryxSegmentedControl,
+  SegmentedControlItem as AstryxSegmentedControlItem,
+} from "@astryxdesign/core/SegmentedControl";
+import { Selector as AstryxSelector } from "@astryxdesign/core/Selector";
+import { Switch as AstryxSwitch } from "@astryxdesign/core/Switch";
+import { TextInput as AstryxTextInput } from "@astryxdesign/core/TextInput";
 import {
   ChevronDown,
   Code2,
@@ -11,8 +20,6 @@ import {
   Volume2,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
-import { toast } from "sonner";
-import { SelectField } from "@/components/ui/select-field";
 import type { Command, ScrollDir, ScrollUnit, Story } from "@/ipc/parse";
 import {
   isPicked,
@@ -28,6 +35,7 @@ import {
   TEXT_OVERLAY_MIN_DURATION_MS,
   validateTextOverlayText,
 } from "@/ipc/text-overlay";
+import { notifications } from "@/lib/notifications";
 import { MIN_RESIZABLE_ZOOM_DURATION_MS } from "../post-production/state/zoom-motion";
 import {
   calloutText,
@@ -155,19 +163,18 @@ const backgroundOptions = [
   { value: "transparent", label: "Transparent" },
 ] as const;
 
-const fieldClass =
-  "h-8 rounded-[var(--sc-r-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface)] px-2 text-xs text-[var(--sc-text)] outline-none focus:border-[var(--sc-accent-400)]";
-
 function FieldLabel({ children }: { children: string }) {
   return (
-    <span className="text-[10px] font-medium uppercase text-[var(--sc-text-4)]">{children}</span>
+    <span className="text-[10px] font-medium uppercase text-[var(--color-text-disabled)]">
+      {children}
+    </span>
   );
 }
 
 function PolishGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <fieldset className="min-w-0 border-0 p-0">
-      <legend className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+      <legend className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-disabled)]">
         {title}
       </legend>
       <div className="flex flex-wrap items-end gap-2">{children}</div>
@@ -220,17 +227,15 @@ function TextOverlayCommandFields({
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_8rem] items-start gap-2">
       <LabeledControl label="Text">
-        <input
-          className={`${fieldClass} w-full`}
+        <AstryxTextInput
+          label="Text overlay text"
+          isLabelHidden
+          width="100%"
           value={text}
-          disabled={disabled}
-          required
-          pattern=".*\S.*"
-          aria-label="Text overlay text"
-          aria-invalid={Boolean(textError)}
-          aria-describedby={textError ? `${fieldId}-text-error` : undefined}
-          onChange={(event) => {
-            const value = event.target.value;
+          isDisabled={disabled}
+          isRequired
+          status={textError ? { type: "error" } : undefined}
+          onChange={(value) => {
             const error = validateTextOverlayText(value);
             setText(value);
             if (!error) onPatch({ text: value });
@@ -240,7 +245,7 @@ function TextOverlayCommandFields({
           <span
             id={`${fieldId}-text-error`}
             className="text-[10px]"
-            style={{ color: "var(--sc-danger, #c33)" }}
+            style={{ color: "var(--color-error, #c33)" }}
           >
             {textError}
           </span>
@@ -249,7 +254,7 @@ function TextOverlayCommandFields({
       <LabeledControl label="Duration">
         <div className="relative">
           <input
-            className={`${fieldClass} w-full pr-7`}
+            className="h-8 w-full rounded-[var(--radius-inner)] border border-[var(--color-border)] bg-[var(--color-background-surface)] px-2 pr-7 text-xs text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
             type="number"
             min={TEXT_OVERLAY_MIN_DURATION_MS}
             max={TEXT_OVERLAY_MAX_DURATION_MS}
@@ -267,7 +272,7 @@ function TextOverlayCommandFields({
               if (parsed.durationMs != null) onPatch({ duration_ms: parsed.durationMs });
             }}
           />
-          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[var(--sc-text-4)]">
+          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[var(--color-text-disabled)]">
             ms
           </span>
         </div>
@@ -275,7 +280,7 @@ function TextOverlayCommandFields({
           <span
             id={`${fieldId}-duration-error`}
             className="text-[10px]"
-            style={{ color: "var(--sc-danger, #c33)" }}
+            style={{ color: "var(--color-error, #c33)" }}
           >
             {durationError}
           </span>
@@ -287,10 +292,10 @@ function TextOverlayCommandFields({
 
 function polishChipClass(active: boolean): string {
   return [
-    "inline-flex h-7 items-center gap-1.5 rounded-[var(--sc-r-sm)] border px-2 text-[11px] font-medium transition-[background-color,border-color,transform] active:scale-[0.98]",
+    "inline-flex h-7 items-center gap-1.5 rounded-[var(--radius-inner)] border px-2 text-[11px] font-medium transition-[background-color,border-color,transform] active:scale-[0.98]",
     active
-      ? "border-[var(--sc-accent-400)] bg-[var(--sc-accent-400)]/12 text-[var(--sc-text)]"
-      : "border-[var(--sc-border)] bg-[var(--sc-surface)] text-[var(--sc-text-3)] hover:text-[var(--sc-text)]",
+      ? "border-[var(--color-accent)] bg-[var(--color-accent)]/12 text-[var(--color-text-primary)]"
+      : "border-[var(--color-border)] bg-[var(--color-background-surface)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]",
   ].join(" ");
 }
 
@@ -464,7 +469,7 @@ export function StoryBuilder({
 
   if (!story) {
     return (
-      <div className="flex h-full items-center justify-center p-8 text-sm text-[var(--sc-text-3)]">
+      <div className="flex h-full items-center justify-center p-8 text-sm text-[var(--color-text-secondary)]">
         Switch to Code mode to fix parse errors before using UI mode.
       </div>
     );
@@ -562,7 +567,7 @@ export function StoryBuilder({
   const pickTarget = async (sceneIndex: number, commandIndex: number, command: Command) => {
     if (simulatorActive || !commandSupportsPick(command)) return;
     if (!streamId) {
-      toast.warning("Enable Live Preview first — Pick needs an author session");
+      notifications.warning("Enable Live Preview first — Pick needs an author session");
       return;
     }
     const pickKey = `${sceneIndex}-${commandIndex}`;
@@ -580,7 +585,7 @@ export function StoryBuilder({
         timeoutMs: 60_000,
       });
       if (!isPicked(result)) {
-        if (result.reason !== "user-cancel") toast.info(`Picking ended: ${result.reason}`);
+        if (result.reason !== "user-cancel") notifications.info(`Picking ended: ${result.reason}`);
         return;
       }
 
@@ -605,9 +610,9 @@ export function StoryBuilder({
           });
         }
       }
-      toast.success("Updated target");
+      notifications.success("Updated target");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      notifications.error(error instanceof Error ? error.message : String(error));
     } finally {
       setPickingKey(null);
     }
@@ -616,7 +621,7 @@ export function StoryBuilder({
   return (
     <form
       aria-label="Story builder"
-      className="flex h-full flex-col overflow-hidden bg-[var(--sc-surface)]"
+      className="flex h-full flex-col overflow-hidden bg-[var(--color-background-surface)]"
       onSubmit={(event) => event.preventDefault()}
       onChange={(event) => {
         const target = event.target;
@@ -633,73 +638,93 @@ export function StoryBuilder({
         }
       }}
     >
-      <div className="shrink-0 border-b border-[var(--sc-border-2)] bg-[var(--sc-chrome)]">
+      <div className="shrink-0 border-b border-[var(--color-border-emphasized)] bg-[var(--story-native-chrome)]">
         <div className="flex h-10 items-center gap-2 px-3">
-          <Sparkles size={14} aria-hidden="true" className="text-[var(--sc-accent-400)]" />
-          <button
-            type="button"
-            className="flex min-w-0 flex-1 items-center gap-2 text-left text-[12px] font-semibold uppercase text-[var(--sc-text-3)] transition hover:text-[var(--sc-text)]"
+          <Sparkles size={14} aria-hidden="true" className="text-[var(--color-accent)]" />
+          <AstryxButton
+            variant="ghost"
+            size="sm"
+            className="flex min-w-0 flex-1 items-center gap-2 text-left text-[12px] font-semibold uppercase text-[var(--color-text-secondary)] transition hover:text-[var(--color-text-primary)]"
             aria-expanded={intentExpanded}
             onClick={() => setIntentExpanded((value) => !value)}
+            label="Post-production intent"
+            endContent={
+              <ChevronDown
+                size={13}
+                aria-hidden="true"
+                className={`transition-transform ${intentExpanded ? "rotate-180" : ""}`}
+              />
+            }
           >
             <span className="truncate">Post-production intent</span>
-            <ChevronDown
-              size={13}
-              aria-hidden="true"
-              className={`transition-transform ${intentExpanded ? "rotate-180" : ""}`}
-            />
-          </button>
-          <span className="rounded-full border border-[var(--sc-border)] bg-[var(--sc-surface)] px-2 py-0.5 font-mono text-[10px] uppercase text-[var(--sc-text-4)]">
+          </AstryxButton>
+          <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-background-surface)] px-2 py-0.5 font-mono text-[10px] uppercase text-[var(--color-text-disabled)]">
             {polish.global.recipe}
           </span>
         </div>
         {intentExpanded ? (
           <div className="grid grid-cols-1 gap-3 px-3 pb-3 lg:grid-cols-2">
             <PolishGroup title="Style">
-              <ScSegmented
+              <AstryxSegmentedControl
                 size="sm"
                 value={polish.global.recipe}
-                aria-label="Polish recipe"
-                disabled={simulatorActive}
-                options={recipeOptions}
-                onValueChange={(value) => updateGlobal({ recipe: value as PolishRecipe })}
-              />
+                label="Polish recipe"
+                isDisabled={simulatorActive}
+                onChange={(value) => updateGlobal({ recipe: value as PolishRecipe })}
+              >
+                {recipeOptions.map((option) => (
+                  <AstryxSegmentedControlItem
+                    key={option.value}
+                    value={option.value}
+                    label={typeof option.label === "string" ? option.label : option.value}
+                    icon={typeof option.label === "string" ? undefined : option.label}
+                  />
+                ))}
+              </AstryxSegmentedControl>
             </PolishGroup>
 
             <PolishGroup title="Motion">
               <LabeledControl label="Motion mode" className="min-w-[140px] flex-1">
-                <ScSegmented
+                <AstryxSegmentedControl
                   size="sm"
                   value={polish.global.motionMode ?? "full"}
-                  aria-label="Motion mode"
-                  disabled={simulatorActive}
-                  options={motionModeOptions}
-                  onValueChange={(value) => updateGlobal({ motionMode: value as PolishMotionMode })}
-                />
+                  label="Motion mode"
+                  isDisabled={simulatorActive}
+                  onChange={(value) => updateGlobal({ motionMode: value as PolishMotionMode })}
+                >
+                  {motionModeOptions.map((option) => (
+                    <AstryxSegmentedControlItem
+                      key={option.value}
+                      value={option.value}
+                      label={typeof option.label === "string" ? option.label : option.value}
+                      icon={typeof option.label === "string" ? undefined : option.label}
+                    />
+                  ))}
+                </AstryxSegmentedControl>
               </LabeledControl>
               <LabeledControl label="Auto zoom" className="min-w-[140px] flex-1">
-                <SelectField
+                <AstryxSelector
                   value={polish.global.autoZoom}
-                  disabled={simulatorActive}
+                  isDisabled={simulatorActive}
                   options={autoZoomOptions}
-                  onValueChange={(value) => updateGlobal({ autoZoom: value as PolishAutoZoom })}
-                  aria-label="Auto zoom"
+                  onChange={(value) => updateGlobal({ autoZoom: value as PolishAutoZoom })}
+                  label="Auto zoom"
+                  isLabelHidden
                 />
               </LabeledControl>
               <LabeledControl label="Action focus" className="min-w-[140px] flex-1">
-                <SelectField
+                <AstryxSelector
                   value={polish.global.actionFocus}
-                  disabled={simulatorActive}
+                  isDisabled={simulatorActive}
                   options={actionFocusOptions}
-                  onValueChange={(value) =>
-                    updateGlobal({ actionFocus: value as PolishActionFocus })
-                  }
-                  aria-label="Action focus"
+                  onChange={(value) => updateGlobal({ actionFocus: value as PolishActionFocus })}
+                  label="Action focus"
+                  isLabelHidden
                 />
               </LabeledControl>
               <LabeledControl label="Duration" className="w-24">
                 <input
-                  className={fieldClass}
+                  className="h-8 w-full rounded-[var(--radius-inner)] border border-[var(--color-border)] bg-[var(--color-background-surface)] px-2 text-xs text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
                   type="number"
                   min={MIN_RESIZABLE_ZOOM_DURATION_MS}
                   step={100}
@@ -720,36 +745,39 @@ export function StoryBuilder({
 
             <PolishGroup title="Cursor">
               <LabeledControl label="Mode" className="min-w-[120px] flex-1">
-                <SelectField
+                <AstryxSelector
                   value={polish.global.cursor}
-                  disabled={simulatorActive}
+                  isDisabled={simulatorActive}
                   options={cursorModeOptions}
-                  onValueChange={(value) => updateGlobal({ cursor: value as PolishCursorMode })}
-                  aria-label="Cursor mode"
+                  onChange={(value) => updateGlobal({ cursor: value as PolishCursorMode })}
+                  label="Cursor mode"
+                  isLabelHidden
                 />
               </LabeledControl>
               <LabeledControl label="Skin" className="min-w-[120px] flex-1">
-                <SelectField
+                <AstryxSelector
                   value={polish.global.cursorSkin}
-                  disabled={simulatorActive || polish.global.cursor === "hidden"}
+                  isDisabled={simulatorActive || polish.global.cursor === "hidden"}
                   options={cursorSkinOptions}
-                  onValueChange={(value) => updateGlobal({ cursorSkin: value as PolishCursorSkin })}
-                  aria-label="Cursor skin"
+                  onChange={(value) => updateGlobal({ cursorSkin: value as PolishCursorSkin })}
+                  label="Cursor skin"
+                  isLabelHidden
                 />
               </LabeledControl>
               <LabeledControl label="Size" className="w-20">
-                <input
-                  className={fieldClass}
-                  type="number"
+                <AstryxNumberInput
+                  label="Cursor size"
+                  isLabelHidden
+                  size="sm"
                   min={0.5}
                   max={2.5}
                   step={0.1}
                   value={polish.global.cursorSizeScale}
-                  disabled={simulatorActive || polish.global.cursor === "hidden"}
-                  aria-label="Cursor size"
-                  onChange={(event) =>
+                  isDisabled={simulatorActive || polish.global.cursor === "hidden"}
+                  width="100%"
+                  onChange={(value) =>
                     updateGlobal({
-                      cursorSizeScale: Math.max(0.5, Number(event.target.value) || 1),
+                      cursorSizeScale: Math.max(0.5, value || 1),
                     })
                   }
                 />
@@ -758,29 +786,29 @@ export function StoryBuilder({
 
             <PolishGroup title="Canvas & Audio">
               <LabeledControl label="Background" className="min-w-[150px] flex-1">
-                <SelectField
+                <AstryxSelector
                   value={backgroundToValue(polish.global.background)}
-                  disabled={simulatorActive}
-                  options={backgroundOptions}
-                  onValueChange={(value) =>
-                    updateGlobal({ background: backgroundFromValue(value) })
-                  }
-                  aria-label="Background"
+                  isDisabled={simulatorActive}
+                  options={[...backgroundOptions]}
+                  onChange={(value) => updateGlobal({ background: backgroundFromValue(value) })}
+                  label="Background"
+                  isLabelHidden
                 />
               </LabeledControl>
               <LabeledControl label="BGM asset" className="min-w-[180px] flex-1">
-                <input
-                  className={fieldClass}
+                <AstryxTextInput
+                  label="Background music path"
+                  isLabelHidden
                   value={polish.global.bgm?.path ?? ""}
-                  disabled={simulatorActive}
+                  isDisabled={simulatorActive}
                   placeholder="Choose or paste audio path"
-                  aria-label="Background music path"
-                  onChange={(event) =>
+                  width="100%"
+                  onChange={(value) =>
                     updateGlobal({
-                      bgm: event.target.value.trim()
+                      bgm: value.trim()
                         ? {
                             ...soundCueObject(polish.global.bgm),
-                            path: event.target.value,
+                            path: value,
                             gain: 0.35,
                           }
                         : undefined,
@@ -799,47 +827,52 @@ export function StoryBuilder({
           return (
             <section
               key={`${scene.name}-${scene.span.start}`}
-              className="mb-5 border-b border-[var(--sc-border-2)] pb-5 last:border-b-0"
+              className="mb-5 border-b border-[var(--color-border-emphasized)] pb-5 last:border-b-0"
             >
               <div className="mb-3 flex items-center gap-2">
-                <input
-                  className="min-w-0 flex-1 bg-transparent text-base font-semibold text-[var(--sc-text)] outline-none"
+                <AstryxTextInput
+                  label={`Scene ${sceneIndex + 1} name`}
+                  isLabelHidden
+                  className="min-w-0 flex-1 font-semibold"
                   value={scene.name}
-                  disabled={simulatorActive}
-                  onChange={(event) => {
-                    const nextStory = patchSceneName(story, sceneIndex, event.target.value);
+                  isDisabled={simulatorActive}
+                  width="100%"
+                  onChange={(value) => {
+                    const nextStory = patchSceneName(story, sceneIndex, value);
                     onSourceChange(formatEditableStory(nextStory), nextStory);
                   }}
-                  aria-label={`Scene ${sceneIndex + 1} name`}
                 />
                 <LabeledControl label="Transition" className="w-40">
-                  <SelectField
+                  <AstryxSelector
                     value={scenePolish.transitionOut ?? "none"}
-                    disabled={simulatorActive}
+                    isDisabled={simulatorActive}
                     options={transitionOptions}
-                    onValueChange={(value) =>
+                    onChange={(value) =>
                       onPolishChange(
                         setScenePolish(polish, scene.name, {
                           transitionOut: value as PolishTransition,
                         }),
                       )
                     }
-                    aria-label={`Transition for ${scene.name}`}
+                    label={`Transition for ${scene.name}`}
+                    isLabelHidden
                   />
                 </LabeledControl>
                 <LabeledControl label="Duration" className="w-24">
-                  <input
-                    className={fieldClass}
-                    type="number"
+                  <AstryxNumberInput
+                    label={`Transition duration for ${scene.name}`}
+                    isLabelHidden
+                    size="sm"
                     min={100}
                     step={100}
+                    units="ms"
                     value={scenePolish.transitionDurationMs ?? 500}
-                    disabled={simulatorActive || !scenePolish.transitionOut}
-                    aria-label={`Transition duration for ${scene.name}`}
-                    onChange={(event) =>
+                    isDisabled={simulatorActive || !scenePolish.transitionOut}
+                    width="100%"
+                    onChange={(value) =>
                       onPolishChange(
                         setScenePolish(polish, scene.name, {
-                          transitionDurationMs: Math.max(100, Number(event.target.value) || 500),
+                          transitionDurationMs: Math.max(100, value || 500),
                         }),
                       )
                     }
@@ -866,18 +899,24 @@ export function StoryBuilder({
                   return (
                     <article
                       key={`${command.span.start}-${command.verb}`}
-                      className="rounded-[var(--sc-r-md)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] p-3"
+                      className="rounded-[var(--radius-element)] border border-[var(--color-border)] bg-[var(--color-background-card)] p-3"
                     >
                       <div className="mb-2 flex items-center gap-2">
-                        <ScBadge tone="muted">{commandTitle(command)}</ScBadge>
-                        <button
-                          type="button"
-                          className="min-w-0 flex-1 truncate text-left text-xs text-[var(--sc-text-3)] hover:text-[var(--sc-text)]"
+                        <AstryxBadge variant="neutral" label={commandTitle(command)} />
+                        <AstryxButton
+                          variant="ghost"
+                          size="sm"
+                          className="min-w-0 flex-1 truncate text-left text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
                           onClick={() => onJumpToOffset(command.span.start)}
+                          label={`Jump to ${commandSummary(command)}`}
                         >
                           {commandSummary(command)}
-                        </button>
-                        <Code2 size={12} aria-hidden="true" className="text-[var(--sc-text-4)]" />
+                        </AstryxButton>
+                        <Code2
+                          size={12}
+                          aria-hidden="true"
+                          className="text-[var(--color-text-disabled)]"
+                        />
                       </div>
 
                       {command.verb === "text-overlay" ? (
@@ -897,58 +936,58 @@ export function StoryBuilder({
                               : "grid grid-cols-1"
                           }
                         >
-                          <input
-                            className="h-9 min-w-0 rounded-[var(--sc-r-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface)] px-2 text-sm text-[var(--sc-text)] outline-none focus:border-[var(--sc-accent-400)]"
+                          <AstryxTextInput
+                            label={`${commandTitle(command)} value`}
+                            isLabelHidden
                             value={primaryEditableValue(command)}
-                            disabled={
+                            isDisabled={
                               simulatorActive || command.verb === "drag" || command.verb === "pause"
                             }
-                            onChange={(event) =>
-                              updateSourceCommand(
-                                sceneIndex,
-                                commandIndex,
-                                command,
-                                event.target.value,
-                              )
+                            width="100%"
+                            onChange={(value) =>
+                              updateSourceCommand(sceneIndex, commandIndex, command, value)
                             }
                             aria-label={`${commandTitle(command)} value`}
                           />
                           {supportsPick ? (
-                            <ScButton
+                            <AstryxButton
                               size="sm"
                               variant="ghost"
-                              disabled={simulatorActive || pickingKey === pickKey}
+                              isDisabled={simulatorActive || pickingKey === pickKey}
                               icon={<MousePointer2 size={12} aria-hidden="true" />}
-                              title="Pick target from preview"
+                              tooltip="Pick target from preview"
                               className="h-9 self-center"
                               onClick={() => pickTarget(sceneIndex, commandIndex, command)}
+                              label="Pick target from preview"
                             >
                               {pickingKey === pickKey ? "Picking" : "Pick"}
-                            </ScButton>
+                            </AstryxButton>
                           ) : null}
                         </div>
                       )}
 
                       {command.verb === "scroll" ? (
                         <div className="mt-2 grid grid-cols-2 gap-2">
-                          <SelectField
+                          <AstryxSelector
                             value={command.direction}
-                            disabled={simulatorActive}
+                            isDisabled={simulatorActive}
                             options={scrollDirectionOptions}
-                            aria-label="Scroll direction"
-                            onValueChange={(value) => {
+                            label="Scroll direction"
+                            isLabelHidden
+                            onChange={(value) => {
                               const nextStory = patchCommand(story, sceneIndex, commandIndex, {
                                 direction: value as ScrollDir,
                               } as Partial<Command>);
                               onSourceChange(formatEditableStory(nextStory), nextStory);
                             }}
                           />
-                          <SelectField
+                          <AstryxSelector
                             value={command.unit}
-                            disabled={simulatorActive}
+                            isDisabled={simulatorActive}
                             options={scrollUnitOptions}
-                            aria-label="Scroll unit"
-                            onValueChange={(value) => {
+                            label="Scroll unit"
+                            isLabelHidden
+                            onChange={(value) => {
                               const nextStory = patchCommand(story, sceneIndex, commandIndex, {
                                 unit: value as ScrollUnit,
                               } as Partial<Command>);
@@ -960,63 +999,80 @@ export function StoryBuilder({
 
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         {supportsVisualFocus ? (
-                          <button
-                            type="button"
+                          <AstryxButton
+                            variant="secondary"
+                            size="sm"
                             className={polishChipClass(zoomEnabled)}
+                            label={`Zoom ${zoomEnabled ? stepPolish?.zoom : "off"}`}
+                            icon={<Focus size={12} aria-hidden="true" />}
                             onClick={() =>
                               setExpandedPolishKey((current) =>
                                 current === stepKey ? null : stepKey,
                               )
                             }
                           >
-                            <Focus size={12} aria-hidden="true" />
                             Zoom {zoomEnabled ? stepPolish?.zoom : "off"}
-                          </button>
+                          </AstryxButton>
                         ) : null}
-                        <button
-                          type="button"
+                        <AstryxButton
+                          variant="secondary"
+                          size="sm"
                           className={polishChipClass(Boolean(calloutValue))}
+                          label={calloutValue ? "Callout" : "No callout"}
+                          icon={<Megaphone size={12} aria-hidden="true" />}
                           onClick={() =>
                             setExpandedPolishKey((current) =>
                               current === stepKey ? null : stepKey,
                             )
                           }
                         >
-                          <Megaphone size={12} aria-hidden="true" />
                           {calloutValue ? "Callout" : "No callout"}
-                        </button>
+                        </AstryxButton>
                         {supportsVisualFocus ? (
-                          <button
-                            type="button"
+                          <AstryxButton
+                            variant="secondary"
+                            size="sm"
                             className={polishChipClass(highlightActive)}
+                            label={`Highlight ${highlightActive ? "on" : "off"}`}
+                            icon={<Palette size={12} aria-hidden="true" />}
                             onClick={() =>
                               updateStepPolish(sceneIndex, commandIndex, {
                                 highlight: { ...highlight, enabled: !highlightActive },
                               })
                             }
                           >
-                            <Palette size={12} aria-hidden="true" />
                             Highlight {highlightActive ? "on" : "off"}
-                          </button>
+                          </AstryxButton>
                         ) : null}
                         {supportsVisualFocus ? (
-                          <button
-                            type="button"
+                          <AstryxButton
+                            variant="secondary"
+                            size="sm"
                             className={polishChipClass(sfxActive)}
+                            label={sfxActive ? "SFX" : "No SFX"}
+                            icon={<Volume2 size={12} aria-hidden="true" />}
                             onClick={() =>
                               setExpandedPolishKey((current) =>
                                 current === stepKey ? null : stepKey,
                               )
                             }
                           >
-                            <Volume2 size={12} aria-hidden="true" />
                             {sfxActive ? "SFX" : "No SFX"}
-                          </button>
+                          </AstryxButton>
                         ) : null}
-                        <button
-                          type="button"
-                          className="ml-auto inline-flex h-7 items-center gap-1 rounded-[var(--sc-r-sm)] px-2 text-[11px] text-[var(--sc-text-3)] transition hover:bg-[var(--sc-surface)] hover:text-[var(--sc-text)] active:scale-[0.98]"
+                        <AstryxButton
+                          variant="ghost"
+                          size="sm"
+                          className="ml-auto inline-flex h-7 items-center gap-1 rounded-[var(--radius-inner)] px-2 text-[11px] text-[var(--color-text-secondary)] transition hover:bg-[var(--color-background-surface)] hover:text-[var(--color-text-primary)] active:scale-[0.98]"
                           aria-expanded={polishOpen}
+                          label="Polish"
+                          endContent={
+                            <ChevronDown
+                              size={12}
+                              aria-hidden="true"
+                              className={`transition-transform ${polishOpen ? "rotate-180" : ""}`}
+                            />
+                          }
                           onClick={() =>
                             setExpandedPolishKey((current) =>
                               current === stepKey ? null : stepKey,
@@ -1024,16 +1080,11 @@ export function StoryBuilder({
                           }
                         >
                           Polish
-                          <ChevronDown
-                            size={12}
-                            aria-hidden="true"
-                            className={`transition-transform ${polishOpen ? "rotate-180" : ""}`}
-                          />
-                        </button>
+                        </AstryxButton>
                       </div>
 
                       {polishOpen ? (
-                        <div className="mt-3 border-t border-[var(--sc-border-2)] pt-3">
+                        <div className="mt-3 border-t border-[var(--color-border-emphasized)] pt-3">
                           <div
                             className={
                               supportsVisualFocus
@@ -1043,30 +1094,33 @@ export function StoryBuilder({
                           >
                             {supportsVisualFocus ? (
                               <fieldset className="border-0 p-0">
-                                <legend className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+                                <legend className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-disabled)]">
                                   <Focus size={11} aria-hidden="true" /> Focus
                                 </legend>
                                 <div className="flex flex-wrap items-end gap-2">
                                   <LabeledControl label="Zoom" className="w-32">
-                                    <SelectField
+                                    <AstryxSelector
                                       value={stepPolish?.zoom ?? "off"}
-                                      disabled={simulatorActive}
+                                      isDisabled={simulatorActive}
                                       options={zoomOptions}
-                                      onValueChange={(value) =>
+                                      onChange={(value) =>
                                         updateStepPolish(sceneIndex, commandIndex, {
                                           zoom: value as PolishZoom,
                                         })
                                       }
-                                      aria-label={`${commandTitle(command)} zoom`}
+                                      label={`${commandTitle(command)} zoom`}
+                                      isLabelHidden
                                     />
                                   </LabeledControl>
                                   {zoomEnabled ? (
                                     <LabeledControl label="Target" className="w-36">
-                                      <SelectField
+                                      <AstryxSelector
                                         value={zoomTarget.kind}
-                                        disabled={simulatorActive}
+                                        isDisabled={simulatorActive}
                                         options={zoomTargetOptions}
-                                        onValueChange={(value) => {
+                                        label={`${commandTitle(command)} zoom target`}
+                                        isLabelHidden
+                                        onChange={(value) => {
                                           const kind = value as PolishZoomTarget["kind"];
                                           updateStepPolish(sceneIndex, commandIndex, {
                                             zoomTarget:
@@ -1090,20 +1144,21 @@ export function StoryBuilder({
                                       label="Selector"
                                       className="min-w-[180px] flex-1"
                                     >
-                                      <input
-                                        className={fieldClass}
+                                      <AstryxTextInput
+                                        label={`${commandTitle(command)} zoom selector`}
+                                        isLabelHidden
                                         value={zoomTarget.selector}
-                                        disabled={simulatorActive}
+                                        isDisabled={simulatorActive}
                                         placeholder="CSS selector"
-                                        onChange={(event) =>
+                                        width="100%"
+                                        onChange={(value) =>
                                           updateStepPolish(sceneIndex, commandIndex, {
                                             zoomTarget: {
                                               kind: "element",
-                                              selector: event.target.value,
+                                              selector: value,
                                             },
                                           })
                                         }
-                                        aria-label={`${commandTitle(command)} zoom selector`}
                                       />
                                     </LabeledControl>
                                   ) : null}
@@ -1118,7 +1173,7 @@ export function StoryBuilder({
                                   : "min-w-0 border-0 p-0"
                               }
                             >
-                              <legend className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+                              <legend className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-disabled)]">
                                 <Megaphone size={11} aria-hidden="true" /> Callout
                               </legend>
                               <div
@@ -1129,34 +1184,37 @@ export function StoryBuilder({
                                 }
                               >
                                 <LabeledControl label="Text" className="min-w-0">
-                                  <input
-                                    className={fieldClass}
+                                  <AstryxTextInput
+                                    label={`${commandTitle(command)} callout`}
+                                    isLabelHidden
                                     value={calloutValue}
-                                    disabled={simulatorActive}
+                                    isDisabled={simulatorActive}
                                     placeholder="Add callout text"
-                                    onChange={(event) =>
+                                    width="100%"
+                                    onChange={(value) =>
                                       updateStepPolish(sceneIndex, commandIndex, {
-                                        callout: { ...callout, text: event.target.value },
+                                        callout: { ...callout, text: value },
                                       })
                                     }
-                                    aria-label={`${commandTitle(command)} callout`}
                                   />
                                 </LabeledControl>
                                 <LabeledControl label="Size">
-                                  <input
-                                    className={fieldClass}
-                                    type="number"
+                                  <AstryxNumberInput
+                                    label={`${commandTitle(command)} callout size`}
+                                    isLabelHidden
+                                    size="sm"
                                     min={12}
                                     max={72}
                                     step={1}
+                                    units="pt"
                                     value={callout.sizePt}
-                                    disabled={simulatorActive}
-                                    aria-label={`${commandTitle(command)} callout size`}
-                                    onChange={(event) =>
+                                    isDisabled={simulatorActive}
+                                    width="100%"
+                                    onChange={(value) =>
                                       updateStepPolish(sceneIndex, commandIndex, {
                                         callout: {
                                           ...callout,
-                                          sizePt: Math.max(12, Number(event.target.value) || 24),
+                                          sizePt: Math.max(12, value || 24),
                                         },
                                       })
                                     }
@@ -1164,7 +1222,7 @@ export function StoryBuilder({
                                 </LabeledControl>
                                 <LabeledControl label="Color">
                                   <input
-                                    className="h-8 rounded-[var(--sc-r-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-1"
+                                    className="h-8 rounded-[var(--radius-inner)] border border-[var(--color-border)] bg-[var(--color-background-surface)] p-1"
                                     type="color"
                                     value={callout.color}
                                     disabled={simulatorActive}
@@ -1181,42 +1239,39 @@ export function StoryBuilder({
 
                             {supportsVisualFocus ? (
                               <fieldset className="border-0 p-0">
-                                <legend className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+                                <legend className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-disabled)]">
                                   <Music2 size={11} aria-hidden="true" /> Effects
                                 </legend>
                                 <div className="grid grid-cols-1 items-end gap-3">
                                   <LabeledControl label="Highlight" className="min-w-0">
-                                    <label className="inline-flex h-8 items-center gap-2 rounded-[var(--sc-r-sm)] border border-[var(--sc-border)] px-2 text-xs text-[var(--sc-text-2)]">
-                                      <input
-                                        type="checkbox"
-                                        checked={highlightActive}
-                                        disabled={simulatorActive}
-                                        onChange={(event) =>
-                                          updateStepPolish(sceneIndex, commandIndex, {
-                                            highlight: {
-                                              ...highlight,
-                                              enabled: event.target.checked,
-                                            },
-                                          })
-                                        }
-                                      />
-                                      Enabled
-                                    </label>
-                                  </LabeledControl>
-                                  <LabeledControl label="SFX asset" className="min-w-0">
-                                    <input
-                                      className={fieldClass}
-                                      value={sfx.path}
-                                      disabled={simulatorActive}
-                                      placeholder="Choose or paste audio path"
-                                      onChange={(event) =>
+                                    <AstryxSwitch
+                                      label="Highlight enabled"
+                                      isLabelHidden
+                                      value={highlightActive}
+                                      isDisabled={simulatorActive}
+                                      onChange={(enabled) =>
                                         updateStepPolish(sceneIndex, commandIndex, {
-                                          sfx: event.target.value.trim()
-                                            ? { ...sfx, path: event.target.value }
-                                            : undefined,
+                                          highlight: {
+                                            ...highlight,
+                                            enabled,
+                                          },
                                         })
                                       }
-                                      aria-label={`${commandTitle(command)} sound effect path`}
+                                    />
+                                  </LabeledControl>
+                                  <LabeledControl label="SFX asset" className="min-w-0">
+                                    <AstryxTextInput
+                                      label={`${commandTitle(command)} sound effect path`}
+                                      isLabelHidden
+                                      value={sfx.path}
+                                      isDisabled={simulatorActive}
+                                      placeholder="Choose or paste audio path"
+                                      width="100%"
+                                      onChange={(value) =>
+                                        updateStepPolish(sceneIndex, commandIndex, {
+                                          sfx: value.trim() ? { ...sfx, path: value } : undefined,
+                                        })
+                                      }
                                     />
                                   </LabeledControl>
                                 </div>

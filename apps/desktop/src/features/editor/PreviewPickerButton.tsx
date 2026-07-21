@@ -14,14 +14,16 @@
  * `document.addEventListener`.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import type { UnlistenFn } from "@tauri-apps/api/event";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { AlertTriangle, Crosshair, Loader2 } from "lucide-react";
 import { motion } from "motion/react";
-import { toast } from "sonner";
-import type { UnlistenFn } from "@tauri-apps/api/event";
-
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  type AuthorDriverVariant,
+  useAuthorDriverStore,
+} from "@/features/editor/authorDriverStore";
 
 import { editorController } from "@/features/editor/controller";
 import { PickerActionMenu } from "@/features/editor/PickerActionMenu";
@@ -29,28 +31,25 @@ import {
   buildPickerActionLine,
   getPickerActionItems,
   inferDefaultAction,
+  type PickerAction,
+  type PickerActionOptions,
   parsePickerLine,
   pickedTargetLabel,
   validatePickerActionRoundTrip,
-  type PickerAction,
-  type PickerActionOptions,
 } from "@/features/editor/picker-action-dsl";
 import { parseStory } from "@/ipc/parse";
 import {
-  useAuthorDriverStore,
-  type AuthorDriverVariant,
-} from "@/features/editor/authorDriverStore";
-import { useEditorStore } from "@/state/editor";
-import {
   isPicked,
   listenPickerHoverPreview,
+  type PickHoverPayload,
+  type PickPicked,
   pickElementAuthor,
   pickElementCancel,
   pickerStampStepId,
-  type PickHoverPayload,
-  type PickPicked,
   type TargetRecordDto,
 } from "@/ipc/picker";
+import { notifications } from "@/lib/notifications";
+import { useEditorStore } from "@/state/editor";
 
 /**
  * Locked copy constants — single source of truth for tooltips, toasts,
@@ -63,8 +62,7 @@ const COPY = {
   TOOLTIP_PICKING: "Picking — press Esc",
   TOOLTIP_STARTING: "Starting session…",
   TOOLTIP_SIMULATOR_RUNNING: "Simulator running — cancel to pick",
-  TOOLTIP_SIMULATOR_PAUSED_WITH_N:
-    "Paused at step {N} — Pick will resume Preview after",
+  TOOLTIP_SIMULATOR_PAUSED_WITH_N: "Paused at step {N} — Pick will resume Preview after",
   TOOLTIP_SIMULATOR_PAUSED_NO_N: "Paused — Pick will resume Preview after",
   // aria-label
   ARIA_LABEL: "Pick element from preview (Cmd-Shift-P)",
@@ -72,19 +70,16 @@ const COPY = {
   ARIA_LABEL_STARTING: "Starting author session…",
   // Banner
   BANNER_ACTIVE: "PICKING — press Esc to cancel",
-  BANNER_PAUSED_WITH_N:
-    "PICKING — press Esc (Preview will stay paused at step {N})",
+  BANNER_PAUSED_WITH_N: "PICKING — press Esc (Preview will stay paused at step {N})",
   BANNER_ERROR_PREFIX: "Couldn't start picker — ",
   BANNER_ERROR_SUFFIX: ". Try again or toggle Preview off and on.",
   // Toasts
   TOAST_PICK_NAVIGATION: "Picking cancelled — page navigated",
   TOAST_PICK_UNSUPPORTED:
     "Picking unavailable on this page (`chrome://`, `about:`, or `view-source:`)",
-  TOAST_PICK_WARM_UP_PARTIAL:
-    "Warming context hit an error — picking on whichever page loaded",
+  TOAST_PICK_WARM_UP_PARTIAL: "Warming context hit an error — picking on whichever page loaded",
   TOAST_PICK_TIMEOUT: "Picker timed out — try again",
-  TOAST_DIRTY_WARNING:
-    "Unsaved changes — Pick will use the last saved version. Save first?",
+  TOAST_DIRTY_WARNING: "Unsaved changes — Pick will use the last saved version. Save first?",
   TOAST_NO_CURSOR: "No cursor position",
   TOAST_NO_STREAM: "Enable Live Preview first — Pick needs an author session",
 } as const;
@@ -134,10 +129,7 @@ function formatTooltip(
       return COPY.TOOLTIP_SIMULATOR_RUNNING;
     case "simulator-paused":
       return simulatorOrdinal != null
-        ? COPY.TOOLTIP_SIMULATOR_PAUSED_WITH_N.replace(
-            "{N}",
-            String(simulatorOrdinal),
-          )
+        ? COPY.TOOLTIP_SIMULATOR_PAUSED_WITH_N.replace("{N}", String(simulatorOrdinal))
         : COPY.TOOLTIP_SIMULATOR_PAUSED_NO_N;
   }
 }
@@ -230,18 +222,18 @@ export function PreviewPickerButton() {
     if (isSimulatorRunning) return; // disabled path; no-op
 
     if (!streamId) {
-      toast.warning(COPY.TOAST_NO_STREAM);
+      notifications.warning(COPY.TOAST_NO_STREAM);
       return;
     }
 
     const cursorLine = editorController.getCursorLine();
     if (cursorLine == null) {
-      toast.error(COPY.TOAST_NO_CURSOR);
+      notifications.error(COPY.TOAST_NO_CURSOR);
       return;
     }
 
     if (editorController.isDirty()) {
-      toast.warning(COPY.TOAST_DIRTY_WARNING, {
+      notifications.warning(COPY.TOAST_DIRTY_WARNING, {
         id: "picker-dirty-warning",
         duration: Infinity,
         description:
@@ -274,24 +266,22 @@ export function PreviewPickerButton() {
             // Silent — no toast on user-cancel.
             break;
           case "navigation":
-            toast.info(COPY.TOAST_PICK_NAVIGATION);
+            notifications.info(COPY.TOAST_PICK_NAVIGATION);
             break;
           case "unsupported-url":
-            toast.warning(COPY.TOAST_PICK_UNSUPPORTED);
+            notifications.warning(COPY.TOAST_PICK_UNSUPPORTED);
             break;
           case "timeout":
-            toast.error(COPY.TOAST_PICK_TIMEOUT);
+            notifications.error(COPY.TOAST_PICK_TIMEOUT);
             break;
           default:
-            toast.info(`Picking ended: ${r.reason}`);
+            notifications.info(`Picking ended: ${r.reason}`);
         }
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setBannerError(msg);
-      toast.error(
-        `${COPY.BANNER_ERROR_PREFIX}${msg}${COPY.BANNER_ERROR_SUFFIX}`,
-      );
+      notifications.error(`${COPY.BANNER_ERROR_PREFIX}${msg}${COPY.BANNER_ERROR_SUFFIX}`);
       void COPY.TOAST_PICK_WARM_UP_PARTIAL;
     } finally {
       setPicking(false);
@@ -302,9 +292,7 @@ export function PreviewPickerButton() {
 
   onClickRef.current = onClick;
 
-  const collectExtraOptions = async (
-    action: PickerAction,
-  ): Promise<PickerActionOptions | null> => {
+  const collectExtraOptions = async (action: PickerAction): Promise<PickerActionOptions | null> => {
     if (action === "upload") {
       const selected = await openDialog({ multiple: false, directory: false });
       if (!selected || typeof selected !== "string") return null;
@@ -327,7 +315,7 @@ export function PreviewPickerButton() {
         return null;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        toast.error(msg);
+        notifications.error(msg);
         return null;
       } finally {
         setPicking(false);
@@ -338,10 +326,7 @@ export function PreviewPickerButton() {
     return {};
   };
 
-  const onMenuChoose = async (
-    action: PickerAction,
-    options?: PickerActionOptions,
-  ) => {
+  const onMenuChoose = async (action: PickerAction, options?: PickerActionOptions) => {
     if (!pendingPick) return;
     const captured = pendingPick;
     const { result: r, lineText } = captured;
@@ -374,7 +359,7 @@ export function PreviewPickerButton() {
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      toast.error(msg);
+      notifications.error(msg);
       return;
     }
 
@@ -382,7 +367,7 @@ export function PreviewPickerButton() {
       ? editorController.replaceCursorLine(finalLine)
       : editorController.insertAtCursor(`${finalLine}\n`);
     if (!res.ok) {
-      toast.error("Editor not ready — focus the editor first");
+      notifications.error("Editor not ready — focus the editor first");
       return;
     }
 
@@ -390,14 +375,14 @@ export function PreviewPickerButton() {
     const successToast = `Added \`${finalLine.trim()}\` · line ${res.lineNumber}`;
 
     if (action === "drag") {
-      toast.success(
+      notifications.success(
         `${successToast} · selector healing for drag targets is not available yet`,
       );
       return;
     }
 
     if (!storyPath) {
-      toast.success(successToast);
+      notifications.success(successToast);
       return;
     }
 
@@ -407,21 +392,19 @@ export function PreviewPickerButton() {
         lineOffset: res.lineNumber,
         primary: r.locator as TargetRecordDto,
         fallbacks: r.candidates.map(
-          (c) =>
-            ({ kind: c.kind, value: c.value, nth: c.nth }) as TargetRecordDto,
+          (c) => ({ kind: c.kind, value: c.value, nth: c.nth }) as TargetRecordDto,
         ),
       });
       if (stamp.wasFreshlyStamped) {
-        toast.success(successToast);
+        notifications.success(successToast);
       } else {
         const stepOrdinal =
-          editorController.getStepOrdinalForLine(res.lineNumber) ??
-          res.lineNumber;
-        toast.success(`Updated fallback for step ${stepOrdinal}`);
+          editorController.getStepOrdinalForLine(res.lineNumber) ?? res.lineNumber;
+        notifications.success(`Updated fallback for step ${stepOrdinal}`);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      toast.error(msg);
+      notifications.error(msg);
     }
   };
 
@@ -439,10 +422,7 @@ export function PreviewPickerButton() {
     () => (lineText !== undefined ? inferDefaultAction(lineText) : "click"),
     [lineText],
   );
-  const menuItems = useMemo(
-    () => getPickerActionItems(pickResult?.element),
-    [pickResult?.element],
-  );
+  const menuItems = useMemo(() => getPickerActionItems(pickResult?.element), [pickResult?.element]);
 
   const tooltip = formatTooltip(variant, isStarting, simulatorOrdinal);
   const ariaLabel = picking
@@ -467,11 +447,11 @@ export function PreviewPickerButton() {
         className={[
           "inline-flex items-center gap-1 h-7 px-2.5 rounded-sm",
           "border",
-          picking ? "border-(--color-accent-primary)" : "border-transparent",
-          "bg-(--color-surface-200) text-(--color-fg-primary) transition-colors",
+          picking ? "border-(--color-accent)" : "border-transparent",
+          "bg-(--color-background-surface) text-(--color-text-primary) transition-colors",
           disabled
-            ? "opacity-60 cursor-not-allowed hover:bg-(--color-surface-200)"
-            : "hover:bg-(--color-surface-300)",
+            ? "opacity-60 cursor-not-allowed hover:bg-(--color-background-surface)"
+            : "hover:bg-(--color-background-popover)",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
         ].join(" ")}
       >
@@ -480,11 +460,9 @@ export function PreviewPickerButton() {
             <Loader2
               size={14}
               aria-hidden="true"
-              className="animate-spin text-(--color-fg-muted)"
+              className="animate-spin text-(--color-text-secondary)"
             />
-            <span className="text-[12px] text-(--color-fg-muted)">
-              starting…
-            </span>
+            <span className="text-[12px] text-(--color-text-secondary)">starting…</span>
           </>
         ) : (
           <>
@@ -493,7 +471,7 @@ export function PreviewPickerButton() {
               aria-hidden="true"
               // Filled during active pick.
               fill={picking ? "currentColor" : "none"}
-              className={picking ? "text-(--color-accent-primary)" : ""}
+              className={picking ? "text-(--color-accent)" : ""}
             />
             {/* Kbd-hint pill: decorative (aria-hidden); true shortcut is
                 announced via aria-keyshortcuts. Always visible during pick. */}
@@ -501,7 +479,7 @@ export function PreviewPickerButton() {
               aria-hidden="true"
               className={[
                 "ml-0.5 px-1 py-px rounded-[4px] text-[10px] font-semibold font-mono",
-                "bg-(--color-surface-300) text-(--color-fg-muted)",
+                "bg-(--color-background-popover) text-(--color-text-secondary)",
                 picking
                   ? "inline-block"
                   : "hidden group-hover:inline-block group-focus-within:inline-block",
@@ -525,7 +503,7 @@ export function PreviewPickerButton() {
             <div
               role="note"
               aria-live="polite"
-              className="pointer-events-none fixed left-1/2 top-14 z-50 -translate-x-1/2 rounded border border-(--color-border-subtle) bg-white/95 px-3 py-1 text-xs font-medium text-(--color-fg-primary) shadow-md"
+              className="pointer-events-none fixed left-1/2 top-14 z-50 -translate-x-1/2 rounded border border-(--color-border) bg-white/95 px-3 py-1 text-xs font-medium text-(--color-text-primary) shadow-md"
             >
               {describeHoverPreview(preview)}
             </div>,
@@ -534,9 +512,7 @@ export function PreviewPickerButton() {
         : null}
 
       {/* Banner error (surfaces inline if the picker warm-up fails). */}
-      {bannerError ? (
-        <PickingBanner variant="error" message={bannerError} />
-      ) : null}
+      {bannerError ? <PickingBanner variant="error" message={bannerError} /> : null}
 
       {pendingPick && !dragSecondPickInFlight ? (
         <PickerActionMenu
@@ -592,18 +568,14 @@ export function PickingBanner({
       className={[
         "sticky top-0 z-10 flex h-8 items-center gap-2 px-3 text-[13px] font-medium",
         isError
-          ? "bg-[color-mix(in_oklch,var(--color-danger)_12%,var(--color-surface-300))] border-b border-[color-mix(in_oklch,var(--color-danger)_40%,transparent)] text-(--color-fg-primary)"
-          : "bg-(--color-surface-300) text-(--color-fg-primary)",
+          ? "bg-[color-mix(in_oklch,var(--color-error)_12%,var(--color-background-popover))] border-b border-[color-mix(in_oklch,var(--color-error)_40%,transparent)] text-(--color-text-primary)"
+          : "bg-(--color-background-popover) text-(--color-text-primary)",
       ].join(" ")}
     >
       {isError ? (
         <AlertTriangle size={14} aria-hidden="true" className="text-danger" />
       ) : (
-        <Crosshair
-          size={14}
-          aria-hidden="true"
-          className="text-(--color-accent-primary)"
-        />
+        <Crosshair size={14} aria-hidden="true" className="text-(--color-accent)" />
       )}
       <span>{label}</span>
     </motion.div>

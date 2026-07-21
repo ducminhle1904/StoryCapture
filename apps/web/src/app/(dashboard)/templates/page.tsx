@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useTRPC } from "@/trpc/client";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { Dialog } from "@astryxdesign/core/Dialog";
 import { useMutation } from "@tanstack/react-query";
+import { useCallback, useState } from "react";
 import { TemplateGrid } from "@/components/template-grid";
+import { useTRPC } from "@/trpc/client";
 
 /**
  * Template Marketplace page.
@@ -17,10 +20,12 @@ export default function TemplatesPage() {
     templateName: string;
   } | null>(null);
   const [copyFeedback, setCopyFeedback] = useState(false);
+  const [forkError, setForkError] = useState<string | null>(null);
 
   const forkMutation = useMutation(
     trpc.template.fork.mutationOptions({
       onSuccess(data) {
+        setForkError(null);
         setForkResult(data);
       },
       onError(error) {
@@ -29,7 +34,7 @@ export default function TemplatesPage() {
           window.location.href = "/sign-in";
           return;
         }
-        alert(`Failed to fork template: ${error.message}`);
+        setForkError(error.message);
       },
     }),
   );
@@ -77,107 +82,131 @@ export default function TemplatesPage() {
     <div className="space-y-8">
       {/* Page header */}
       <div>
-        <h1 className="text-2xl font-bold text-zinc-50">
+        <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
           Template Marketplace
         </h1>
-        <p className="mt-1 text-sm text-zinc-400">
+        <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
           Start with a proven demo pattern. Fork any template into your project.
         </p>
       </div>
 
+      {forkError && (
+        <Banner
+          status="error"
+          title="Failed to fork template"
+          description={forkError}
+          isDismissable
+          onDismiss={() => setForkError(null)}
+        />
+      )}
+
       {/* Template grid */}
       <TemplateGrid onUseTemplate={handleUseTemplate} />
 
-      {/* Fork result modal */}
-      {forkResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
+      <Dialog
+        isOpen={forkResult !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setForkResult(null);
+        }}
+        purpose="info"
+        width="min(672px, calc(100vw - 2rem))"
+        maxHeight="calc(100dvh - 2rem)"
+        padding={6}
+        aria-labelledby="template-forked-title"
+      >
+        {forkResult && (
+          <div>
             {/* Header */}
             <div className="flex items-start justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-zinc-100">
+                <h2
+                  id="template-forked-title"
+                  className="text-lg font-semibold text-[var(--color-text-primary)]"
+                >
                   Template Forked
                 </h2>
-                <p className="mt-0.5 text-sm text-zinc-400">
+                <p className="mt-0.5 text-sm text-[var(--color-text-secondary)]">
                   {forkResult.templateName}
                 </p>
               </div>
-              <button
+              <Button
+                label="Close dialog"
+                isIconOnly
+                variant="ghost"
                 onClick={() => setForkResult(null)}
-                className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-                aria-label="Close dialog"
-              >
-                <svg
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
+                icon={
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                }
+              />
             </div>
 
             {/* Story source preview */}
-            <pre className="mt-4 max-h-72 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-xs text-zinc-300">
+            <pre className="mt-4 max-h-72 overflow-auto rounded-[var(--radius-element)] border border-[var(--color-border)] bg-[var(--color-background-body)] p-4 font-mono text-xs text-[var(--color-text-primary)]">
               <code>{forkResult.storySource}</code>
             </pre>
 
             {/* Instructions */}
-            <p className="mt-3 text-xs text-zinc-500">
-              Open this file in your StoryCapture desktop app to start
-              customizing.
+            <p className="mt-3 text-xs text-[var(--color-text-secondary)]">
+              Open this file in your StoryCapture desktop app to start customizing.
             </p>
 
             {/* Actions */}
             <div className="mt-4 flex gap-3">
-              <button
+              <Button
+                label="Download .story file"
+                variant="primary"
                 onClick={handleDownload}
-                className="flex items-center gap-2 rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-white"
-              >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-                Download .story file
-              </button>
-              <button
+                icon={
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                }
+              />
+              <Button
+                label={copyFeedback ? "Copied!" : "Copy to clipboard"}
+                variant="secondary"
                 onClick={handleCopyToClipboard}
-                className="flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
-              >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                  />
-                </svg>
-                {copyFeedback ? "Copied!" : "Copy to clipboard"}
-              </button>
+                icon={
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                    />
+                  </svg>
+                }
+              />
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Dialog>
     </div>
   );
 }

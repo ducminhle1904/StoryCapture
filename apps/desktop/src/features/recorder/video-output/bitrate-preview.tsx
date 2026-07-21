@@ -13,7 +13,8 @@ export function BitratePreview({ captureDims }: Props) {
   const { mbps, mbPerMin } = computeBitratePreview({ w: dims.w, h: dims.h, fps, quality });
   return (
     <div
-      className="min-h-[40px] rounded-[var(--radius-sm)] border-l-2 border-[var(--color-accent-primary)] bg-[var(--color-surface-200)] px-3 py-2 font-mono text-[11px] text-[var(--color-fg-secondary)]"
+      role="status"
+      className="min-h-[40px] rounded-[var(--radius-inner)] border-l-2 border-[var(--color-accent)] bg-[var(--color-background-surface)] px-3 py-2 font-mono text-[11px] text-[var(--color-text-secondary)]"
       aria-label="Estimated bitrate"
     >
       {formatBitratePreview(mbps, mbPerMin)}

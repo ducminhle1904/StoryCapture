@@ -10,9 +10,10 @@
  * data-testid="token-counter"
  */
 
-import { useState, useCallback } from "react";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useState } from "react";
 import { cn } from "@/lib/utils";
 import { TokenBreakdownPopover } from "./TokenBreakdownPopover";
 
@@ -29,11 +30,7 @@ export interface TokenCounterProps {
   className?: string;
 }
 
-export function TokenCounter({
-  sessionId,
-  projectId,
-  className,
-}: TokenCounterProps) {
+export function TokenCounter({ sessionId, projectId, className }: TokenCounterProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
 
   const { data, isError } = useQuery<SessionRollup>({
@@ -57,20 +54,21 @@ export function TokenCounter({
 
   return (
     <div className={cn("relative inline-flex", className)}>
-      <button
+      <AstryxButton
         data-testid="token-counter"
-        type="button"
+        variant="ghost"
+        size="sm"
         onClick={handleClick}
+        label={`Chi ti\u00eau session: $${cost.toFixed(2)}, ${tokens} token. Nh\u1ea5n \u0111\u1ec3 xem chi ti\u1ebft`}
         className={cn(
           "inline-flex items-center gap-1 rounded px-2 py-0.5 font-mono text-xs font-semibold tabular-nums transition-colors",
-          isError && "text-red-500",
-          isWarning && !isError && "text-amber-500 bg-amber-50 warning",
-          !isWarning && !isError && "text-[var(--color-fg-muted)]",
+          isError && "text-[var(--color-error)]",
+          isWarning && !isError && "bg-[var(--color-warning-muted)]/10 text-[var(--color-warning)]",
+          !isWarning && !isError && "text-[var(--color-text-secondary)]",
         )}
-        aria-label={`Chi ti\u00eau session: $${cost.toFixed(2)}, ${tokens} token. Nh\u1ea5n \u0111\u1ec3 xem chi ti\u1ebft`}
       >
         <span>${cost.toFixed(2)}</span>
-      </button>
+      </AstryxButton>
 
       {popoverOpen && (
         <TokenBreakdownPopover

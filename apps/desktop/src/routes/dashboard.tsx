@@ -1,80 +1,59 @@
-import { ScButton, ScCard, ScInput, ScSegmented } from "@storycapture/ui";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { Card as AstryxCard } from "@astryxdesign/core/Card";
+import { Kbd as AstryxKbd } from "@astryxdesign/core/Kbd";
+import {
+  SegmentedControl as AstryxSegmentedControl,
+  SegmentedControlItem as AstryxSegmentedControlItem,
+} from "@astryxdesign/core/SegmentedControl";
+import { TextInput as AstryxTextInput } from "@astryxdesign/core/TextInput";
 import { AlertTriangle, File, FolderOpen, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
-import storyToVideoEmptySrc from "@/assets/illustrations/story-to-video-empty.png";
-import { EmptyState } from "@/components/empty-state/empty-state";
+import { StoryEmptyState } from "@/components/empty-state/empty-state";
 import { PageContentTransition } from "@/components/page-content-transition";
 import { NewProjectDialog } from "@/features/dashboard/new-project-dialog";
 import { ProjectGrid } from "@/features/dashboard/project-grid";
 import { filterAndSort, mostRecentTimestamp } from "@/features/dashboard/project-utils";
 import type { Project } from "@/ipc/projects";
 import { useProjects, useRemoveProject } from "@/ipc/projects";
+import { notifications } from "@/lib/notifications";
 import { hasCompletedOnboarding, markOnboardingComplete } from "@/lib/onboarding";
 import { relativeTime } from "@/lib/utils";
 import { useDashboardStore } from "@/state/projects";
 
-function StoryToVideoIllustration() {
-  return (
-    <img
-      src={storyToVideoEmptySrc}
-      alt=""
-      aria-hidden="true"
-      style={{
-        display: "block",
-        width: 172,
-        height: 172,
-        objectFit: "cover",
-        borderRadius: "var(--sc-r-lg)",
-        border: "1px solid var(--sc-border)",
-        boxShadow: "0 18px 50px rgba(0,0,0,0.34)",
-      }}
-    />
-  );
-}
-
 function EmptyDashboard({ onNewStory }: { onNewStory: () => void }) {
   return (
-    <EmptyState
-      illustration={<StoryToVideoIllustration />}
+    <StoryEmptyState
       title="Write your first story"
-      body={
-        <>
-          StoryCapture turns a 30-line DSL into a polished demo video. Start with a template — or
-          paste a <code>.story</code> file from your repo.
-        </>
-      }
+      description="StoryCapture turns a 30-line DSL into a polished demo video. Start with a template — or paste a .story file from your repo."
       actions={
         <>
-          <ScButton
+          <AstryxButton
             variant="primary"
             icon={<Plus size={13} aria-hidden="true" />}
             onClick={onNewStory}
+            label="New Story"
           >
             New Story
-          </ScButton>
-          <ScButton
+          </AstryxButton>
+          <AstryxButton
             icon={<FolderOpen size={13} aria-hidden="true" />}
-            disabled
-            title="Import .story — coming soon"
+            isDisabled
+            tooltip="Import .story — coming soon"
+            label="Import .story — coming soon"
           >
             Import .story
-          </ScButton>
-          <ScButton
+          </AstryxButton>
+          <AstryxButton
             variant="ghost"
             icon={<File size={13} aria-hidden="true" />}
-            disabled
-            title="Browse templates — coming soon"
+            isDisabled
+            tooltip="Browse templates — coming soon"
+            label="Browse templates — coming soon"
           >
             Browse templates
-          </ScButton>
-        </>
-      }
-      footer={
-        <>
-          Try <span className="sc-kbd">⌘K</span> for commands.
+          </AstryxButton>
         </>
       }
     />
@@ -101,9 +80,9 @@ export default function DashboardRoute() {
   const removeProjectFromDashboard = async (project: Project) => {
     try {
       await removeProject.mutateAsync(project.id);
-      toast.success(`Removed ${project.name} from dashboard`);
+      notifications.success(`Removed ${project.name} from dashboard`);
     } catch (err) {
-      toast.error(`Could not remove project: ${String(err)}`);
+      notifications.error(`Could not remove project: ${String(err)}`);
       throw err;
     }
   };
@@ -153,50 +132,62 @@ export default function DashboardRoute() {
       id="main-content"
       style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}
     >
-      <div className="sc-toolbar sc-window-chrome">
+      <div className="story-toolbar story-window-chrome">
         <div>
-          <div className="sc-toolbar-title">Projects</div>
-          <div style={{ fontSize: 11, color: "var(--sc-text-4)", marginTop: 1 }}>{metaLine}</div>
+          <div className="story-toolbar-title">Projects</div>
+          <div style={{ fontSize: 11, color: "var(--color-text-disabled)", marginTop: 1 }}>
+            {metaLine}
+          </div>
         </div>
-        <span className="sc-spacer" />
-        <ScInput
+        <span className="story-spacer" />
+        <AstryxTextInput
           ref={searchRef}
-          icon={<Search size={13} aria-hidden="true" />}
-          kbd="⌘F"
+          label="Search stories"
+          isLabelHidden
+          startIcon={<Search size={13} aria-hidden="true" />}
           placeholder="Search stories"
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          aria-label="Search stories"
+          onChange={setSearchQuery}
           style={{ width: 240 }}
         />
-        <ScSegmented
+        <AstryxSegmentedControl
           size="sm"
           value="all"
-          disabled
-          aria-label="Filter by status (coming soon)"
-          options={[
+          isDisabled
+          label="Filter by status (coming soon)"
+          onChange={() => {}}
+        >
+          {[
             { value: "all", label: "All" },
             { value: "ready", label: "Ready" },
             { value: "rendering", label: "Rendering" },
             { value: "draft", label: "Drafts" },
-          ]}
-        />
-        <ScButton
+          ].map((option) => (
+            <AstryxSegmentedControlItem
+              key={option.value}
+              value={option.value}
+              label={typeof option.label === "string" ? option.label : option.value}
+              icon={typeof option.label === "string" ? undefined : option.label}
+            />
+          ))}
+        </AstryxSegmentedControl>
+        <AstryxButton
           variant="primary"
           icon={<Plus size={13} aria-hidden="true" />}
-          kbd="⌘N"
+          endContent={<AstryxKbd keys="mod+n" />}
           onClick={openNewStory}
           aria-label="Create new story"
+          label="Create new story"
         >
           New Story
-        </ScButton>
+        </AstryxButton>
       </div>
 
-      <PageContentTransition className="sc-scroll" style={{ flex: 1, padding: 20 }}>
+      <PageContentTransition className="story-scroll" style={{ flex: 1, padding: 20 }}>
         {isLoading ? (
-          <ScCard role="status" style={{ padding: 32, color: "var(--sc-text-4)" }}>
+          <AstryxCard role="status" style={{ padding: 32, color: "var(--color-text-disabled)" }}>
             Loading projects…
-          </ScCard>
+          </AstryxCard>
         ) : error ? (
           <div
             role="alert"
@@ -207,7 +198,7 @@ export default function DashboardRoute() {
               border: "1px solid oklch(0.65 0.20 22 / 0.28)",
               background: "oklch(0.65 0.20 22 / 0.10)",
               color: "oklch(0.80 0.18 22)",
-              borderRadius: "var(--sc-r-lg)",
+              borderRadius: "var(--radius-container)",
               padding: 16,
               fontSize: 13,
             }}
@@ -227,8 +218,8 @@ export default function DashboardRoute() {
                 gap: 10,
               }}
             >
-              <div className="sc-h">Active</div>
-              <div style={{ height: 1, flex: 1, background: "var(--sc-border)" }} />
+              <div className="story-section-heading">Active</div>
+              <div style={{ height: 1, flex: 1, background: "var(--color-border)" }} />
             </div>
             <ProjectGrid
               projects={visible}
@@ -252,8 +243,8 @@ function RecentRenderRail() {
   return (
     <div
       style={{
-        borderTop: "1px solid var(--sc-border)",
-        background: "var(--sc-chrome-2)",
+        borderTop: "1px solid var(--color-border)",
+        background: "var(--color-background-card)",
       }}
     >
       <div
@@ -270,21 +261,27 @@ function RecentRenderRail() {
             fontWeight: 600,
             textTransform: "uppercase",
             letterSpacing: "0.06em",
-            color: "var(--sc-text-3)",
+            color: "var(--color-text-secondary)",
           }}
         >
           Recent renders
         </div>
         <span style={{ flex: 1 }} />
-        <ScButton size="sm" variant="ghost" disabled title="Render history coming soon">
+        <AstryxButton
+          size="sm"
+          variant="ghost"
+          isDisabled
+          tooltip="Render history coming soon"
+          label="Render history coming soon"
+        >
           View all
-        </ScButton>
+        </AstryxButton>
       </div>
       <div
         style={{
           padding: "0 20px 16px",
           fontSize: 12,
-          color: "var(--sc-text-4)",
+          color: "var(--color-text-disabled)",
         }}
       >
         No recent renders yet.

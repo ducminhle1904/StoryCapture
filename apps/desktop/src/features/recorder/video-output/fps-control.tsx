@@ -1,8 +1,8 @@
 /**
- * FPS knob — 24 / 30 / 60 options as a horizontal RadioGroup.
+ * FPS knob — 24 / 30 / 60 options as a horizontal Astryx RadioList.
  */
 
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
 import { useOutputPrefsStore } from "@/state/output-prefs";
 import { LABEL_FPS } from "./copy";
 
@@ -17,31 +17,21 @@ export function FpsControl({ disabled }: Props) {
   const setKnob = useOutputPrefsStore((s) => s.setRecordingKnob);
 
   return (
-    <RadioGroup
-      aria-label={LABEL_FPS}
+    <RadioList
+      label={LABEL_FPS}
+      isLabelHidden
       value={String(fps)}
-      onValueChange={(raw) => {
-        if (typeof raw !== "string") return;
+      onChange={(raw) => {
         const n = Number(raw);
         if (Number.isFinite(n)) setKnob("fps", n);
       }}
-      disabled={disabled}
-      className="flex flex-row items-center gap-4"
+      isDisabled={disabled}
+      orientation="horizontal"
+      size="sm"
     >
-      {OPTIONS.map((n) => {
-        const id = `fps-${n}`;
-        return (
-          <span
-            key={n}
-            className="inline-flex items-center gap-1.5 text-xs text-[var(--color-fg-secondary)]"
-          >
-            <RadioGroupItem id={id} value={String(n)} />
-            <label htmlFor={id} className="cursor-pointer">
-              {n}
-            </label>
-          </span>
-        );
-      })}
-    </RadioGroup>
+      {OPTIONS.map((fpsOption) => (
+        <RadioListItem key={fpsOption} value={String(fpsOption)} label={String(fpsOption)} />
+      ))}
+    </RadioList>
   );
 }

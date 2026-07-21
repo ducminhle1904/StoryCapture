@@ -416,7 +416,7 @@ export function LivePreview({
     return (
       <div
         data-testid="live-preview-unavailable"
-        className="flex aspect-video w-full max-w-5xl items-center justify-center rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] text-xs text-[var(--color-fg-muted)]"
+        className="flex aspect-video w-full max-w-5xl items-center justify-center rounded-[var(--radius-container)] border border-[var(--color-border)] bg-[var(--color-background-surface)] text-xs text-[var(--color-text-secondary)]"
       >
         Live preview unavailable on this backend
       </div>
@@ -557,7 +557,7 @@ export function LivePreview({
       height={height}
       className={
         className ??
-        "aspect-video w-full max-w-5xl rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--sc-n-950)]"
+        "aspect-video w-full max-w-5xl rounded-[var(--radius-container)] border border-[var(--color-border)] bg-[var(--color-background-surface)]"
       }
       onPointerMove={inputEnabled ? onPointerMove : undefined}
       onClick={inputEnabled ? onClick : undefined}

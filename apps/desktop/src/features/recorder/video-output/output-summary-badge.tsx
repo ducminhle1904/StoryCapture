@@ -4,6 +4,7 @@
  * consumer's onActivate.
  */
 
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
 import { ChevronRight } from "lucide-react";
 
 import { useOutputPrefsStore } from "@/state/output-prefs";
@@ -42,14 +43,16 @@ export function OutputSummaryBadge({ onActivate }: Props) {
   const text = parts.join(" • ");
 
   return (
-    <button
-      type="button"
+    <AstryxButton
+      variant="ghost"
+      size="sm"
       onClick={onActivate}
-      title={BADGE_TOOLTIP}
-      className="inline-flex max-w-[220px] items-center gap-1 truncate rounded-[var(--radius-pill)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-2.5 py-1 text-[11px] text-[var(--color-fg-secondary)] transition-colors hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+      tooltip={BADGE_TOOLTIP}
+      label={`Video output: ${text}`}
+      endContent={<ChevronRight size={12} aria-hidden="true" />}
+      className="inline-flex max-w-[220px] items-center gap-1 truncate rounded-[var(--radius-full)] border border-[var(--color-border)] bg-[var(--color-background-surface)] px-2.5 py-1 text-[11px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-background-popover)] hover:text-[var(--color-text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
     >
       <span className="truncate">{text}</span>
-      <ChevronRight size={12} aria-hidden="true" className="shrink-0" />
-    </button>
+    </AstryxButton>
   );
 }

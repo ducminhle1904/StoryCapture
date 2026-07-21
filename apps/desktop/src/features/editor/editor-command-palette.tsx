@@ -1,7 +1,11 @@
+import {
+  CommandPalette as AstryxCommandPalette,
+  CommandPaletteInput,
+} from "@astryxdesign/core/CommandPalette";
+import { Kbd as AstryxKbd } from "@astryxdesign/core/Kbd";
+import { createStaticSource, type SearchableItem } from "@astryxdesign/core/Typeahead";
 import { toggleLineComment } from "@codemirror/commands";
 import { openSearchPanel } from "@codemirror/search";
-import { ScKbd } from "@storycapture/ui";
-import { Command } from "cmdk";
 import {
   AlertTriangle,
   Crosshair,
@@ -16,13 +20,11 @@ import {
   StepForward,
   X,
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { toast } from "sonner";
-
 import type { Story } from "@/ipc/parse";
 import { simulatorCancel } from "@/ipc/simulator";
+import { notifications } from "@/lib/notifications";
 import { useSimulatorStore } from "@/state/simulator-store";
 
 import { editorController } from "./controller";
@@ -43,6 +45,15 @@ interface PaletteCommand {
   when?: () => boolean;
   run: () => void;
 }
+
+interface EditorPaletteSearchData {
+  group: string;
+  icon: React.ReactNode;
+  kbd?: string;
+  run: () => void;
+}
+
+type EditorPaletteSearchItem = SearchableItem<EditorPaletteSearchData>;
 
 interface EditorCommandPaletteProps {
   story: Story | null;
@@ -106,6 +117,16 @@ function PaletteBody({
 }: PaletteBodyProps) {
   const [mode, setMode] = useState<Mode>("root");
   const [lineInput, setLineInput] = useState("");
+  const keepOpenForModeChange = useRef(false);
+
+  const enterMode = useCallback((nextMode: Mode) => {
+    keepOpenForModeChange.current = true;
+    setLineInput("");
+    setMode(nextMode);
+    queueMicrotask(() => {
+      keepOpenForModeChange.current = false;
+    });
+  }, []);
 
   const close = useCallback(() => {
     setMode("root");
@@ -121,7 +142,7 @@ function PaletteBody({
   const startSim = useCallback(
     (stopAfterOrdinal?: number) => {
       const ok = runOrStepTo(stopAfterOrdinal, { streamId, projectFolder, storyPath });
-      if (!ok) toast.warning("Live Preview not ready — open the preview first");
+      if (!ok) notifications.warning("Live Preview not ready — open the preview first");
     },
     [streamId, projectFolder, storyPath],
   );
@@ -129,7 +150,7 @@ function PaletteBody({
   const runToCursor = useCallback(() => {
     const view = editorController.getView();
     if (!view || !story) {
-      toast.warning("No editor or story available");
+      notifications.warning("No editor or story available");
       return;
     }
     const line = view.state.doc.lineAt(view.state.selection.main.head).number;
@@ -138,7 +159,7 @@ function PaletteBody({
     );
     const ord = lineToOrdinal(line);
     if (ord == null) {
-      toast.warning("Cursor is not on an executable step");
+      notifications.warning("Cursor is not on an executable step");
       return;
     }
     startSim(ord);
@@ -176,7 +197,7 @@ function PaletteBody({
         group: "Navigate",
         icon: <GitBranch size={13} />,
         when: () => Boolean(story && story.scenes.length > 0),
-        run: () => setMode("scene"),
+        run: () => enterMode("scene"),
       },
       {
         id: "nav-step",
@@ -184,14 +205,14 @@ function PaletteBody({
         group: "Navigate",
         icon: <ListOrdered size={13} />,
         when: () => Boolean(story && story.scenes.some((s) => s.commands.length > 0)),
-        run: () => setMode("step"),
+        run: () => enterMode("step"),
       },
       {
         id: "nav-line",
         label: "Go to Line…",
         group: "Navigate",
         icon: <Hash size={13} />,
-        run: () => setMode("line"),
+        run: () => enterMode("line"),
       },
       {
         id: "edit-comment",
@@ -300,20 +321,71 @@ function PaletteBody({
     toggleComment,
     formatDoc,
     toggleProblems,
+    enterMode,
     close,
   ]);
 
-  const groups = useMemo(() => {
-    const map = new Map<string, PaletteCommand[]>();
-    for (const c of rootCommands) {
-      const list = map.get(c.group) ?? [];
-      list.push(c);
-      map.set(c.group, list);
-    }
-    return Array.from(map.entries());
-  }, [rootCommands]);
-
   const flatSteps = useMemo(() => (story ? flattenSteps(story) : []), [story]);
+
+  const searchItems = useMemo<EditorPaletteSearchItem[]>(() => {
+    if (mode === "root") {
+      return rootCommands.map((command) => ({
+        id: command.id,
+        label: command.label,
+        auxiliaryData: {
+          group: command.group,
+          icon: command.icon,
+          kbd: command.kbd,
+          run: command.run,
+        },
+      }));
+    }
+
+    if (mode === "scene" && story) {
+      return story.scenes.map((scene, index) => {
+        const label = scene.name?.trim().length ? scene.name : `Scene ${index + 1}`;
+        return {
+          id: `scene-${index}`,
+          label,
+          auxiliaryData: {
+            group: "Scenes",
+            icon: <GitBranch size={13} />,
+            kbd: `Ln ${scene.span.line}`,
+            run: () => {
+              onJumpToOffset(scene.span.start);
+              close();
+            },
+          },
+        };
+      });
+    }
+
+    if (mode === "step") {
+      return flatSteps.map((step) => ({
+        id: `step-${step.globalOrdinal}`,
+        label: `${step.sceneName} › Step ${step.stepIndex + 1} (${step.verb})`,
+        auxiliaryData: {
+          group: "Steps",
+          icon: <SkipForward size={13} />,
+          kbd: `#${step.globalOrdinal}`,
+          run: () => {
+            onJumpToOffset(step.offset);
+            close();
+          },
+        },
+      }));
+    }
+
+    return [];
+  }, [close, flatSteps, mode, onJumpToOffset, rootCommands, story]);
+
+  const searchSource = useMemo(
+    () =>
+      createStaticSource(searchItems, {
+        keywords: (item) => [item.id],
+      }),
+    [searchItems],
+  );
 
   const placeholder = ((): string => {
     switch (mode) {
@@ -328,202 +400,68 @@ function PaletteBody({
     }
   })();
 
-  const handleSubModeKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      if (mode !== "root") {
-        setMode("root");
-        setLineInput("");
-        return;
-      }
-      close();
-    }
-  };
-
   return (
-    <AnimatePresence>
-      <motion.div
-        role="presentation"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.18 }}
-        onClick={close}
-        className="fixed inset-0 z-[200] grid place-items-center backdrop-blur-md"
-        style={{ background: "rgba(0,0,0,0.4)" }}
-      >
-        <motion.div
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.18 }}
-          onClick={(e) => e.stopPropagation()}
-          className="sc-palette w-[640px] max-w-[90%] overflow-hidden"
-          style={{
-            background: "var(--sc-surface)",
-            border: "1px solid var(--sc-border-2)",
-            borderRadius: "var(--sc-r-xl)",
-            boxShadow: "var(--sc-sh-pop)",
+    <AstryxCommandPalette<EditorPaletteSearchItem>
+      key={mode}
+      isOpen
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) return;
+        if (mode !== "root") {
+          setLineInput("");
+          setMode("root");
+          return;
+        }
+        if (keepOpenForModeChange.current) {
+          keepOpenForModeChange.current = false;
+          return;
+        }
+        close();
+      }}
+      searchSource={searchSource}
+      onValueChange={(itemId) =>
+        searchItems.find((item) => item.id === itemId)?.auxiliaryData?.run()
+      }
+      label="Editor command palette"
+      width={640}
+      maxHeight={480}
+      emptySearchText="No commands found."
+      emptyBootstrapText={
+        mode === "line" ? "Press Enter to jump to that line." : "No commands found."
+      }
+      input={
+        <CommandPaletteInput
+          placeholder={placeholder}
+          value={mode === "line" ? lineInput : undefined}
+          onValueChange={mode === "line" ? setLineInput : undefined}
+          endContent={<AstryxKbd keys={mode === "root" ? "Esc" : "Esc · back"} />}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && mode !== "root") {
+              event.preventDefault();
+              enterMode("root");
+              return;
+            }
+            if (event.key !== "Enter" || mode !== "line") return;
+            event.preventDefault();
+            const view = editorController.getView();
+            const line = Number.parseInt(lineInput, 10);
+            if (view && Number.isFinite(line) && line >= 1 && line <= view.state.doc.lines) {
+              onJumpToOffset(view.state.doc.line(line).from);
+              close();
+            }
           }}
-        >
-          <Command
-            label="Editor command palette"
-            shouldFilter={mode !== "line"}
-            onKeyDownCapture={handleSubModeKey}
-          >
-            <div
-              className="flex items-center gap-[10px] px-4 py-3"
-              style={{ borderBottom: "1px solid var(--sc-border)" }}
-            >
-              <Search size={15} style={{ color: "var(--sc-text-4)" }} />
-              {mode === "line" ? (
-                <input
-                  autoFocus
-                  type="number"
-                  min={1}
-                  value={lineInput}
-                  onChange={(e) => setLineInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      const view = editorController.getView();
-                      const n = parseInt(lineInput, 10);
-                      if (view && Number.isFinite(n) && n >= 1 && n <= view.state.doc.lines) {
-                        const offset = view.state.doc.line(n).from;
-                        onJumpToOffset(offset);
-                        close();
-                      }
-                    }
-                  }}
-                  placeholder={placeholder}
-                  className="flex-1 bg-transparent text-sm outline-none"
-                  style={{ color: "var(--sc-text)" }}
-                  aria-label="Line number"
-                />
-              ) : (
-                <Command.Input
-                  autoFocus
-                  placeholder={placeholder}
-                  className="flex-1 bg-transparent text-sm outline-none"
-                  style={{ color: "var(--sc-text)" }}
-                />
-              )}
-              <span className="sc-kbd">{mode === "root" ? "esc" : "↩ back"}</span>
-            </div>
-
-            <Command.List className="max-h-[440px] overflow-y-auto p-1.5">
-              {mode === "root" && (
-                <>
-                  <Command.Empty
-                    className="px-4 py-8 text-center text-xs"
-                    style={{ color: "var(--sc-text-4)" }}
-                  >
-                    No commands found.
-                  </Command.Empty>
-                  {groups.map(([group, items]) => (
-                    <Command.Group
-                      key={group}
-                      heading={group}
-                      className="[&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.06em]"
-                      style={{ ["--cmdk-group-heading-color" as string]: "var(--sc-text-4)" }}
-                    >
-                      {items.map((c) => (
-                        <Command.Item
-                          key={c.id}
-                          value={`${c.label} ${c.id}`}
-                          onSelect={() => c.run()}
-                          className="flex cursor-default items-center gap-2.5 rounded-[var(--sc-r-md)] px-2.5 py-2 text-[12.5px] data-[selected=true]:bg-[var(--sc-hover)]"
-                          style={{ color: "var(--sc-text)" }}
-                        >
-                          <span className="w-4" style={{ color: "var(--sc-text-3)" }}>
-                            {c.icon}
-                          </span>
-                          <span className="flex-1">{c.label}</span>
-                          {c.kbd ? <ScKbd>{c.kbd}</ScKbd> : null}
-                        </Command.Item>
-                      ))}
-                    </Command.Group>
-                  ))}
-                </>
-              )}
-
-              {mode === "scene" && story && (
-                <Command.Group heading="Scenes">
-                  {story.scenes.map((scene, i) => {
-                    const label = scene.name?.trim().length ? scene.name : `Scene ${i + 1}`;
-                    return (
-                      <Command.Item
-                        key={`scene-${i}`}
-                        value={`${label} scene ${i + 1}`}
-                        onSelect={() => {
-                          onJumpToOffset(scene.span.start);
-                          close();
-                        }}
-                        className="flex cursor-default items-center gap-2.5 rounded-[var(--sc-r-md)] px-2.5 py-2 text-[12.5px] data-[selected=true]:bg-[var(--sc-hover)]"
-                        style={{ color: "var(--sc-text)" }}
-                      >
-                        <span className="w-4" style={{ color: "var(--sc-text-3)" }}>
-                          <GitBranch size={13} />
-                        </span>
-                        <span className="flex-1">{label}</span>
-                        <ScKbd>Ln {scene.span.line}</ScKbd>
-                      </Command.Item>
-                    );
-                  })}
-                </Command.Group>
-              )}
-
-              {mode === "step" && (
-                <Command.Group heading="Steps">
-                  {flatSteps.map((s) => (
-                    <Command.Item
-                      key={`step-${s.globalOrdinal}`}
-                      value={`${s.sceneName} step ${s.stepIndex + 1} ${s.verb}`}
-                      onSelect={() => {
-                        onJumpToOffset(s.offset);
-                        close();
-                      }}
-                      className="flex cursor-default items-center gap-2.5 rounded-[var(--sc-r-md)] px-2.5 py-2 text-[12.5px] data-[selected=true]:bg-[var(--sc-hover)]"
-                      style={{ color: "var(--sc-text)" }}
-                    >
-                      <span className="w-4" style={{ color: "var(--sc-text-3)" }}>
-                        <SkipForward size={13} />
-                      </span>
-                      <span className="flex-1">
-                        <span style={{ color: "var(--sc-text-3)" }}>{s.sceneName} ›</span>{" "}
-                        <span>
-                          Step {s.stepIndex + 1} ({s.verb})
-                        </span>
-                      </span>
-                      <ScKbd>#{s.globalOrdinal}</ScKbd>
-                    </Command.Item>
-                  ))}
-                </Command.Group>
-              )}
-
-              {mode === "line" && (
-                <div
-                  className="px-4 py-3 text-xs"
-                  style={{ color: "var(--sc-text-3)" }}
-                >
-                  Press ↩ to jump to that line.
-                </div>
-              )}
-            </Command.List>
-
-            <div
-              className="flex items-center gap-3.5 px-3.5 py-2 text-[10.5px]"
-              style={{ borderTop: "1px solid var(--sc-border)", color: "var(--sc-text-4)" }}
-            >
-              <span>
-                <span className="sc-kbd">↑↓</span> navigate
-              </span>
-              <span>
-                <span className="sc-kbd">↵</span> select
-              </span>
-              <span className="ml-auto">{mode === "root" ? "Editor commands" : `Mode: ${mode}`}</span>
-            </div>
-          </Command>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+        />
+      }
+      renderItem={(item) => {
+        const data = item.auxiliaryData;
+        if (!data) return item.label;
+        return (
+          <div className="flex w-full items-center gap-2.5">
+            <span className="w-4 text-[var(--color-text-secondary)]">{data.icon}</span>
+            <span className="flex-1">{item.label}</span>
+            {data.kbd ? <AstryxKbd keys={data.kbd} /> : null}
+          </div>
+        );
+      }}
+    />
   );
 }

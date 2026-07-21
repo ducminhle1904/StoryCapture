@@ -9,8 +9,8 @@
  * drops.
  */
 
-import { memo, useEffect, useRef } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { memo, useEffect, useRef } from "react";
 import WaveSurfer from "wavesurfer.js";
 
 import type { SoundLibraryEntry } from "@/ipc/sound-library";
@@ -54,24 +54,23 @@ function SoundRowBase({ entry }: SoundRowProps) {
   }, [entry.file_path]);
 
   return (
-    <div
-      role="listitem"
+    <li
       aria-label={`${entry.name}, ${Math.round(entry.duration_ms)} ms, ${entry.license}`}
       draggable
       onDragStart={(e) => {
         e.dataTransfer.setData("sound-entry", JSON.stringify(entry));
         e.dataTransfer.effectAllowed = "copy";
       }}
-      className="flex cursor-grab items-center gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-sm hover:border-[var(--color-accent,#ff5b76)]"
+      className="flex cursor-grab items-center gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-background-card)] p-2 text-sm hover:border-[var(--color-accent,#ff5b76)]"
     >
       <div ref={containerRef} className="h-8 flex-1" />
       <div className="flex w-40 flex-col text-right">
-        <span className="truncate text-[var(--color-fg)]">{entry.name}</span>
-        <span className="text-[10px] uppercase tracking-wide text-[var(--color-fg-muted)]">
+        <span className="truncate text-[var(--color-text-primary)]">{entry.name}</span>
+        <span className="text-[10px] uppercase tracking-wide text-[var(--color-text-secondary)]">
           {entry.license} • {(entry.duration_ms / 1000).toFixed(1)}s
         </span>
       </div>
-    </div>
+    </li>
   );
 }
 

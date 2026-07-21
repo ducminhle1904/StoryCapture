@@ -1,3 +1,4 @@
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
@@ -207,20 +208,20 @@ export function StoryEditor({
             transition={{ duration: 0.12 }}
             role="status"
             aria-live="polite"
-            className="sticky top-0 z-10 flex h-8 items-center justify-between bg-[var(--color-surface-300)] px-3 text-[13px] font-medium text-[var(--color-fg-primary)]"
+            className="sticky top-0 z-10 flex h-8 items-center justify-between bg-[var(--color-background-popover)] px-3 text-[13px] font-medium text-[var(--color-text-primary)]"
           >
             <span className="flex items-center gap-2">
               <Play size={14} aria-hidden="true" />
               {`Simulator running — edits paused · Step ${currentOrd ?? "—"} / ${totalSteps}`}
             </span>
-            <button
-              type="button"
+            <AstryxButton
+              variant="ghost"
+              size="sm"
               onClick={() => sessionId && void simulatorCancel(sessionId)}
-              aria-label="Cancel simulator run"
-              className="rounded-[var(--radius-xs)] px-2 py-0.5 text-xs hover:bg-[var(--color-danger)]/12"
+              label="Cancel simulator run"
             >
               Cancel
-            </button>
+            </AstryxButton>
           </motion.div>
         )}
       </AnimatePresence>

@@ -2,6 +2,9 @@
 // chooses what to do; only then does the desktop UI insert/replace the
 // `.story` line and stamp the targets sidecar.
 
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { Selector as AstryxSelector } from "@astryxdesign/core/Selector";
+import { TextInput as AstryxTextInput } from "@astryxdesign/core/TextInput";
 import {
   ArrowUpDown,
   CheckCircle,
@@ -17,7 +20,6 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { SelectField } from "@/components/ui/select-field";
 import type { ScrollDir, ScrollUnit } from "@/ipc/parse";
 import type { PickElementMeta } from "@/ipc/picker";
 import type { PickerAction, PickerActionItem, PickerActionOptions } from "./picker-action-dsl";
@@ -149,17 +151,17 @@ export function PickerActionMenu({
       aria-label="Picker action menu"
       className={[
         "fixed left-1/2 top-20 z-50 -translate-x-1/2",
-        "min-w-[260px] rounded-[var(--radius-sm)]",
-        "border border-[var(--color-border-strong)]",
-        "bg-[var(--color-surface-200)] text-[var(--color-fg-primary)]",
+        "min-w-[260px] rounded-[var(--radius-inner)]",
+        "border border-[var(--color-border-emphasized)]",
+        "bg-[var(--color-background-surface)] text-[var(--color-text-primary)]",
         "shadow-2xl ring-1 ring-black/40",
       ].join(" ")}
     >
       <div
         className={[
           "px-3 py-2 text-[11px] font-mono uppercase tracking-wide",
-          "text-[var(--color-fg-muted)]",
-          "border-b border-[var(--color-border-default)]",
+          "text-[var(--color-text-secondary)]",
+          "border-b border-[var(--color-border)]",
         ].join(" ")}
       >
         {targetLabel}
@@ -170,20 +172,18 @@ export function PickerActionMenu({
             const Icon = ACTION_ICONS[action];
             return (
               <div key={action} role="none">
-                <button
-                  type="button"
+                <AstryxButton
+                  variant="ghost"
+                  size="sm"
                   role="menuitem"
                   data-action={action}
                   onClick={() => handleListChoose(action)}
-                  className={[
-                    "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px]",
-                    "hover:bg-[var(--color-surface-200)]",
-                    "focus-visible:bg-[var(--color-surface-200)] focus-visible:outline-none",
-                  ].join(" ")}
+                  label={label}
+                  className="w-full justify-start"
+                  icon={<Icon size={14} aria-hidden="true" />}
                 >
-                  <Icon size={14} aria-hidden="true" className="text-[var(--color-fg-muted)]" />
                   <span>{label}</span>
-                </button>
+                </AstryxButton>
               </div>
             );
           })}
@@ -247,11 +247,6 @@ function FormBody({
   const canSubmit =
     action === "scroll" ? parsePositiveAmount(draft) !== null : draft.trim().length > 0;
   const useDropdown = action === "select" && optionLabels.length > 0;
-  const fieldClass = [
-    "h-7 rounded-[var(--radius-sm)] border border-[var(--color-border-default)]",
-    "bg-[var(--color-surface-100)] px-2 text-[13px]",
-    "focus-visible:outline-none focus-visible:border-[var(--color-focus-ring)]",
-  ].join(" ");
   return (
     <form
       onSubmit={(e) => {
@@ -260,85 +255,77 @@ function FormBody({
       }}
       className="flex flex-col gap-2 px-3 py-2"
     >
-      <div className="text-[11px] font-mono uppercase tracking-wide text-[var(--color-fg-muted)]">
+      <div className="text-[11px] font-mono uppercase tracking-wide text-[var(--color-text-secondary)]">
         {label}
       </div>
       {action === "scroll" ? (
         <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
-          <select
+          <AstryxSelector
             value={scrollDirection}
-            onChange={(event) => onScrollDirectionChange(event.target.value as ScrollDir)}
-            aria-label="Scroll direction"
-            className={fieldClass}
-          >
-            <option value="down">Down</option>
-            <option value="up">Up</option>
-            <option value="right">Right</option>
-            <option value="left">Left</option>
-          </select>
-          <input
+            onChange={(value) => onScrollDirectionChange(value as ScrollDir)}
+            options={[
+              { value: "down", label: "Down" },
+              { value: "up", label: "Up" },
+              { value: "right", label: "Right" },
+              { value: "left", label: "Left" },
+            ]}
+            label="Scroll direction"
+            isLabelHidden
+          />
+          <AstryxTextInput
             ref={(el) => {
               inputRef.current = el;
             }}
-            type="number"
-            min="0"
-            step="any"
             value={draft}
-            onChange={(event) => onChange(event.target.value)}
-            aria-label="Scroll amount"
-            className={fieldClass}
+            onChange={onChange}
+            label="Scroll amount"
+            isLabelHidden
           />
-          <select
+          <AstryxSelector
             value={scrollUnit}
-            onChange={(event) => onScrollUnitChange(event.target.value as ScrollUnit)}
-            aria-label="Scroll unit"
-            className={fieldClass}
-          >
-            <option value="px">px</option>
-            <option value="vh">vh</option>
-          </select>
+            onChange={(value) => onScrollUnitChange(value as ScrollUnit)}
+            options={[
+              { value: "px", label: "px" },
+              { value: "vh", label: "vh" },
+            ]}
+            label="Scroll unit"
+            isLabelHidden
+          />
         </div>
       ) : useDropdown ? (
-        <SelectField
+        <AstryxSelector
           value={draft}
-          onValueChange={onChange}
+          onChange={onChange}
           options={optionLabels.map((label) => ({ value: label, label }))}
           placeholder="Choose"
-          aria-label={label}
-          autoFocus
+          label={label}
+          isLabelHidden
+          isDefaultOpen
         />
       ) : (
-        <input
+        <AstryxTextInput
           ref={(el) => {
             inputRef.current = el;
           }}
-          type="text"
           value={draft}
-          onChange={(e) => onChange(e.target.value)}
-          autoComplete="off"
-          spellCheck={false}
-          className={fieldClass}
+          onChange={onChange}
+          label={label}
+          isLabelHidden
         />
       )}
       <div className="flex justify-between gap-2 pt-1">
-        <button
-          type="button"
-          onClick={onBack}
-          className="text-[12px] text-[var(--color-fg-muted)] hover:text-[var(--color-fg-primary)]"
-        >
+        <AstryxButton type="button" variant="ghost" size="sm" onClick={onBack} label="Back">
           Back
-        </button>
-        <button
+        </AstryxButton>
+        <AstryxButton
           type="submit"
-          disabled={!canSubmit}
-          className={[
-            "h-7 rounded-[var(--radius-sm)] px-3 text-[12px] font-medium",
-            "bg-[var(--color-accent-primary)] text-white",
-            "disabled:opacity-50 disabled:cursor-not-allowed",
-          ].join(" ")}
+          variant="primary"
+          size="sm"
+          isDisabled={!canSubmit}
+          label="Insert action"
         >
           Insert
-        </button>
+        </AstryxButton>
       </div>
     </form>
   );

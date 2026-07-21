@@ -1,3 +1,8 @@
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { Selector as AstryxSelector } from "@astryxdesign/core/Selector";
+import { Slider as AstryxSlider } from "@astryxdesign/core/Slider";
+import { Switch as AstryxSwitch } from "@astryxdesign/core/Switch";
+import { TextInput as AstryxTextInput } from "@astryxdesign/core/TextInput";
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 
@@ -19,11 +24,8 @@ import type {
 } from "../state/timeline-slice";
 
 const FIELD_CLASS =
-  "min-h-10 min-w-0 max-w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]";
-const RANGE_CLASS = "block w-full min-w-0 max-w-full accent-[var(--color-accent,#ff5b76)]";
+  "min-h-10 min-w-0 max-w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-background-card)] px-3 py-2 text-sm text-[var(--color-text-primary)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]";
 const FIELD_ROW_CLASS = "flex min-w-0 max-w-full flex-col gap-1.5";
-const SECONDARY_BUTTON_CLASS =
-  "min-w-0 max-w-full rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-2 text-xs font-medium text-[var(--color-fg)] transition-[background-color,transform,border-color] hover:border-[var(--color-border)] hover:bg-[var(--color-surface-100)] active:scale-[0.98] disabled:opacity-45";
 
 const DEFAULT_SHADOW: ShadowStyle = {
   color: "#00000099",
@@ -113,12 +115,12 @@ function bundledFontLabel(font: TextFontChoice): string {
 }
 
 function FieldLabel({ children }: { children: ReactNode }) {
-  return <span className="text-xs font-medium text-[var(--color-fg)]">{children}</span>;
+  return <span className="text-xs font-medium text-[var(--color-text-primary)]">{children}</span>;
 }
 
 function ValuePill({ children }: { children: ReactNode }) {
   return (
-    <span className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-0.5 font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+    <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-background-card)] px-2 py-0.5 font-mono text-[10px] tabular-nums text-[var(--color-text-secondary)]">
       {children}
     </span>
   );
@@ -144,7 +146,7 @@ function RangeField({
   onChange: (value: number) => void;
 }) {
   return (
-    <label className={FIELD_ROW_CLASS}>
+    <div className={FIELD_ROW_CLASS}>
       <span className="flex items-center justify-between gap-2">
         <FieldLabel>{label}</FieldLabel>
         <ValuePill>
@@ -152,17 +154,16 @@ function RangeField({
           {suffix}
         </ValuePill>
       </span>
-      <input
-        type="range"
-        aria-label={ariaLabel}
+      <AstryxSlider
+        label={ariaLabel}
+        isLabelHidden
         value={value}
         min={min}
         max={max}
         step={step}
-        onChange={(event) => onChange(clamp(event.target.value, value, min, max, step))}
-        className={RANGE_CLASS}
+        onChange={(next: number) => onChange(clamp(String(next), value, min, max, step))}
       />
-    </label>
+    </div>
   );
 }
 
@@ -183,27 +184,23 @@ function ShadowControls({
 }) {
   const shadow = value ?? DEFAULT_SHADOW;
   return (
-    <div className="flex min-w-0 max-w-full flex-col gap-3 rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3">
+    <div className="flex min-w-0 max-w-full flex-col gap-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-background-card)] p-3">
       <div className="flex items-center justify-between gap-3">
-        <label className="flex items-center gap-2 text-xs font-medium text-[var(--color-fg)]">
-          <input
-            type="checkbox"
-            aria-label={`${ariaPrefix} enabled`}
-            checked={value !== null}
-            onChange={(event) => onChange(event.currentTarget.checked ? DEFAULT_SHADOW : null)}
-          />
-          {label}
-        </label>
-        <button
-          type="button"
-          aria-label={`${ariaPrefix} inherit`}
-          className={SECONDARY_BUTTON_CLASS}
+        <AstryxSwitch
+          label={label}
+          value={value !== null}
+          onChange={(enabled) => onChange(enabled ? DEFAULT_SHADOW : null)}
+        />
+        <AstryxButton
+          variant="secondary"
+          size="sm"
+          label={`${ariaPrefix} inherit`}
           onClick={onInherit}
         >
           Inherit
-        </button>
+        </AstryxButton>
       </div>
-      <p className="text-[10px] text-[var(--color-fg-muted)]">
+      <p className="text-[10px] text-[var(--color-text-secondary)]">
         {inherited ? "Using the preset value." : value === null ? "Explicitly off." : "Custom."}
       </p>
       {value !== null ? (
@@ -286,6 +283,29 @@ export function TextAppearanceControls({ clip, onChange }: TextAppearanceControl
     clip.font?.kind === "system" && catalogResult?.status === "ready"
       ? !systemFontIsAvailable(catalog, clip.font)
       : false;
+  const fontOptions = useMemo(
+    () => [
+      ...BUNDLED_FONTS.map((font) => ({
+        value: fontKey(font),
+        label: bundledFontLabel(font),
+      })),
+      ...(clip.font?.kind === "system" && !systemFontIsAvailable(catalog, clip.font)
+        ? [
+            {
+              value: fontKey(clip.font),
+              label: selectedFontMissing ? `${clip.font.fullName} (missing)` : clip.font.fullName,
+            },
+          ]
+        : []),
+      ...fontGroups.flatMap((group) =>
+        group.faces.map((font) => ({
+          value: fontKey(font),
+          label: `${font.fullName} — ${font.faceStyle}`,
+        })),
+      ),
+    ],
+    [catalog, clip.font, fontGroups, selectedFontMissing],
+  );
 
   const loadFonts = async () => {
     setLoadingFonts(true);
@@ -312,61 +332,42 @@ export function TextAppearanceControls({ clip, onChange }: TextAppearanceControl
       <div className="flex flex-col gap-3">
         <div className={FIELD_ROW_CLASS}>
           <FieldLabel>Font face</FieldLabel>
-          <select
-            aria-label="Annotation font face"
+          <AstryxSelector
+            label="Annotation font face"
+            isLabelHidden
             value={fontKey(resolved.font)}
-            onChange={(event) => chooseFont(event.target.value)}
-            className={FIELD_CLASS}
-          >
-            <optgroup label="Bundled fonts">
-              {BUNDLED_FONTS.map((font) => (
-                <option key={fontKey(font)} value={fontKey(font)}>
-                  {bundledFontLabel(font)}
-                </option>
-              ))}
-            </optgroup>
-            {clip.font?.kind === "system" && !systemFontIsAvailable(catalog, clip.font) ? (
-              <optgroup label={selectedFontMissing ? "Missing font" : "Selected system font"}>
-                <option value={fontKey(clip.font)}>{clip.font.fullName}</option>
-              </optgroup>
-            ) : null}
-            {fontGroups.map((group) => (
-              <optgroup key={group.family} label={group.family}>
-                {group.faces.map((font) => (
-                  <option key={font.postscriptName} value={fontKey(font)}>
-                    {font.faceStyle} — {font.fullName}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+            onChange={chooseFont}
+            options={fontOptions}
+          />
         </div>
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2">
-          <input
-            type="search"
-            aria-label="Search system fonts"
+          <AstryxTextInput
+            label="Search system fonts"
+            isLabelHidden
             value={fontQuery}
-            onChange={(event) => setFontQuery(event.target.value)}
+            onChange={setFontQuery}
             placeholder="Search system fonts"
-            disabled={!catalog}
-            className={FIELD_CLASS}
+            isDisabled={!catalog}
+            disabledMessage="Load system fonts before searching"
+            width="100%"
           />
-          <button
-            type="button"
-            className={SECONDARY_BUTTON_CLASS}
+          <AstryxButton
+            variant="secondary"
+            size="sm"
             onClick={loadFonts}
-            disabled={loadingFonts}
+            isDisabled={loadingFonts}
+            label="Load system fonts"
           >
             {loadingFonts ? "Loading…" : "Load system fonts"}
-          </button>
+          </AstryxButton>
         </div>
         {catalogResult && catalogResult.status !== "ready" ? (
-          <p role="alert" className="text-xs leading-5 text-amber-700 dark:text-amber-200">
+          <p role="alert" className="text-xs leading-5 text-[var(--color-warning)]">
             {catalogResult.message}
           </p>
         ) : null}
         {selectedFontMissing && clip.font?.kind === "system" ? (
-          <p role="alert" className="text-xs leading-5 text-amber-700 dark:text-amber-200">
+          <p role="alert" className="text-xs leading-5 text-[var(--color-warning)]">
             {clip.font.fullName} is no longer available. Preview and export fall back to Geist.
           </p>
         ) : null}
@@ -382,21 +383,16 @@ export function TextAppearanceControls({ clip, onChange }: TextAppearanceControl
           suffix=" pt"
           onChange={(sizePt) => onChange("sizePt", clip.sizePt, sizePt)}
         />
-        <label className={FIELD_ROW_CLASS}>
+        <div className={FIELD_ROW_CLASS}>
           <FieldLabel>Align</FieldLabel>
-          <select
-            aria-label="Text alignment"
+          <AstryxSelector
+            label="Text alignment"
+            isLabelHidden
             value={resolved.align}
-            onChange={(event) => onChange("align", clip.align, event.target.value as TextAlign)}
-            className={FIELD_CLASS}
-          >
-            {TEXT_ALIGN_OPTIONS.map((align) => (
-              <option key={align} value={align}>
-                {align}
-              </option>
-            ))}
-          </select>
-        </label>
+            onChange={(value) => onChange("align", clip.align, value as TextAlign)}
+            options={TEXT_ALIGN_OPTIONS.map((align) => ({ value: align, label: align }))}
+          />
+        </div>
       </div>
       <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Text color</FieldLabel>
@@ -449,31 +445,25 @@ export function TextAppearanceControls({ clip, onChange }: TextAppearanceControl
         onInherit={() => onChange("textShadow", clip.textShadow, undefined)}
       />
 
-      <div className="flex min-w-0 max-w-full flex-col gap-3 rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3">
+      <div className="flex min-w-0 max-w-full flex-col gap-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-background-card)] p-3">
         <div className="flex items-center justify-between gap-3">
-          <label className="flex items-center gap-2 text-xs font-medium text-[var(--color-fg)]">
-            <input
-              type="checkbox"
-              aria-label="Text background enabled"
-              checked={boxStyle !== null}
-              onChange={(event) =>
-                setBoxStyle(
-                  event.currentTarget.checked ? (preset.boxStyle ?? DEFAULT_TEXT_BOX_STYLE) : null,
-                )
-              }
-            />
-            Background
-          </label>
-          <button
-            type="button"
-            aria-label="Text background inherit"
-            className={SECONDARY_BUTTON_CLASS}
+          <AstryxSwitch
+            label="Background"
+            value={boxStyle !== null}
+            onChange={(enabled) =>
+              setBoxStyle(enabled ? (preset.boxStyle ?? DEFAULT_TEXT_BOX_STYLE) : null)
+            }
+          />
+          <AstryxButton
+            variant="secondary"
+            size="sm"
+            label="Text background inherit"
             onClick={() => setBoxStyle(undefined)}
           >
             Inherit
-          </button>
+          </AstryxButton>
         </div>
-        <p className="text-[10px] text-[var(--color-fg-muted)]">
+        <p className="text-[10px] text-[var(--color-text-secondary)]">
           {clip.boxStyle === undefined
             ? "Using the preset value."
             : clip.boxStyle === null
@@ -532,13 +522,14 @@ export function TextAppearanceControls({ clip, onChange }: TextAppearanceControl
                 suffix=" px"
                 onChange={(radiusPx) => setBoxStyle({ ...boxStyle, radiusPx })}
               />
-              <button
-                type="button"
-                className={SECONDARY_BUTTON_CLASS}
+              <AstryxButton
+                variant="secondary"
+                size="sm"
+                label="Use pill text background"
                 onClick={() => setBoxStyle({ ...boxStyle, radiusPx: 999 })}
               >
                 Pill
-              </button>
+              </AstryxButton>
             </div>
             <div className="grid min-w-0 grid-cols-2 gap-2">
               <label className={FIELD_ROW_CLASS}>

@@ -10,9 +10,9 @@
  * 6. Send message: Cmd+Enter invokes nl_chat_send
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatPanel } from "./ChatPanel";
 import { useNlStore } from "./nlStore";
 
@@ -53,9 +53,7 @@ describe("ChatPanel", () => {
     render(<ChatPanel projectId="proj-1" currentStory="" />);
 
     // Vietnamese: "Viet story bang loi"
-    expect(
-      screen.getByText(/Vi\u1ebft story b\u1eb1ng l\u1eddi/),
-    ).toBeTruthy();
+    expect(screen.getByText(/Vi\u1ebft story b\u1eb1ng l\u1eddi/)).toBeTruthy();
     expect(screen.getByTestId("nl-chat-panel")).toBeTruthy();
     expect(screen.getByText(/Make the onboarding story shorter/)).toBeTruthy();
   });
@@ -117,9 +115,7 @@ describe("ChatPanel", () => {
     render(<ChatPanel projectId="proj-1" currentStory="story content" />);
 
     // placeholder: "Mo ta luong ban muon..."
-    const textarea = screen.getByPlaceholderText(
-      /M\u00f4 t\u1ea3 lu\u1ed3ng/,
-    );
+    const textarea = screen.getByPlaceholderText(/M\u00f4 t\u1ea3 lu\u1ed3ng/);
     await userEvent.type(textarea, "Create a login flow");
 
     // Fire Cmd+Enter

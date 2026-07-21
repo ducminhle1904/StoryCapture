@@ -1,3 +1,4 @@
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
 import { invoke } from "@tauri-apps/api/core";
 import { Mic2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -126,22 +127,23 @@ function VoiceoverHeader({
   preset?: { name: string } | null;
 }) {
   return (
-    <div className="flex items-center justify-between border-b border-[var(--sc-border)] px-3 py-1.5">
+    <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-1.5">
       <div className="flex items-center gap-2">
-        <Mic2 size={11} className="text-[var(--sc-text-4)]" />
-        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+        <Mic2 size={11} className="text-[var(--color-text-disabled)]" />
+        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-text-disabled)]">
           Voiceover
         </span>
       </div>
       {onCatalogOpen ? (
-        <button
-          type="button"
+        <AstryxButton
+          variant="secondary"
+          size="sm"
           onClick={onCatalogOpen}
-          className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-2 py-0.5 text-[10px] text-[var(--sc-text-2)] transition-colors hover:bg-[var(--sc-surface-3)] hover:text-[var(--sc-text)]"
+          label={preset ? `Change voice from ${preset.name}` : "Choose voice"}
+          icon={<Sparkles size={10} aria-hidden="true" />}
         >
-          <Sparkles size={10} />
           {preset ? preset.name : "Choose voice"}
-        </button>
+        </AstryxButton>
       ) : null}
     </div>
   );
@@ -247,9 +249,9 @@ export function VoiceoverCompact({
 
   if (steps.length === 0) {
     return (
-      <div className="flex h-full flex-col bg-[var(--sc-surface)]">
+      <div className="flex h-full flex-col bg-[var(--color-background-surface)]">
         <VoiceoverHeader />
-        <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-[var(--sc-text-4)]">
+        <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-[var(--color-text-disabled)]">
           Parse a story to start attaching voiceover clips.
         </div>
       </div>
@@ -258,9 +260,9 @@ export function VoiceoverCompact({
 
   if (sceneSteps.length === 0) {
     return (
-      <div className="flex h-full flex-col bg-[var(--sc-surface)]">
+      <div className="flex h-full flex-col bg-[var(--color-background-surface)]">
         <VoiceoverHeader onCatalogOpen={() => setCatalogOpen(true)} preset={selectedPreset} />
-        <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-[var(--sc-text-4)]">
+        <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-[var(--color-text-disabled)]">
           The selected scene has no voiceover steps yet.
         </div>
       </div>
@@ -268,11 +270,11 @@ export function VoiceoverCompact({
   }
 
   return (
-    <div className="flex h-full flex-col bg-[var(--sc-surface)]">
+    <div className="flex h-full flex-col bg-[var(--color-background-surface)]">
       <VoiceoverHeader onCatalogOpen={() => setCatalogOpen(true)} preset={selectedPreset} />
 
       {story && story.scenes.length > 1 ? (
-        <div className="flex gap-1 overflow-x-auto border-b border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-2 py-1">
+        <div className="flex gap-1 overflow-x-auto border-b border-[var(--color-border)] bg-[var(--color-background-card)] px-2 py-1">
           {story.scenes.map((scene, sceneIndex) => {
             const isSelected = sceneIndex === activeSceneIndex;
             const label = scene.name || `Scene ${sceneIndex + 1}`;
@@ -283,14 +285,14 @@ export function VoiceoverCompact({
                 key={`voice-scene-${scene.span.start}`}
                 type="button"
                 onClick={() => onSelectScene(sceneIndex)}
-                className={`inline-flex shrink-0 items-center gap-1 rounded-[var(--radius-xs)] px-2 py-1 text-[10px] transition-colors ${
+                className={`inline-flex shrink-0 items-center gap-1 rounded-[var(--radius-inner)] px-2 py-1 text-[10px] transition-colors ${
                   isSelected
-                    ? "bg-[var(--sc-accent-500)]/10 text-[var(--sc-text)]"
-                    : "text-[var(--sc-text-4)] hover:text-[var(--sc-text-2)]"
+                    ? "bg-[var(--color-accent)]/10 text-[var(--color-text-primary)]"
+                    : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)]"
                 }`}
               >
                 <span className="truncate max-w-[140px]">{label}</span>
-                <span className="font-mono tabular-nums text-[9px] text-[var(--sc-text-4)]">
+                <span className="font-mono tabular-nums text-[9px] text-[var(--color-text-disabled)]">
                   {clipCount}/{voiceSteps.length}
                 </span>
               </button>
@@ -299,16 +301,18 @@ export function VoiceoverCompact({
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between border-b border-[var(--sc-border)] bg-[var(--sc-surface)] px-3 py-2.5">
+      <div className="flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-background-surface)] px-3 py-2.5">
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-[var(--sc-text)]">{sceneLabel}</div>
-          <div className="text-[11px] text-[var(--sc-text-4)]">
+          <div className="truncate text-sm font-semibold text-[var(--color-text-primary)]">
+            {sceneLabel}
+          </div>
+          <div className="text-[11px] text-[var(--color-text-disabled)]">
             {sceneGeneratedCount === sceneSteps.length
               ? "All takes ready"
               : `${sceneGeneratedCount} of ${sceneSteps.length} ready`}
           </div>
         </div>
-        <div className="rounded-[var(--radius-sm)] bg-[var(--sc-surface-2)] px-2 py-1 text-[10px] text-[var(--sc-text-4)]">
+        <div className="rounded-[var(--radius-inner)] bg-[var(--color-background-card)] px-2 py-1 text-[10px] text-[var(--color-text-disabled)]">
           {sceneSteps.length} steps
         </div>
       </div>
@@ -316,9 +320,9 @@ export function VoiceoverCompact({
       <div className="grid min-h-0 flex-1 md:grid-cols-[220px_minmax(0,1fr)]">
         <nav
           aria-label="Voiceover step navigation"
-          className="min-h-0 overflow-y-auto border-r border-[var(--sc-border)] bg-[var(--sc-surface-2)]"
+          className="min-h-0 overflow-y-auto border-r border-[var(--color-border)] bg-[var(--color-background-card)]"
         >
-          <div className="divide-y divide-[var(--sc-border)]">
+          <div className="divide-y divide-[var(--color-border)]">
             {sceneSteps.map((step) => {
               const isSelected = step.id === selectedStepId;
               const hasClip = Boolean(clipByStepId[step.id]);
@@ -326,10 +330,10 @@ export function VoiceoverCompact({
               const isDirty = editedAfterGenByStepId[step.id];
               const linePreview = summariseScript(scriptByStepId[step.id] ?? step.suggestedScript);
 
-              let toneClass = "bg-[var(--sc-text-4)]/35";
-              if (isRegenerating) toneClass = "bg-[var(--sc-accent-500)]";
-              else if (isDirty) toneClass = "bg-[var(--sc-warn)]";
-              else if (hasClip) toneClass = "bg-[var(--sc-success)]";
+              let toneClass = "bg-[var(--color-text-disabled)]/35";
+              if (isRegenerating) toneClass = "bg-[var(--color-accent)]";
+              else if (isDirty) toneClass = "bg-[var(--color-warning)]";
+              else if (hasClip) toneClass = "bg-[var(--color-success)]";
 
               return (
                 <button
@@ -342,21 +346,21 @@ export function VoiceoverCompact({
                   }}
                   className={`flex w-full items-start gap-3 px-3 py-3 text-left transition-colors ${
                     isSelected
-                      ? "bg-[var(--sc-accent-500)]/7"
-                      : "bg-transparent hover:bg-[var(--sc-surface)]/70"
+                      ? "bg-[var(--color-accent)]/7"
+                      : "bg-transparent hover:bg-[var(--color-background-surface)]/70"
                   }`}
                 >
-                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--radius-xs)] bg-[var(--sc-surface-3)] font-mono text-[10px] text-[var(--sc-text-2)]">
+                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--radius-inner)] bg-[var(--color-background-muted)] font-mono text-[10px] text-[var(--color-text-secondary)]">
                     {step.commandIndex + 1}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${toneClass}`} />
-                      <span className="truncate text-xs font-medium text-[var(--sc-text)]">
+                      <span className="truncate text-xs font-medium text-[var(--color-text-primary)]">
                         {step.verb}
                       </span>
                     </div>
-                    <div className="mt-1 truncate text-[11px] leading-relaxed text-[var(--sc-text-4)]">
+                    <div className="mt-1 truncate text-[11px] leading-relaxed text-[var(--color-text-disabled)]">
                       {linePreview}
                     </div>
                   </div>
@@ -369,23 +373,26 @@ export function VoiceoverCompact({
         <div className="min-h-0 overflow-y-auto p-3">
           {selectedStep ? (
             <div className="space-y-3">
-              <div className="flex items-start justify-between gap-3 border-b border-[var(--sc-border)] pb-3">
+              <div className="flex items-start justify-between gap-3 border-b border-[var(--color-border)] pb-3">
                 <div className="min-w-0">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+                  <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-text-disabled)]">
                     Active Step
                   </div>
-                  <div className="mt-1 truncate text-sm font-semibold text-[var(--sc-text)]">
+                  <div className="mt-1 truncate text-sm font-semibold text-[var(--color-text-primary)]">
                     Step {selectedStep.commandIndex + 1} · {selectedStep.verb}
                   </div>
-                  <div className="mt-1 text-xs text-[var(--sc-text-2)]">{selectedStep.label}</div>
+                  <div className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                    {selectedStep.label}
+                  </div>
                 </div>
-                <button
-                  type="button"
+                <AstryxButton
+                  variant="ghost"
+                  size="sm"
                   onClick={() => onJumpTo?.(selectedStep.spanStart)}
-                  className="shrink-0 rounded-[var(--radius-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface)] px-2 py-1 text-[10px] text-[var(--sc-text-2)] transition-colors hover:text-[var(--sc-text)]"
+                  label="Jump to script"
                 >
                   Jump to script
-                </button>
+                </AstryxButton>
               </div>
 
               <TtsScriptEditor
@@ -407,7 +414,7 @@ export function VoiceoverCompact({
                   }}
                 />
               ) : (
-                <div className="border-t border-[var(--sc-border)] pt-3 text-xs text-[var(--sc-text-4)]">
+                <div className="border-t border-[var(--color-border)] pt-3 text-xs text-[var(--color-text-disabled)]">
                   No take yet.
                 </div>
               )}

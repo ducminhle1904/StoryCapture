@@ -10,27 +10,37 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts"
     },
-    "./tokens.css": "./src/tokens.css",
-    "./claude-design/tokens.css": "./src/claude-design/tokens.css",
-    "./claude-design/app.css": "./src/claude-design/app.css"
+    "./theme": {
+      "types": "./src/theme/index.ts",
+      "import": "./src/theme/index.ts"
+    },
+    "./theme.css": "./src/theme/generated/storycapture-gothic.css",
+    "./fonts.css": "./src/theme/fonts.css",
+    "./product-tokens.css": "./src/theme/product-tokens.css"
   },
   "scripts": {
+    "theme:build": "astryx theme build src/theme/storycapture-gothic.ts --out src/theme/generated/storycapture-gothic.css",
+    "theme:check": "node scripts/check-theme.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
-    "@base-ui/react": "^1.6.0",
-    "clsx": "^2.1.1",
-    "tailwind-merge": "^3.6.0"
+    "@astryxdesign/core": "0.1.6",
+    "@astryxdesign/theme-gothic": "0.1.6",
+    "@fontsource-variable/fustat": "5.3.0",
+    "@fontsource-variable/jetbrains-mono": "5.3.0",
+    "@fontsource/manufacturing-consent": "5.3.0",
+    "@stylexjs/stylex": "0.19.0"
   },
   "peerDependencies": {
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
-    "@testing-library/react": "^16.3.2",
+    "@astryxdesign/cli": "0.1.6",
     "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",

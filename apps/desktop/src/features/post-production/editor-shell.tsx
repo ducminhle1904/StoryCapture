@@ -12,7 +12,12 @@
  * from the store so user preferences survive reloads.
  */
 
-import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
+import { Badge as AstryxBadge } from "@astryxdesign/core/Badge";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import {
+  SegmentedControl as AstryxSegmentedControl,
+  SegmentedControlItem as AstryxSegmentedControlItem,
+} from "@astryxdesign/core/SegmentedControl";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import {
   ArrowLeft,
@@ -28,7 +33,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { toast } from "sonner";
 import { PageContentTransition } from "@/components/page-content-transition";
 import { PreviewSurface } from "@/components/preview-surface";
 import {
@@ -42,6 +46,7 @@ import { type ParseResult, parseStory } from "@/ipc/parse";
 import { fetchProjectFolder, type RecordingInfo, useProjectRecordings } from "@/ipc/projects";
 import { timelineLoad, timelineSave } from "@/ipc/timeline";
 import { useRecordingStepTiming, useRecordingTrajectory } from "@/ipc/trajectory";
+import { notifications } from "@/lib/notifications";
 import { ExportModal } from "./export-modal/export-modal";
 import { useEditorHotkeys } from "./hooks/use-hotkeys";
 import { InspectorPanel } from "./inspector/inspector-panel";
@@ -128,18 +133,19 @@ interface ReviewFixItem {
   targetMs?: number;
 }
 
-function fixToneBadge(tone: ReviewFixTone): "info" | "warn" | "record" {
-  return tone === "critical" ? "record" : tone;
+function fixToneBadge(tone: ReviewFixTone): "info" | "warning" | "error" {
+  if (tone === "critical") return "error";
+  return tone === "warn" ? "warning" : tone;
 }
 
 function fixToneIcon(tone: ReviewFixTone) {
   if (tone === "critical") {
-    return <TriangleAlert size={14} aria-hidden="true" className="text-[var(--sc-record)]" />;
+    return <TriangleAlert size={14} aria-hidden="true" className="text-[var(--story-recording)]" />;
   }
   if (tone === "warn") {
-    return <Clock3 size={14} aria-hidden="true" className="text-[var(--sc-warn)]" />;
+    return <Clock3 size={14} aria-hidden="true" className="text-[var(--color-warning)]" />;
   }
-  return <CheckCircle2 size={14} aria-hidden="true" className="text-[var(--sc-accent-400)]" />;
+  return <CheckCircle2 size={14} aria-hidden="true" className="text-[var(--color-accent)]" />;
 }
 
 function ReviewPanel({
@@ -178,93 +184,108 @@ function ReviewPanel({
     <div className="flex h-full flex-col overflow-auto p-4">
       <div className="mb-4">
         <div className="flex items-center gap-2">
-          <Sparkles size={16} aria-hidden="true" className="text-[var(--sc-accent-400)]" />
-          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--sc-text-3)]">
+          <Sparkles size={16} aria-hidden="true" className="text-[var(--color-accent)]" />
+          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-secondary)]">
             Review Pass
           </span>
         </div>
-        <h2 className="mt-2 text-lg font-semibold tracking-tight text-[var(--sc-text)]">
+        <h2 className="mt-2 text-lg font-semibold tracking-tight text-[var(--color-text-primary)]">
           {statusTitle}
         </h2>
-        <p className="mt-1 text-sm leading-5 text-[var(--sc-text-3)]">{statusDetail}</p>
+        <p className="mt-1 text-sm leading-5 text-[var(--color-text-secondary)]">{statusDetail}</p>
       </div>
 
       <div className="grid gap-2">
-        <section className="border-t border-[var(--sc-border-2)] py-3">
+        <section className="border-t border-[var(--color-border-emphasized)] py-3">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-xs font-medium text-[var(--sc-text-2)]">
+              <div className="text-xs font-medium text-[var(--color-text-secondary)]">
                 Editor Polish Recipe
               </div>
-              <div className="mt-1 font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--sc-text-4)]">
+              <div className="mt-1 font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-disabled)]">
                 {recipe}
               </div>
             </div>
-            <ScBadge tone={readyToExport ? "success" : "warn"}>
-              {readyToExport ? "Exportable" : "Needs Review"}
-            </ScBadge>
+            <AstryxBadge
+              variant={readyToExport ? "success" : "warning"}
+              label={readyToExport ? "Exportable" : "Needs Review"}
+            />
           </div>
           <div className="mt-3 grid grid-cols-4 gap-2 text-sm">
             <div>
-              <div className="font-mono text-base text-[var(--sc-text)]">{videoCount}</div>
-              <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+              <div className="font-mono text-base text-[var(--color-text-primary)]">
+                {videoCount}
+              </div>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-disabled)]">
                 Video
               </div>
             </div>
             <div>
-              <div className="font-mono text-base text-[var(--sc-text)]">{zoomCount}</div>
-              <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+              <div className="font-mono text-base text-[var(--color-text-primary)]">
+                {zoomCount}
+              </div>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-disabled)]">
                 Zooms
               </div>
             </div>
             <div>
-              <div className="font-mono text-base text-[var(--sc-text)]">{calloutCount}</div>
-              <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+              <div className="font-mono text-base text-[var(--color-text-primary)]">
+                {calloutCount}
+              </div>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-disabled)]">
                 Callouts
               </div>
             </div>
             <div>
-              <div className="font-mono text-base text-[var(--sc-text)]">{soundCount}</div>
-              <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+              <div className="font-mono text-base text-[var(--color-text-primary)]">
+                {soundCount}
+              </div>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-disabled)]">
                 Audio
               </div>
             </div>
           </div>
         </section>
 
-        <section className="border-t border-[var(--sc-border-2)] pt-3">
+        <section className="border-t border-[var(--color-border-emphasized)] pt-3">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="text-xs font-medium text-[var(--sc-text-2)]">Review Checklist</div>
+            <div className="text-xs font-medium text-[var(--color-text-secondary)]">
+              Review Checklist
+            </div>
             <div className="flex gap-1">
-              <ScBadge tone={hasStepTiming ? "success" : "warn"}>
-                {hasStepTiming ? "Timed" : "Step Timing Missing"}
-              </ScBadge>
-              <ScBadge tone={hasTrajectory ? "success" : "warn"}>
-                {hasTrajectory ? "Cursor" : "No Cursor"}
-              </ScBadge>
+              <AstryxBadge
+                variant={hasStepTiming ? "success" : "warning"}
+                label={hasStepTiming ? "Timed" : "Step Timing Missing"}
+              />
+              <AstryxBadge
+                variant={hasTrajectory ? "success" : "warning"}
+                label={hasTrajectory ? "Cursor" : "No Cursor"}
+              />
             </div>
           </div>
           {fixItems.length === 0 ? (
-            <div className="border-l border-[var(--sc-success)]/50 pl-3 text-sm text-[var(--sc-text-3)]">
+            <div className="border-l border-[var(--color-success)]/50 pl-3 text-sm text-[var(--color-text-secondary)]">
               No generated polish issues found. Use Fine tune for visual adjustments or export now.
             </div>
           ) : (
-            <ul className="divide-y divide-[var(--sc-border-2)] text-sm">
+            <ul className="divide-y divide-[var(--color-border-emphasized)] text-sm">
               {fixItems.map((fix) => (
                 <li key={fix.id}>
                   <button
                     type="button"
-                    className="grid w-full grid-cols-[auto_1fr_auto] items-start gap-3 py-2.5 text-left transition-[background-color,transform] hover:bg-[var(--sc-surface-2)] active:scale-[0.99]"
+                    className="grid w-full grid-cols-[auto_1fr_auto] items-start gap-3 py-2.5 text-left transition-[background-color,transform] hover:bg-[var(--color-background-card)] active:scale-[0.99]"
                     onClick={() => onFixItem(fix)}
                   >
                     <span className="mt-0.5">{fixToneIcon(fix.tone)}</span>
                     <span className="min-w-0">
-                      <span className="block font-medium text-[var(--sc-text-2)]">{fix.title}</span>
-                      <span className="mt-0.5 block text-xs leading-4 text-[var(--sc-text-4)]">
+                      <span className="block font-medium text-[var(--color-text-secondary)]">
+                        {fix.title}
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-4 text-[var(--color-text-disabled)]">
                         {fix.detail}
                       </span>
                     </span>
-                    <ScBadge tone={fixToneBadge(fix.tone)}>{fix.tone.toUpperCase()}</ScBadge>
+                    <AstryxBadge variant={fixToneBadge(fix.tone)} label={fix.tone.toUpperCase()} />
                   </button>
                 </li>
               ))}
@@ -275,17 +296,24 @@ function ReviewPanel({
 
       <span className="flex-1" />
       <div className="mt-5 grid grid-cols-2 gap-2">
-        <ScButton
+        <AstryxButton
           size="sm"
           variant="ghost"
           icon={<Wand2 size={12} aria-hidden="true" />}
           onClick={onFineTune}
+          label="Fine Tune"
         >
           Fine Tune
-        </ScButton>
-        <ScButton size="sm" variant="success" onClick={onExport} disabled={!readyToExport}>
+        </AstryxButton>
+        <AstryxButton
+          size="sm"
+          variant="primary"
+          onClick={onExport}
+          isDisabled={!readyToExport}
+          label="Export"
+        >
           Export
-        </ScButton>
+        </AstryxButton>
       </div>
     </div>
   );
@@ -623,7 +651,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     if (warnings.length > 0) {
       const visibleWarnings = warnings.slice(0, 3).map((warning) => warning.message);
       const remainingWarnings = warnings.length - visibleWarnings.length;
-      toast.warning(
+      notifications.warning(
         `${warnings.length} text overlay${warnings.length === 1 ? "" : "s"} could not be placed`,
         {
           description: `${visibleWarnings.join(" ")}${remainingWarnings > 0 ? ` ${remainingWarnings} more skipped.` : ""} Re-record this story to regenerate step timing.`,
@@ -631,7 +659,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       );
     }
     if (annotationMerge.legacyGeneratedCount > 0) {
-      toast.warning(
+      notifications.warning(
         `${annotationMerge.legacyGeneratedCount} legacy generated annotation${annotationMerge.legacyGeneratedCount === 1 ? " was" : "s were"} reset`,
         {
           description:
@@ -640,7 +668,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       );
     }
     if (voiceoverReflow.unresolved.length > 0) {
-      toast.warning(
+      notifications.warning(
         `${voiceoverReflow.unresolved.length} voiceover clip${voiceoverReflow.unresolved.length === 1 ? " needs" : "s need"} timing review`,
         {
           description:
@@ -785,7 +813,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   }, [pushAction, setSelectedClipId, setSelectedTab]);
 
   const inspectorContent = !projectOpenReady ? (
-    <div role="status" className="p-5 text-sm text-[var(--sc-text-3)]">
+    <div role="status" className="p-5 text-sm text-[var(--color-text-secondary)]">
       Loading project…
     </div>
   ) : workspaceMode === "review" ? (
@@ -808,12 +836,12 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
 
   return (
     <div
-      className="flex h-full w-full flex-col bg-[var(--sc-bg)] text-[var(--sc-text)]"
+      className="flex h-full w-full flex-col bg-[var(--color-background-body)] text-[var(--color-text-primary)]"
       data-editor-shell="true"
       data-story-id={storyId}
     >
       {/* Top bar */}
-      <div className="sc-toolbar sc-window-chrome">
+      <div className="story-toolbar story-window-chrome">
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <Link
             to="/"
@@ -821,67 +849,78 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
             style={{
               display: "inline-flex",
               alignItems: "center",
-              color: "var(--sc-text-2)",
+              color: "var(--color-text-secondary)",
               marginRight: 2,
             }}
           >
             <ArrowLeft size={14} aria-hidden="true" />
           </Link>
-          <Scissors size={14} style={{ color: "var(--sc-text-3)" }} aria-hidden="true" />
-          <div className="sc-toolbar-title">Post-Production</div>
-          <ScBadge tone="muted">Story {storyId}</ScBadge>
+          <Scissors size={14} style={{ color: "var(--color-text-secondary)" }} aria-hidden="true" />
+          <div className="story-toolbar-title">Post-Production</div>
+          <AstryxBadge variant="neutral" label={<> Story {storyId} </>} />
         </div>
-        <span className="sc-spacer" />
-        <ScSegmented
+        <span className="story-spacer" />
+        <AstryxSegmentedControl
           size="sm"
           value={workspaceMode}
-          aria-label="Post-production mode"
-          options={[
+          label="Post-production mode"
+          onChange={(value) => setWorkspaceMode(value as "review" | "fine-tune")}
+        >
+          {[
             { value: "review", label: "Review" },
             { value: "fine-tune", label: "Fine Tune" },
-          ]}
-          onValueChange={(value) => setWorkspaceMode(value as "review" | "fine-tune")}
+          ].map((option) => (
+            <AstryxSegmentedControlItem
+              key={option.value}
+              value={option.value}
+              label={typeof option.label === "string" ? option.label : option.value}
+              icon={typeof option.label === "string" ? undefined : option.label}
+            />
+          ))}
+        </AstryxSegmentedControl>
+        <AstryxBadge
+          variant={workspaceMode === "review" ? "info" : "purple"}
+          label={workspaceMode === "review" ? "Guided Review" : "Timeline Editing"}
         />
-        <ScBadge tone={workspaceMode === "review" ? "info" : "accent"}>
-          {workspaceMode === "review" ? "Guided Review" : "Timeline Editing"}
-        </ScBadge>
         <div
           style={{
             width: 1,
             height: 18,
-            background: "var(--sc-border)",
+            background: "var(--color-border)",
             margin: "0 4px",
           }}
           aria-hidden="true"
         />
-        <ScButton
+        <AstryxButton
           size="sm"
           icon={<Music2 size={12} aria-hidden="true" />}
           onClick={() => setSoundDrawerOpen(true)}
           aria-label="Open sound library"
+          label="Open sound library"
         >
           Sounds
-        </ScButton>
+        </AstryxButton>
         {projectOpenReady ? (
           <QueueWidget storyId={storyId} />
         ) : (
-          <ScBadge tone="muted">0 Queue</ScBadge>
+          <AstryxBadge variant="neutral" label="0 Queue" />
         )}
-        <ScButton
-          variant="success"
+        <AstryxButton
+          variant="primary"
           size="sm"
           onClick={() => setExportModalOpen(true)}
           aria-label="Open export dialog"
+          label="Open export dialog"
         >
           Export
-        </ScButton>
+        </AstryxButton>
       </div>
 
       <PageContentTransition className="min-h-0 flex-1">
         {/* Top region: preview | inspector */}
         <div className="flex min-h-0 gap-3 px-3 py-3" style={{ height: effectiveTopHeight }}>
           <section
-            className="min-w-0 overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] shadow-[var(--sc-sh-1)]"
+            className="min-w-0 overflow-hidden rounded-[var(--radius-container)] border border-[var(--color-border)] bg-[var(--color-background-surface)] shadow-[var(--shadow-low)]"
             style={{
               width: `${effectivePreviewWidthPct}%`,
               display: "flex",
@@ -896,36 +935,38 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
                 alignItems: "center",
                 gap: 8,
                 padding: "5px 10px",
-                borderBottom: "1px solid var(--sc-border)",
-                background: "var(--sc-surface)",
+                borderBottom: "1px solid var(--color-border)",
+                background: "var(--color-background-surface)",
                 height: 34,
                 flexShrink: 0,
               }}
             >
-              <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--sc-text-4)]">
+              <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--color-text-disabled)]">
                 Preview
               </span>
               <span style={{ flex: 1 }} />
-              <ScButton
+              <AstryxButton
                 size="sm"
                 variant="ghost"
                 icon={<ZoomIn size={12} aria-hidden="true" />}
-                title="Add zoom keyframe"
+                tooltip="Add zoom keyframe"
                 aria-label="Add zoom clip"
                 onClick={addZoomAtPlayhead}
+                label="Add zoom clip"
               >
                 Add Zoom
-              </ScButton>
-              <ScButton
+              </AstryxButton>
+              <AstryxButton
                 size="sm"
                 variant="ghost"
                 icon={<Type size={12} aria-hidden="true" />}
-                title="Add text annotation"
+                tooltip="Add text annotation"
                 aria-label="Add text clip"
                 onClick={addTextAtPlayhead}
+                label="Add text clip"
               >
                 Add Text
-              </ScButton>
+              </AstryxButton>
             </div>
 
             <div style={{ flex: 1, minHeight: 0, display: "flex", position: "relative" }}>
@@ -943,20 +984,26 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
                   className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
                   role="status"
                 >
-                  <div className="pointer-events-auto flex max-w-xs flex-col items-center gap-2 rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]/92 px-4 py-3 text-center shadow-[var(--sc-sh-1)] backdrop-blur">
-                    <div className="text-[12px] font-medium text-[var(--sc-text-2)]">
+                  <div className="pointer-events-auto flex max-w-xs flex-col items-center gap-2 rounded-[var(--radius-container)] border border-[var(--color-border)] bg-[var(--color-background-surface)]/92 px-4 py-3 text-center shadow-[var(--shadow-low)] backdrop-blur">
+                    <div className="text-[12px] font-medium text-[var(--color-text-secondary)]">
                       {recordingOverlayMessage}
                     </div>
-                    <Link to={`/recorder/${storyId}`} className="sc-btn primary sm">
+                    <AstryxButton
+                      as={Link}
+                      href={`/recorder/${storyId}`}
+                      label="Record one first"
+                      variant="primary"
+                      size="sm"
+                    >
                       Record one first
-                    </Link>
+                    </AstryxButton>
                   </div>
                 </div>
               )}
             </div>
           </section>
           <section
-            className="min-w-0 overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
+            className="min-w-0 overflow-hidden rounded-[var(--radius-container)] border border-[var(--color-border)] bg-[var(--color-background-surface)]"
             style={{ width: `${inspectorWidthPct}%` }}
           >
             {inspectorContent}
@@ -966,18 +1013,20 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         {/* Bottom region: timeline */}
         {workspaceMode === "fine-tune" && (
           <section
-            className="mx-3 mb-3 flex shrink-0 flex-col overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
+            className="mx-3 mb-3 flex shrink-0 flex-col overflow-hidden rounded-[var(--radius-container)] border border-[var(--color-border)] bg-[var(--color-background-surface)]"
             style={{ height: timelinePanelHeightPx }}
             aria-label="Timeline area"
           >
-            <div className="flex h-8 items-center gap-2 border-b border-[var(--sc-border)] bg-[var(--sc-surface)] px-3">
-              <span className="text-[12px] font-semibold text-[var(--sc-text)]">Timeline</span>
-              <span className="font-mono text-[11px] text-[var(--sc-text-4)]">
+            <div className="flex h-8 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-background-surface)] px-3">
+              <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">
+                Timeline
+              </span>
+              <span className="font-mono text-[11px] text-[var(--color-text-disabled)]">
                 {tracksVideoLen}V · {tracksZoomLen}Z · {tracksAnnotationLen}T
                 {tracksSoundLen > 0 ? ` · ${tracksSoundLen}A` : ""}
               </span>
               <span className="min-w-0 flex-1" />
-              <span className="hidden font-mono text-[11px] text-[var(--sc-text-4)] lg:inline">
+              <span className="hidden font-mono text-[11px] text-[var(--color-text-disabled)] lg:inline">
                 Drag clips to retime. Select a clip to edit.
               </span>
             </div>

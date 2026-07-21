@@ -30,9 +30,9 @@ export function AboutCategory() {
           alignItems: "center",
           gap: 16,
           padding: 16,
-          border: "1px solid var(--sc-border)",
-          borderRadius: "var(--sc-r-lg)",
-          background: "var(--sc-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-container)",
+          background: "var(--color-background-surface)",
         }}
       >
         <BrandMark size={48} />
@@ -41,14 +41,14 @@ export function AboutCategory() {
           <div
             style={{
               fontSize: 12,
-              color: "var(--sc-text-4)",
+              color: "var(--color-text-disabled)",
               marginTop: 2,
-              fontFamily: "var(--sc-font-mono)",
+              fontFamily: "var(--font-family-code)",
             }}
           >
             v{appVersion} · {runtime}
           </div>
-          <div style={{ fontSize: 12, color: "var(--sc-text-3)", marginTop: 8 }}>
+          <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 8 }}>
             DSL → polished demo videos. Built for teams who ship demos daily.
           </div>
         </div>
@@ -61,7 +61,7 @@ export function AboutCategory() {
             fontWeight: 500,
             letterSpacing: "0.08em",
             textTransform: "uppercase",
-            color: "var(--sc-text-4)",
+            color: "var(--color-text-disabled)",
             marginBottom: 12,
           }}
         >

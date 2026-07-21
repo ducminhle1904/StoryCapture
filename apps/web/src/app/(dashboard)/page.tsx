@@ -1,7 +1,11 @@
-import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
+import { Badge } from "@astryxdesign/core/Badge";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { WorkspaceSwitcherServer } from "./workspace-switcher-server";
 
 /**
@@ -59,81 +63,78 @@ export default async function DashboardPage() {
       {/* Header with workspace switcher */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-50">Dashboard</h1>
-          <p className="mt-1 text-sm text-zinc-400">
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Dashboard</h1>
+          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             Your recordings and demo videos
           </p>
         </div>
-        <WorkspaceSwitcherServer
-          currentWorkspaceId={defaultWorkspaceId}
-        />
+        <WorkspaceSwitcherServer currentWorkspaceId={defaultWorkspaceId} />
       </div>
 
       {/* Quick stats */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+        <Card padding={4}>
+          <p className="text-xs font-medium uppercase tracking-wider text-[var(--color-text-secondary)]">
             Total Videos
           </p>
-          <p className="mt-1 text-2xl font-bold text-zinc-100">
+          <p className="mt-1 text-2xl font-bold text-[var(--color-text-primary)]">
             {videos.length}
           </p>
-        </div>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+        </Card>
+        <Card padding={4}>
+          <p className="text-xs font-medium uppercase tracking-wider text-[var(--color-text-secondary)]">
             Published
           </p>
-          <p className="mt-1 text-2xl font-bold text-zinc-100">
+          <p className="mt-1 text-2xl font-bold text-[var(--color-text-primary)]">
             {videos.filter((v) => v.isPublic).length}
           </p>
-        </div>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+        </Card>
+        <Card padding={4}>
+          <p className="text-xs font-medium uppercase tracking-wider text-[var(--color-text-secondary)]">
             Ready
           </p>
-          <p className="mt-1 text-2xl font-bold text-zinc-100">
+          <p className="mt-1 text-2xl font-bold text-[var(--color-text-primary)]">
             {videos.filter((v) => v.status === "READY").length}
           </p>
-        </div>
+        </Card>
       </div>
 
       {/* Video grid */}
       <section>
-        <h2 className="mb-4 text-lg font-semibold text-zinc-200">
+        <h2 className="mb-4 text-lg font-semibold text-[var(--color-text-primary)]">
           Recent Videos
         </h2>
 
         {videos.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800 bg-zinc-900/50 py-16">
-            <svg
-              className="h-12 w-12 text-zinc-700"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-              />
-            </svg>
-            <p className="mt-4 text-sm text-zinc-500">No videos yet</p>
-            <p className="mt-1 text-xs text-zinc-600">
-              Upload your first demo video from the desktop app
-            </p>
-          </div>
+          <EmptyState
+            title="No videos yet"
+            description="Upload your first demo video from the desktop app."
+            icon={
+              <svg
+                className="h-12 w-12 text-[var(--color-text-disabled)]"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                />
+              </svg>
+            }
+          />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {videos.map((video) => (
-              <div
-                key={video.id}
-                className="group rounded-xl border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700"
-              >
+              <Card key={video.id} padding={4} className="group">
                 {/* Video thumbnail placeholder */}
-                <div className="flex h-32 items-center justify-center rounded-lg bg-zinc-800">
+                <div className="flex h-32 items-center justify-center rounded-[var(--radius-element)] bg-[var(--color-background-muted)]">
                   <svg
-                    className="h-8 w-8 text-zinc-600"
+                    aria-hidden="true"
+                    className="h-8 w-8 text-[var(--color-text-disabled)]"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -155,54 +156,52 @@ export default async function DashboardPage() {
 
                 {/* Video info */}
                 <div className="mt-3">
-                  <h3 className="truncate font-medium text-zinc-100">
+                  <h3 className="truncate font-medium text-[var(--color-text-primary)]">
                     {video.projectName}
                   </h3>
                   <div className="mt-1 flex items-center gap-2">
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                    <Badge
+                      variant={
                         video.status === "READY"
-                          ? "bg-emerald-900/50 text-emerald-300"
+                          ? "success"
                           : video.status === "UPLOADING"
-                            ? "bg-amber-900/50 text-amber-300"
-                            : "bg-zinc-800 text-zinc-400"
-                      }`}
-                    >
-                      {video.status}
-                    </span>
-                    {video.isPublic && (
-                      <span className="rounded bg-blue-900/50 px-1.5 py-0.5 text-[10px] font-medium text-blue-300">
-                        Public
-                      </span>
-                    )}
+                            ? "warning"
+                            : "neutral"
+                      }
+                      label={video.status}
+                    />
+                    {video.isPublic && <Badge variant="info" label="Public" />}
                   </div>
-                  <p className="mt-1 text-xs text-zinc-500">
+                  <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
                     {new Date(video.createdAt).toLocaleDateString()}
                   </p>
                 </div>
 
                 {/* Quick actions */}
-                <div className="mt-3 flex gap-2 border-t border-zinc-800 pt-3">
-                  <Link
+                <div className="mt-3 flex gap-2 border-t border-[var(--color-border)] pt-3">
+                  <Button
+                    as={Link}
                     href={`/watch/${video.slug}`}
-                    className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-zinc-100"
-                  >
-                    View
-                  </Link>
-                  <Link
+                    label="View"
+                    variant="secondary"
+                    size="sm"
+                  />
+                  <Button
+                    as={Link}
                     href={`/analytics/${video.id}`}
-                    className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-zinc-100"
-                  >
-                    Analytics
-                  </Link>
-                  <Link
+                    label="Analytics"
+                    variant="secondary"
+                    size="sm"
+                  />
+                  <Button
+                    as={Link}
                     href={`/videos/${video.id}`}
-                    className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-zinc-100"
-                  >
-                    Edit
-                  </Link>
+                    label="Edit"
+                    variant="secondary"
+                    size="sm"
+                  />
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         )}

@@ -1,5 +1,9 @@
 "use client";
 
+import { Banner } from "@astryxdesign/core/Banner";
+import { Card } from "@astryxdesign/core/Card";
+import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
+import { Spinner } from "@astryxdesign/core/Spinner";
 import { useState } from "react";
 import { DropoffHeatmap } from "./dropoff-heatmap";
 import { GeoBreakdown } from "./geo-breakdown";
@@ -39,30 +43,17 @@ function formatDuration(seconds: number): string {
   return `${mins}m ${secs}s`;
 }
 
-function StatCard({
-  label,
-  value,
-  subtext,
-}: {
-  label: string;
-  value: string;
-  subtext?: string;
-}) {
+function StatCard({ label, value, subtext }: { label: string; value: string; subtext?: string }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-      <p className="text-xs font-medium text-zinc-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-zinc-100">{value}</p>
-      {subtext && (
-        <p className="mt-1 text-xs text-zinc-500">{subtext}</p>
-      )}
-    </div>
+    <Card padding={4}>
+      <p className="text-xs font-medium text-[var(--color-text-secondary)]">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-[var(--color-text-primary)]">{value}</p>
+      {subtext && <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{subtext}</p>}
+    </Card>
   );
 }
 
-export function AnalyticsDashboard({
-  videoId,
-  sceneLabels,
-}: AnalyticsDashboardProps) {
+export function AnalyticsDashboard({ videoId, sceneLabels }: AnalyticsDashboardProps) {
   const [days, setDays] = useState(30);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,7 +62,10 @@ export function AnalyticsDashboard({
   // Fetch dashboard data via tRPC
   // Using useEffect + fetch instead of tRPC hooks to avoid needing provider at this level
   useState(() => {
-    fetchDashboard(videoId, days).then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
+    fetchDashboard(videoId, days)
+      .then(setData)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   });
 
   const handleDaysChange = (newDays: number) => {
@@ -86,23 +80,14 @@ export function AnalyticsDashboard({
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <div className="h-8 w-48 animate-pulse rounded bg-zinc-800" />
-        <div className="grid grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-24 animate-pulse rounded-lg bg-zinc-800" />
-          ))}
-        </div>
+      <div className="flex justify-center py-12">
+        <Spinner label="Loading analytics" />
       </div>
     );
   }
 
   if (error) {
-    return (
-      <div className="rounded-lg border border-red-800 bg-red-900/20 p-4 text-sm text-red-300">
-        Failed to load analytics: {error}
-      </div>
-    );
+    return <Banner status="error" title="Failed to load analytics" description={error} />;
   }
 
   if (!data) return null;
@@ -111,40 +96,23 @@ export function AnalyticsDashboard({
     <div className="space-y-6">
       {/* Time range selector */}
       <div className="flex items-center gap-2">
-        <span className="text-sm text-zinc-400">Time range:</span>
-        {[7, 30].map((d) => (
-          <button
-            key={d}
-            onClick={() => handleDaysChange(d)}
-            className={`rounded-md px-3 py-1 text-sm transition-colors ${
-              days === d
-                ? "bg-zinc-700 text-zinc-100"
-                : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-            }`}
-          >
-            Last {d} days
-          </button>
-        ))}
+        <SegmentedControl
+          label="Analytics time range"
+          value={String(days)}
+          onChange={(value) => handleDaysChange(Number(value))}
+          size="sm"
+        >
+          <SegmentedControlItem value="7" label="Last 7 days" />
+          <SegmentedControlItem value="30" label="Last 30 days" />
+        </SegmentedControl>
       </div>
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard
-          label="Total Plays"
-          value={data.totalPlays.toLocaleString()}
-        />
-        <StatCard
-          label="Unique Plays"
-          value={data.uniquePlays.toLocaleString()}
-        />
-        <StatCard
-          label="Avg Duration"
-          value={formatDuration(data.avgDurationSec)}
-        />
-        <StatCard
-          label="Median Duration"
-          value={formatDuration(data.medianDurationSec)}
-        />
+        <StatCard label="Total Plays" value={data.totalPlays.toLocaleString()} />
+        <StatCard label="Unique Plays" value={data.uniquePlays.toLocaleString()} />
+        <StatCard label="Avg Duration" value={formatDuration(data.avgDurationSec)} />
+        <StatCard label="Median Duration" value={formatDuration(data.medianDurationSec)} />
       </div>
 
       {/* Drop-off heatmap */}
@@ -160,19 +128,11 @@ export function AnalyticsDashboard({
  * Fetch analytics dashboard data.
  * Uses the Next.js tRPC API endpoint directly.
  */
-async function fetchDashboard(
-  videoId: string,
-  days: number,
-): Promise<DashboardData> {
+async function fetchDashboard(videoId: string, days: number): Promise<DashboardData> {
   const params = new URLSearchParams();
-  params.set(
-    "input",
-    JSON.stringify({ "0": { json: { videoId, days } } }),
-  );
+  params.set("input", JSON.stringify({ "0": { json: { videoId, days } } }));
 
-  const res = await fetch(
-    `/api/trpc/analytics.dashboard?${params.toString()}`,
-  );
+  const res = await fetch(`/api/trpc/analytics.dashboard?${params.toString()}`);
 
   if (!res.ok) {
     const text = await res.text();

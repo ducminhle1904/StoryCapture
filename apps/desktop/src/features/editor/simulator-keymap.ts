@@ -1,11 +1,7 @@
-import { EditorView, keymap, type KeyBinding } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
+import { EditorView, type KeyBinding, keymap } from "@codemirror/view";
 
-import {
-  simulatorCancel,
-  simulatorStart,
-  simulatorStepTo,
-} from "@/ipc/simulator";
+import { simulatorCancel, simulatorStart, simulatorStepTo } from "@/ipc/simulator";
 import { useEditorStore } from "@/state/editor";
 import { useSimulatorStore } from "@/state/simulator-store";
 
@@ -122,13 +118,10 @@ function createContextMenu(ctx: SimulatorKeymapContext) {
   });
 }
 
-function showPreviewToHereMenu(
-  x: number,
-  y: number,
-  ord: number,
-  ctx: SimulatorKeymapContext,
-) {
-  document.querySelectorAll("[data-simulator-ctxmenu]").forEach((n) => n.remove());
+function showPreviewToHereMenu(x: number, y: number, ord: number, ctx: SimulatorKeymapContext) {
+  document.querySelectorAll("[data-simulator-ctxmenu]").forEach((node) => {
+    node.remove();
+  });
 
   const { runState } = useSimulatorStore.getState();
   const disabled = runState === "running";
@@ -144,11 +137,11 @@ function showPreviewToHereMenu(
     minWidth: "220px",
     padding: "4px",
     borderRadius: "6px",
-    border: "1px solid var(--color-border-subtle)",
-    background: "var(--color-surface-200)",
+    border: "1px solid var(--color-border)",
+    background: "var(--color-background-surface)",
     boxShadow: "0 8px 20px rgba(0,0,0,0.24)",
     fontSize: "12px",
-    color: "var(--color-fg-primary)",
+    color: "var(--color-text-primary)",
   } as Partial<CSSStyleDeclaration>);
 
   const item = document.createElement("button");
@@ -164,24 +157,22 @@ function showPreviewToHereMenu(
     padding: "6px 8px",
     background: "transparent",
     border: "none",
-    color: disabled ? "var(--color-fg-muted)" : "var(--color-fg-primary)",
+    color: disabled ? "var(--color-text-secondary)" : "var(--color-text-primary)",
     textAlign: "left",
     cursor: disabled ? "not-allowed" : "pointer",
     borderRadius: "4px",
   } as Partial<CSSStyleDeclaration>);
   const label = document.createElement("span");
-  label.textContent = disabled
-    ? "Preview to here — run in progress"
-    : "Preview to here";
+  label.textContent = disabled ? "Preview to here — run in progress" : "Preview to here";
   const hint = document.createElement("kbd");
   hint.textContent = "⌘.";
   Object.assign(hint.style, {
     marginLeft: "auto",
     padding: "1px 6px",
     borderRadius: "4px",
-    background: "var(--color-surface-300)",
-    color: "var(--color-accent-primary)",
-    fontFamily: "var(--sc-font-mono)",
+    background: "var(--color-background-popover)",
+    color: "var(--color-accent)",
+    fontFamily: "var(--font-family-code)",
     fontSize: "10px",
   } as Partial<CSSStyleDeclaration>);
   item.appendChild(label);

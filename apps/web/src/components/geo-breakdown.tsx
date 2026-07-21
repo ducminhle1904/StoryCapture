@@ -1,5 +1,8 @@
 "use client";
 
+import { Card } from "@astryxdesign/core/Card";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+
 /**
  * Geographic breakdown table for analytics dashboard.
  * Shows country-level view counts sorted by count descending.
@@ -9,9 +12,7 @@
 /** ISO 3166-1 alpha-2 to flag emoji */
 function countryFlag(code: string): string {
   if (code === "XX" || code.length !== 2) return "\u{1F310}"; // globe
-  const codePoints = [...code.toUpperCase()].map(
-    (c) => 0x1f1e6 - 65 + c.charCodeAt(0),
-  );
+  const codePoints = [...code.toUpperCase()].map((c) => 0x1f1e6 - 65 + c.charCodeAt(0));
   return String.fromCodePoint(...codePoints);
 }
 
@@ -38,12 +39,9 @@ interface GeoBreakdownProps {
 export function GeoBreakdown({ data }: GeoBreakdownProps) {
   if (data.length === 0) {
     return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
-        <h3 className="mb-4 text-sm font-medium text-zinc-400">
-          Geographic Breakdown
-        </h3>
-        <p className="text-sm text-zinc-500">No geographic data yet.</p>
-      </div>
+      <Card padding={6}>
+        <EmptyState title="Geographic Breakdown" description="No geographic data yet." isCompact />
+      </Card>
     );
   }
 
@@ -54,8 +52,8 @@ export function GeoBreakdown({ data }: GeoBreakdownProps) {
   const otherCount = data.slice(10).reduce((sum, d) => sum + d.count, 0);
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
-      <h3 className="mb-4 text-sm font-medium text-zinc-400">
+    <Card padding={6}>
+      <h3 className="mb-4 text-sm font-medium text-[var(--color-text-secondary)]">
         Geographic Breakdown
       </h3>
 
@@ -63,39 +61,40 @@ export function GeoBreakdown({ data }: GeoBreakdownProps) {
         {top10.map((item) => {
           const pct = total > 0 ? ((item.count / total) * 100).toFixed(1) : "0";
           return (
-            <div
-              key={item.country}
-              className="flex items-center justify-between text-sm"
-            >
+            <div key={item.country} className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2">
                 <span className="text-base">{countryFlag(item.country)}</span>
-                <span className="text-zinc-200">
+                <span className="text-[var(--color-text-primary)]">
                   {countryName(item.country)}
                 </span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-zinc-400">{item.count.toLocaleString()}</span>
-                <span className="w-12 text-right text-zinc-500">{pct}%</span>
+                <span className="text-[var(--color-text-secondary)]">
+                  {item.count.toLocaleString()}
+                </span>
+                <span className="w-12 text-right text-[var(--color-text-secondary)]">{pct}%</span>
               </div>
             </div>
           );
         })}
 
         {otherCount > 0 && (
-          <div className="flex items-center justify-between border-t border-zinc-800 pt-2 text-sm">
+          <div className="flex items-center justify-between border-t border-[var(--color-border)] pt-2 text-sm">
             <div className="flex items-center gap-2">
               <span className="text-base">{countryFlag("XX")}</span>
-              <span className="text-zinc-400">Other</span>
+              <span className="text-[var(--color-text-secondary)]">Other</span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-zinc-400">{otherCount.toLocaleString()}</span>
-              <span className="w-12 text-right text-zinc-500">
+              <span className="text-[var(--color-text-secondary)]">
+                {otherCount.toLocaleString()}
+              </span>
+              <span className="w-12 text-right text-[var(--color-text-secondary)]">
                 {total > 0 ? ((otherCount / total) * 100).toFixed(1) : "0"}%
               </span>
             </div>
           </div>
         )}
       </div>
-    </div>
+    </Card>
   );
 }

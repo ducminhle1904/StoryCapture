@@ -1,20 +1,14 @@
 /**
  * Panic modal: subscribes to the host's `app:panic` event and renders a
- * recoverable error dialog. Uses Base UI's Dialog primitive (NOT Radix).
+ * recoverable error dialog using Astryx.
  */
 
-import { useEffect, useRef, useState } from "react";
-import { Dialog } from "@base-ui/react/dialog";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { Dialog } from "@astryxdesign/core/Dialog";
 import { Copy, RotateCw, X } from "lucide-react";
-
+import { useEffect, useRef, useState } from "react";
 import { onPanic, type PanicPayload } from "@/ipc";
 import { frontendLog } from "@/lib/log";
-import { Button } from "@/components/ui/button";
-import {
-  dialogBackdropMotionClassName,
-  dialogCenteredPopupMotionClassName,
-  dialogViewportClassName,
-} from "@/components/ui/dialog-motion";
 
 // Cap displayed panic message at 4 KB to keep modal responsive even if
 // the host emits an oversized payload.
@@ -87,49 +81,58 @@ export function PanicModal() {
   };
 
   return (
-    <Dialog.Root open={payload !== null} onOpenChange={(open) => !open && setPayload(null)}>
-      <Dialog.Portal>
-        <Dialog.Backdrop
-          className={`fixed inset-0 z-40 bg-[var(--color-fg-primary)/50] backdrop-blur-sm ${dialogBackdropMotionClassName}`}
-        />
-        <Dialog.Viewport className={dialogViewportClassName}>
-          <Dialog.Popup
-            className={`w-full max-w-md rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-xl ${dialogCenteredPopupMotionClassName}`}
+    <Dialog
+      isOpen={payload !== null}
+      onOpenChange={(open) => !open && setPayload(null)}
+      purpose="info"
+      width={448}
+      padding={6}
+      aria-labelledby="panic-modal-title"
+      aria-describedby="panic-modal-description"
+    >
+      <div>
+        <div className="flex items-start justify-between">
+          <h2
+            id="panic-modal-title"
+            className="text-lg font-semibold text-[var(--color-text-primary)]"
           >
-            <div className="flex items-start justify-between">
-            <Dialog.Title className="text-lg font-semibold text-[var(--color-fg)]">
-              Unexpected error
-            </Dialog.Title>
-            <Dialog.Close
-              aria-label="Dismiss"
-              className="rounded p-1 text-[var(--color-muted)] hover:bg-[var(--color-bg)] hover:text-[var(--color-fg)]"
-            >
-              <X size={16} />
-            </Dialog.Close>
-          </div>
-          <Dialog.Description className="mt-2 text-sm text-[var(--color-muted)]">
-            StoryCapture hit an unexpected error and may be in an inconsistent state.
-            Restarting is recommended.
-          </Dialog.Description>
-          <pre className="font-mono mt-4 max-h-48 overflow-auto rounded bg-[var(--color-bg)] p-3 text-xs text-[var(--color-fg)]">
-{`Thread: ${payload.thread}
+            Unexpected error
+          </h2>
+          <AstryxButton
+            label="Dismiss"
+            icon={<X size={16} />}
+            isIconOnly
+            variant="ghost"
+            size="sm"
+            onClick={() => setPayload(null)}
+          />
+        </div>
+        <p id="panic-modal-description" className="mt-2 text-sm text-[var(--color-text-secondary)]">
+          StoryCapture hit an unexpected error and may be in an inconsistent state. Restarting is
+          recommended.
+        </p>
+        <pre className="font-mono mt-4 max-h-48 overflow-auto rounded bg-[var(--color-background-muted)] p-3 text-xs text-[var(--color-text-primary)]">
+          {`Thread: ${payload.thread}
 ${payload.message}
 
 Log: ${logPath}`}
-          </pre>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={handleCopy}>
-              <Copy size={14} />
-              {copied ? "Copied" : "Copy"}
-            </Button>
-            <Button size="sm" onClick={handleRestart}>
-              <RotateCw size={14} />
-              Restart
-            </Button>
-          </div>
-          </Dialog.Popup>
-        </Dialog.Viewport>
-      </Dialog.Portal>
-    </Dialog.Root>
+        </pre>
+        <div className="mt-4 flex justify-end gap-2">
+          <AstryxButton
+            variant="secondary"
+            size="sm"
+            onClick={handleCopy}
+            label="Copy error details"
+          >
+            <Copy size={14} />
+            {copied ? "Copied" : "Copy"}
+          </AstryxButton>
+          <AstryxButton size="sm" onClick={handleRestart} label="Restart">
+            <RotateCw size={14} />
+            Restart
+          </AstryxButton>
+        </div>
+      </div>
+    </Dialog>
   );
 }

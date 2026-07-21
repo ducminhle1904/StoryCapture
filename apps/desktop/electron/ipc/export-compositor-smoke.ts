@@ -383,7 +383,7 @@ async function runSmoke(
     .filter((font) => font.status === "loaded")
     .map((font) => font.family);
   if (!loadedFontFamilies.includes("Geist Variable")) {
-    throw new Error("Bundled Geist Variable font was not loaded");
+    throw new Error(`Bundled Geist Variable font was not loaded: ${JSON.stringify(text.fonts)}`);
   }
   const pipeline = await runExportPipelineSmoke(path.join(exportsDir, "pipeline-smoke"));
   return {

@@ -4,11 +4,10 @@
  * Keeps the surface calm: clear metadata on the left, explicit actions on the right.
  */
 
-import { useCallback, useState } from "react";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
 import { Check, Play } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
-
-import { Button } from "@/components/ui/button";
+import { useCallback, useState } from "react";
 import type { VoicePreset } from "./voiceoverStore";
 
 export interface VoicePresetCardProps {
@@ -50,10 +49,10 @@ export function VoicePresetCard({
   return (
     <motion.div
       data-testid="voice-preset-card"
-      className={`group flex items-center justify-between gap-4 rounded-[var(--radius-xl)] border px-4 py-4 transition-colors ${
+      className={`group flex items-center justify-between gap-4 rounded-[var(--radius-container)] border px-4 py-4 transition-colors ${
         selected
-          ? "border-[var(--color-accent-primary)]/40 bg-[var(--color-accent-primary)]/8"
-          : "border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] hover:border-[var(--color-border-default)] hover:bg-[var(--color-surface-200)]"
+          ? "border-[var(--color-accent)]/40 bg-[var(--color-accent)]/8"
+          : "border-[var(--color-border)] bg-[var(--color-background-card)] hover:border-[var(--color-border)] hover:bg-[var(--color-background-surface)]"
       }`}
       variants={{
         hidden: reduceMotion ? { opacity: 1 } : { opacity: 0, y: 10 },
@@ -76,35 +75,35 @@ export function VoicePresetCard({
     >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-semibold text-[var(--foreground)]">
+          <span className="truncate text-sm font-semibold text-[var(--color-text-primary)]">
             {preset.name}
           </span>
           {selected ? (
-            <span className="rounded-full bg-[var(--color-accent-primary)]/12 px-2 py-0.5 text-[10px] font-semibold text-[var(--color-accent-primary)]">
+            <span className="rounded-full bg-[var(--color-accent)]/12 px-2 py-0.5 text-[10px] font-semibold text-[var(--color-accent)]">
               Selected
             </span>
           ) : null}
           {preset.premium ? (
-            <span className="rounded-full bg-[var(--warning)]/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--warning)]">
+            <span className="rounded-full bg-[var(--color-warning)]/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--color-warning)]">
               Premium
             </span>
           ) : null}
           {featured && !selected ? (
-            <span className="rounded-full bg-[var(--accent)]/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)]">
+            <span className="rounded-full bg-[var(--color-accent)]/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--color-accent)]">
               Featured
             </span>
           ) : null}
         </div>
 
-        <div className="mt-1 flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+        <div className="mt-1 flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
           <span>{preset.locale ?? "Global"}</span>
-          <span className="text-[var(--border)]">/</span>
+          <span className="text-[var(--color-border)]">/</span>
           <span>{preset.provider === "elevenlabs" ? "ElevenLabs" : "OpenAI"}</span>
         </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        <Button
+        <AstryxButton
           variant="ghost"
           size="sm"
           onClick={(e) => {
@@ -113,23 +112,25 @@ export function VoicePresetCard({
           }}
           aria-pressed={isPlaying}
           aria-label={`Preview voice ${preset.name}, locale ${preset.locale ?? "unknown"}`}
+          label={`Preview voice ${preset.name}, locale ${preset.locale ?? "unknown"}`}
         >
           <Play className="h-3.5 w-3.5" />
           {isPlaying ? "Playing" : "Preview"}
-        </Button>
-        <Button
-          variant={selected ? "outline" : "default"}
+        </AstryxButton>
+        <AstryxButton
+          variant={selected ? "secondary" : "primary"}
           size="sm"
           onClick={(e) => {
             e.stopPropagation();
             handleSelect();
           }}
-          disabled={selected}
+          isDisabled={selected}
           aria-label={selected ? `${preset.name} selected` : `Choose ${preset.name}`}
+          label={selected ? `${preset.name} selected` : `Choose ${preset.name}`}
         >
           {selected ? <Check className="h-3.5 w-3.5" /> : null}
           {selected ? "Selected" : "Choose"}
-        </Button>
+        </AstryxButton>
       </div>
     </motion.div>
   );

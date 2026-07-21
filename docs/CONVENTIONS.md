@@ -65,19 +65,23 @@ Concrete patterns used in the current Electron/TypeScript codebase.
 
 ## UI
 
-- Base UI compound components are the default primitive foundation.
-- Use `@storycapture/ui` and the `claude-design` `Sc*` primitives where a
-  matching primitive exists.
+- Astryx is the generic component and visual-style foundation. Import generic
+  components directly from `@astryxdesign/core/<Component>`; do not add local
+  wrappers that only rename Astryx props.
+- `@storycapture/ui` owns `StoryCaptureThemeProvider`, the compiled Gothic
+  theme, local font CSS, and `--story-*` product tokens. The application theme
+  is permanently dark and has no user-facing mode switch or persistence key.
 - Icons come from `lucide-react`.
 - Motion uses `motion/react`.
-- Use tokens from `@storycapture/ui/tokens.css` or the `claude-design` token
-  layer. Avoid hardcoded colors and spacing unless the surrounding file already
-  requires it.
-- Do not introduce Radix assumptions into `packages/ui`; current primitives are
-  Base UI based.
-- Current `Sc*` primitive families include Badge, Button, Callout, Card,
-  EmptyState, Field, Input, Kbd, Segmented, Select, Skeleton, Slider, Switch,
-  Tabs, and Textarea. `ScTabs` currently has no matching primitive test file.
+- Tailwind is restricted to layout, responsive behavior, position, overflow,
+  and dimensions. Colors, typography, borders, radii, shadows, and interactive
+  states come from Astryx components or theme tokens.
+- Product-specific compound components are allowed only when they own behavior
+  Astryx does not, such as Electron window chrome and `StoryColorField`.
+- Recorded media, user-authored composition, and the export compositor remain
+  outside the application theme boundary.
+- Run `pnpm ui:legacy-check` after UI work. It rejects retired UI imports,
+  dependencies, tokens, light-theme selectors, and local primitive directories.
 
 ## Web
 
@@ -122,8 +126,8 @@ Coverage shape:
 - Web tests currently cover workflow helpers, sync metadata, and template
   metadata. Auth, upload APIs, invite/RBAC, analytics cron, watch/embed/oEmbed,
   and route availability are not broadly covered.
-- UI primitive tests live under
-  `packages/ui/src/claude-design/primitives/__tests__/`.
+- UI foundation tests live under `packages/ui/src/theme/` and cover the Gothic
+  provider plus representative Astryx primitives and reset-cascade behavior.
 - `packages/story-dsl` currently has no test files; use package typecheck plus
   consuming desktop tests for DSL/editor behavior.
 

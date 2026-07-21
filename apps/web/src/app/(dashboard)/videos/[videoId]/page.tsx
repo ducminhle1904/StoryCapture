@@ -1,21 +1,21 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useTRPC } from "@/trpc/client";
+import { AlertDialog } from "@astryxdesign/core/AlertDialog";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { TextInput } from "@astryxdesign/core/TextInput";
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
-import { VideoPlayer } from "@/components/video-player";
-import { PrivacyToggle } from "@/components/privacy-toggle";
+import { useCallback, useState } from "react";
 import { EmbedCode } from "@/components/embed-code";
+import { PrivacyToggle } from "@/components/privacy-toggle";
+import { VideoPlayer } from "@/components/video-player";
+import { useTRPC } from "@/trpc/client";
 
 /**
  * Video detail/management page (auth-gated via dashboard layout).
  * Shows video preview, privacy toggle, slug editor, embed code, delete button.
  */
-export default function VideoDetailPage({
-  params,
-}: {
-  params: Promise<{ videoId: string }>;
-}) {
+export default function VideoDetailPage({ params }: { params: Promise<{ videoId: string }> }) {
   // Unwrap params via use() for Next.js 15 async params
   const { videoId } = use(params);
 
@@ -27,36 +27,29 @@ import { use } from "react";
 function VideoDetailContent({ videoId }: { videoId: string }) {
   const trpc = useTRPC();
 
-  const { data: video, refetch } = useSuspenseQuery(
-    trpc.video.getById.queryOptions({ videoId }),
-  );
+  const { data: video, refetch } = useSuspenseQuery(trpc.video.getById.queryOptions({ videoId }));
 
   return (
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-zinc-50">{video.projectName}</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          {video.fileName} &middot;{" "}
-          {(video.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB
+        <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">{video.projectName}</h1>
+        <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+          {video.fileName} &middot; {(video.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB
         </p>
       </div>
 
       {/* Video preview */}
       <section>
-        <h2 className="mb-3 text-sm font-medium text-zinc-300">Preview</h2>
+        <h2 className="mb-3 text-sm font-medium text-[var(--color-text-primary)]">Preview</h2>
         <div className="max-w-2xl">
-          <VideoPlayer
-            src={video.videoUrl}
-            poster={video.thumbnailUrl}
-            className="rounded-lg"
-          />
+          <VideoPlayer src={video.videoUrl} poster={video.thumbnailUrl} className="rounded-lg" />
         </div>
       </section>
 
       {/* Privacy toggle */}
       <section>
-        <h2 className="mb-3 text-sm font-medium text-zinc-300">Privacy</h2>
+        <h2 className="mb-3 text-sm font-medium text-[var(--color-text-primary)]">Privacy</h2>
         <PrivacyToggleSection
           videoId={video.id}
           initialIsPublic={video.isPublic}
@@ -66,12 +59,8 @@ function VideoDetailContent({ videoId }: { videoId: string }) {
 
       {/* Slug editor */}
       <section>
-        <h2 className="mb-3 text-sm font-medium text-zinc-300">Share URL</h2>
-        <SlugEditor
-          videoId={video.id}
-          currentSlug={video.slug}
-          onChanged={refetch}
-        />
+        <h2 className="mb-3 text-sm font-medium text-[var(--color-text-primary)]">Share URL</h2>
+        <SlugEditor videoId={video.id} currentSlug={video.slug} onChanged={refetch} />
       </section>
 
       {/* Embed code */}
@@ -79,26 +68,24 @@ function VideoDetailContent({ videoId }: { videoId: string }) {
         <EmbedCode
           videoId={video.id}
           baseUrl={
-            typeof window !== "undefined"
-              ? window.location.origin
-              : "https://storycapture.app"
+            typeof window !== "undefined" ? window.location.origin : "https://storycapture.app"
           }
         />
       </section>
 
       {/* Analytics */}
       <section>
-        <h2 className="mb-3 text-sm font-medium text-zinc-300">Analytics</h2>
-        <a
+        <h2 className="mb-3 text-sm font-medium text-[var(--color-text-primary)]">Analytics</h2>
+        <Button
           href={`/analytics/${videoId}`}
-          className="inline-flex items-center gap-1 text-sm text-zinc-400 underline transition-colors hover:text-zinc-200"
-        >
-          View analytics
-        </a>
+          label="View analytics"
+          variant="secondary"
+          size="sm"
+        />
       </section>
 
       {/* Delete */}
-      <section className="border-t border-zinc-800 pt-6">
+      <section className="border-t border-[var(--color-border)] pt-6">
         <DeleteVideoSection videoId={video.id} />
       </section>
     </div>
@@ -128,11 +115,7 @@ function PrivacyToggleSection({
   );
 
   return (
-    <PrivacyToggle
-      videoId={videoId}
-      initialIsPublic={initialIsPublic}
-      onToggle={handleToggle}
-    />
+    <PrivacyToggle videoId={videoId} initialIsPublic={initialIsPublic} onToggle={handleToggle} />
   );
 }
 
@@ -161,40 +144,38 @@ function SlugEditor({
       await mutation.mutateAsync({ videoId, newSlug: slug });
       onChanged();
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to update slug.";
+      const message = err instanceof Error ? err.message : "Failed to update slug.";
       setError(message);
     }
   }, [slug, currentSlug, videoId, mutation, onChanged]);
 
   const baseUrl =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : "https://storycapture.app";
+    typeof window !== "undefined" ? window.location.origin : "https://storycapture.app";
 
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <span className="text-sm text-zinc-500">{baseUrl}/watch/</span>
-        <input
-          type="text"
+        <span className="text-sm text-[var(--color-text-secondary)]">{baseUrl}/watch/</span>
+        <TextInput
+          label="Video slug"
+          isLabelHidden
           value={slug}
-          onChange={(e) => setSlug(e.target.value.toLowerCase())}
-          className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-200 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+          onChange={(value) => setSlug(value.toLowerCase())}
           placeholder="my-video-slug"
+          width={240}
         />
-        <button
+        <Button
+          label="Save"
+          variant="primary"
           onClick={handleSave}
-          disabled={slug === currentSlug || mutation.isPending}
-          className="rounded-md bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {mutation.isPending ? "Saving..." : "Save"}
-        </button>
+          isLoading={mutation.isPending}
+          isDisabled={slug === currentSlug || mutation.isPending}
+        />
       </div>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <Banner status="error" title="Could not update share URL" description={error} />}
 
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-[var(--color-text-secondary)]">
         Lowercase letters, numbers, and hyphens only. 3-60 characters.
       </p>
     </div>
@@ -215,41 +196,21 @@ function DeleteVideoSection({ videoId }: { videoId: string }) {
     window.location.href = "/";
   }, [videoId, mutation]);
 
-  if (confirming) {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm font-medium text-red-400">
-          Are you sure you want to delete this video? This action cannot be
-          undone.
-        </p>
-        <div className="flex gap-2">
-          <button
-            onClick={handleDelete}
-            disabled={mutation.isPending}
-            className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
-          >
-            {mutation.isPending ? "Deleting..." : "Yes, delete"}
-          </button>
-          <button
-            onClick={() => setConfirming(false)}
-            className="rounded-md bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div>
-      <h2 className="mb-2 text-sm font-medium text-zinc-300">Danger Zone</h2>
-      <button
-        onClick={() => setConfirming(true)}
-        className="rounded-md border border-red-800 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-950"
-      >
-        Delete Video
-      </button>
+    <div className="space-y-3">
+      <h2 className="text-sm font-medium text-[var(--color-error)]">Danger Zone</h2>
+      <Button label="Delete video" variant="destructive" onClick={() => setConfirming(true)} />
+      <AlertDialog
+        isOpen={confirming}
+        onOpenChange={setConfirming}
+        title="Delete video?"
+        description="This action cannot be undone."
+        cancelLabel="Cancel"
+        actionLabel="Delete video"
+        actionVariant="destructive"
+        isActionLoading={mutation.isPending}
+        onAction={() => void handleDelete()}
+      />
     </div>
   );
 }

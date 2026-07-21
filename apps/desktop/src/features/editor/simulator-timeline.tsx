@@ -1,7 +1,6 @@
 import { AlertTriangle, ArrowUpRight, Copy, Crosshair, Loader2, Play, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
 import { editorController } from "@/features/editor/controller";
 import { triggerPickFromEditor } from "@/features/editor/PreviewPickerButton";
 import { TARGET_VERBS } from "@/features/editor/picker-emit-rewrite";
@@ -9,6 +8,7 @@ import { verbIcon } from "@/features/editor/verb-icons";
 import type { Command, SelectorOrText } from "@/ipc/parse";
 import { simulatorCancel, simulatorPromoteFallback, simulatorStart } from "@/ipc/simulator";
 import { frontendLog } from "@/lib/log";
+import { notifications } from "@/lib/notifications";
 import { useEditorStore } from "@/state/editor";
 import { useSimulatorStore } from "@/state/simulator-store";
 
@@ -111,7 +111,7 @@ export function SimulatorTimeline({
   const lastFailedRunStateRef = useRef<string | null>(null);
   useEffect(() => {
     if (runState === "failed" && lastFailedRunStateRef.current !== "failed") {
-      toast.error(`Step ${currentOrd ?? "?"} failed`, {
+      notifications.error(`Step ${currentOrd ?? "?"} failed`, {
         description: error ?? "selector not found",
         duration: 8000,
       });
@@ -165,7 +165,7 @@ export function SimulatorTimeline({
           : typeof err === "object" && err !== null
             ? ((err as { message?: string }).message ?? JSON.stringify(err))
             : String(err);
-      toast.error(`Could not start simulator: ${msg}`);
+      notifications.error(`Could not start simulator: ${msg}`);
     }
   };
 
@@ -174,7 +174,7 @@ export function SimulatorTimeline({
     try {
       await simulatorCancel(sessionId);
     } catch (err) {
-      toast.error(`Cancel failed: ${String(err)}`);
+      notifications.error(`Cancel failed: ${String(err)}`);
     }
   };
 
@@ -218,14 +218,14 @@ export function SimulatorTimeline({
   return (
     <section
       aria-labelledby="simulator-panel-title"
-      className="flex flex-col overflow-hidden border-t border-[var(--sc-border-2)] bg-[var(--sc-surface)]"
+      className="flex flex-col overflow-hidden border-t border-[var(--color-border-emphasized)] bg-[var(--color-background-surface)]"
       style={{ minHeight: 128, maxHeight: "30vh" }}
     >
-      <header className="flex items-center justify-between border-b border-[var(--sc-border-2)] px-3 py-1.5">
+      <header className="flex items-center justify-between border-b border-[var(--color-border-emphasized)] px-3 py-1.5">
         <h3 id="simulator-panel-title" className="sr-only">
           Simulator
         </h3>
-        <span className="font-mono text-[10px] tabular-nums text-[var(--sc-text-3)]">
+        <span className="font-mono text-[10px] tabular-nums text-[var(--color-text-secondary)]">
           {headerLabel}
         </span>
         <div className="flex items-center gap-3">
@@ -234,7 +234,7 @@ export function SimulatorTimeline({
               type="button"
               onClick={handleCancel}
               aria-label="Cancel simulator run"
-              className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface-3)] px-2 py-1 text-xs font-medium text-[var(--sc-text)] hover:bg-[var(--sc-record)]/12 active:translate-y-[1px]"
+              className="inline-flex items-center gap-1 rounded-[var(--radius-inner)] border border-[var(--color-border)] bg-[var(--color-background-muted)] px-2 py-1 text-xs font-medium text-[var(--color-text-primary)] hover:bg-[var(--story-recording)]/12 active:translate-y-[1px]"
             >
               <X size={12} aria-hidden="true" />
               Cancel
@@ -254,10 +254,10 @@ export function SimulatorTimeline({
                       ? "Live Preview is starting — wait for the badge to read 'live'"
                       : undefined
               }
-              className={`inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-2.5 py-1 text-xs font-semibold transition-colors active:translate-y-[1px] disabled:cursor-not-allowed ${
+              className={`inline-flex items-center gap-1 rounded-[var(--radius-inner)] px-2.5 py-1 text-xs font-semibold transition-colors active:translate-y-[1px] disabled:cursor-not-allowed ${
                 canRun
-                  ? "bg-[var(--sc-accent-500)] text-[var(--sc-text)] hover:bg-[var(--sc-accent-400)]"
-                  : "border border-[var(--sc-border)] bg-[var(--sc-surface-3)] text-[var(--sc-text-3)] opacity-60"
+                  ? "bg-[var(--color-accent)] text-[var(--color-text-primary)] hover:bg-[var(--color-accent)]"
+                  : "border border-[var(--color-border)] bg-[var(--color-background-muted)] text-[var(--color-text-secondary)] opacity-60"
               }`}
             >
               <Play size={12} aria-hidden="true" />
@@ -268,7 +268,7 @@ export function SimulatorTimeline({
       </header>
 
       {!appUrlValid && (
-        <div className="border-b border-[var(--sc-border-2)] bg-[var(--sc-surface-2)] px-3 py-2 text-[11px] text-[var(--sc-text-3)]">
+        <div className="border-b border-[var(--color-border-emphasized)] bg-[var(--color-background-card)] px-3 py-2 text-[11px] text-[var(--color-text-secondary)]">
           Set <code>meta.app</code> to run
         </div>
       )}
@@ -282,7 +282,7 @@ export function SimulatorTimeline({
             aria-label="Simulator frames"
             tabIndex={0}
             onKeyDown={handleStripKeyDown}
-            className="flex gap-[2px] overflow-x-auto rounded-[var(--radius-sm)] bg-[var(--sc-surface-2)] p-1 focus:outline-none focus:ring-1 focus:ring-[var(--sc-accent-400)]"
+            className="flex gap-[2px] overflow-x-auto rounded-[var(--radius-inner)] bg-[var(--color-background-card)] p-1 focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
           >
             <AnimatePresence initial={false}>
               {frames.map((f) => {
@@ -291,9 +291,9 @@ export function SimulatorTimeline({
                 const Icon = verbIcon(cmd?.verb ?? "");
                 const stripeColor =
                   isFailed && f.ordinal === currentOrd
-                    ? "var(--sc-record)"
+                    ? "var(--story-recording)"
                     : f.match_kind === "fuzzy"
-                      ? "var(--sc-warn)"
+                      ? "var(--color-warning)"
                       : null;
                 return (
                   <motion.button
@@ -305,22 +305,22 @@ export function SimulatorTimeline({
                     aria-label={`Simulator frame ${f.ordinal}, ${f.duration_ms}ms, ${f.match_kind}`}
                     onClick={() => setCurrent(f.ordinal)}
                     transition={{ type: "spring", stiffness: 160, damping: 22 }}
-                    className={`relative flex h-12 w-12 shrink-0 cursor-pointer flex-col items-center justify-between rounded-[var(--radius-xs)] py-1 text-[var(--sc-text-2)] transition-colors active:translate-y-[1px] ${
-                      isActive ? "" : "hover:bg-[var(--sc-surface-4)]"
+                    className={`relative flex h-12 w-12 shrink-0 cursor-pointer flex-col items-center justify-between rounded-[var(--radius-inner)] py-1 text-[var(--color-text-secondary)] transition-colors active:translate-y-[1px] ${
+                      isActive ? "" : "hover:bg-[var(--color-background-muted)]"
                     }`}
                     style={{
                       background: isActive
-                        ? "color-mix(in oklch, var(--sc-accent-400) 14%, var(--sc-surface-3))"
+                        ? "color-mix(in oklch, var(--color-accent) 14%, var(--color-background-muted))"
                         : undefined,
                       outline: isActive
-                        ? "1px solid color-mix(in oklch, var(--sc-accent-400) 55%, transparent)"
+                        ? "1px solid color-mix(in oklch, var(--color-accent) 55%, transparent)"
                         : undefined,
                       outlineOffset: 0,
                       borderBottom: stripeColor ? `2px solid ${stripeColor}` : undefined,
                     }}
                   >
                     <Icon size={14} aria-hidden="true" />
-                    <span className="font-mono text-[9px] tabular-nums text-[var(--sc-text-3)]">
+                    <span className="font-mono text-[9px] tabular-nums text-[var(--color-text-secondary)]">
                       {totalSteps >= 10 ? String(f.ordinal).padStart(2, "0") : f.ordinal}
                     </span>
                   </motion.button>
@@ -330,15 +330,17 @@ export function SimulatorTimeline({
           </div>
 
           {active != null && (
-            <div className="flex items-center gap-3 border-t border-[var(--sc-border-2)] px-3 py-1.5 font-mono text-[11px]">
-              <span className="rounded-[var(--radius-xs)] bg-[var(--sc-surface-3)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--sc-text-2)]">
+            <div className="flex items-center gap-3 border-t border-[var(--color-border-emphasized)] px-3 py-1.5 font-mono text-[11px]">
+              <span className="rounded-[var(--radius-inner)] bg-[var(--color-background-muted)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--color-text-secondary)]">
                 {totalSteps >= 10 ? String(active.ordinal).padStart(2, "0") : active.ordinal}
               </span>
-              {activeCmd && <span className="text-[var(--sc-text)]">{activeCmd.verb}</span>}
-              <span className="min-w-0 flex-1 truncate text-[var(--sc-text-3)]">
+              {activeCmd && (
+                <span className="text-[var(--color-text-primary)]">{activeCmd.verb}</span>
+              )}
+              <span className="min-w-0 flex-1 truncate text-[var(--color-text-secondary)]">
                 {activeCmd ? summarizeTarget(activeCmd) : ""}
               </span>
-              <span className="text-[10px] tabular-nums text-[var(--sc-text-3)]">
+              <span className="text-[10px] tabular-nums text-[var(--color-text-secondary)]">
                 {active.duration_ms}ms
               </span>
               <span className="inline-flex items-center gap-1">
@@ -348,13 +350,13 @@ export function SimulatorTimeline({
                   style={{
                     background:
                       active.match_kind === "primary"
-                        ? "var(--sc-success)"
+                        ? "var(--color-success)"
                         : active.match_kind === "fuzzy"
-                          ? "var(--sc-warn)"
-                          : "var(--sc-text-4)",
+                          ? "var(--color-warning)"
+                          : "var(--color-text-disabled)",
                   }}
                 />
-                <span className="text-[10px] text-[var(--sc-text-3)]">
+                <span className="text-[10px] text-[var(--color-text-secondary)]">
                   {active.match_kind === "primary"
                     ? "matched"
                     : active.match_kind === "fuzzy"
@@ -372,13 +374,13 @@ export function SimulatorTimeline({
                       if (!sessionId) return;
                       try {
                         await simulatorPromoteFallback(sessionId, active.ordinal);
-                        toast.success(`Fallback added for step ${active.ordinal}`);
+                        notifications.success(`Fallback added for step ${active.ordinal}`);
                       } catch (err) {
-                        toast.error(`Could not write fallback (${String(err)})`);
+                        notifications.error(`Could not write fallback (${String(err)})`);
                       }
                     })();
                   }}
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-[var(--radius-xs)] border border-[var(--sc-border)] bg-[var(--sc-surface-3)] text-[var(--sc-text-2)] hover:bg-[var(--sc-surface-4)] active:translate-y-[1px]"
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-[var(--radius-inner)] border border-[var(--color-border)] bg-[var(--color-background-muted)] text-[var(--color-text-secondary)] hover:bg-[var(--color-background-muted)] active:translate-y-[1px]"
                 >
                   <ArrowUpRight size={11} aria-hidden="true" />
                 </button>
@@ -388,7 +390,7 @@ export function SimulatorTimeline({
 
           {isRunning && inFlightOrdinal != null && (
             <div
-              className="flex items-center gap-2 border-t border-[var(--sc-border-2)] bg-[var(--sc-surface-2)] px-3 py-1.5 text-[11px] text-[var(--sc-text-2)]"
+              className="flex items-center gap-2 border-t border-[var(--color-border-emphasized)] bg-[var(--color-background-card)] px-3 py-1.5 text-[11px] text-[var(--color-text-secondary)]"
               role="status"
               aria-live="polite"
             >
@@ -399,7 +401,7 @@ export function SimulatorTimeline({
                 {inFlightElapsedMs >= 3000 ? ` · ${Math.round(inFlightElapsedMs / 1000)}s` : ""}
               </span>
               {inFlightElapsedMs >= 8000 && (
-                <span className="ml-auto text-[10px] text-[var(--sc-warn)]">
+                <span className="ml-auto text-[10px] text-[var(--color-warning)]">
                   Taking longer than expected — selector may not match
                 </span>
               )}
@@ -422,7 +424,7 @@ export function SimulatorTimeline({
                 (TARGET_VERBS as readonly string[]).includes(failedCmd.verb);
               return (
                 <div
-                  className="flex items-start gap-2 border-t-2 border-[var(--sc-record)] bg-[var(--sc-record)]/20 px-3 py-2 text-[12px] font-medium text-[var(--sc-record)]"
+                  className="flex items-start gap-2 border-t-2 border-[var(--story-recording)] bg-[var(--story-recording)]/20 px-3 py-2 text-[12px] font-medium text-[var(--story-recording)]"
                   role="alert"
                 >
                   <AlertTriangle size={14} aria-hidden="true" className="shrink-0 mt-[1px]" />
@@ -441,12 +443,12 @@ export function SimulatorTimeline({
                       onClick={() => {
                         const ok = editorController.jumpToLine(failedCmd.span.line);
                         if (!ok) {
-                          toast.error("Editor not ready");
+                          notifications.error("Editor not ready");
                           return;
                         }
                         triggerPickFromEditor();
                       }}
-                      className="ml-auto shrink-0 inline-flex items-center gap-1 rounded-[var(--radius-xs)] border border-[var(--sc-record)]/50 bg-[var(--sc-record)]/15 px-2 py-0.5 text-[11px] font-semibold hover:bg-[var(--sc-record)]/30 active:translate-y-[1px]"
+                      className="ml-auto shrink-0 inline-flex items-center gap-1 rounded-[var(--radius-inner)] border border-[var(--story-recording)]/50 bg-[var(--story-recording)]/15 px-2 py-0.5 text-[11px] font-semibold hover:bg-[var(--story-recording)]/30 active:translate-y-[1px]"
                       aria-label="Re-pick selector for failed step"
                       title="Jump to line and start picker"
                     >
@@ -459,9 +461,9 @@ export function SimulatorTimeline({
                       type="button"
                       onClick={() => {
                         void navigator.clipboard?.writeText(active.matched_selector ?? "");
-                        toast.success("Selector copied");
+                        notifications.success("Selector copied");
                       }}
-                      className="shrink-0 inline-flex items-center gap-1 rounded-[var(--radius-xs)] px-1 py-0.5 hover:bg-[var(--sc-record)]/30 active:translate-y-[1px]"
+                      className="shrink-0 inline-flex items-center gap-1 rounded-[var(--radius-inner)] px-1 py-0.5 hover:bg-[var(--story-recording)]/30 active:translate-y-[1px]"
                       aria-label="Copy matched selector"
                     >
                       <Copy size={11} aria-hidden="true" />
@@ -479,7 +481,7 @@ export function SimulatorTimeline({
 function EmptyState() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-4 py-6 text-center">
-      <p className="text-[10px] text-[var(--sc-text-3)]">Run to replay this story.</p>
+      <p className="text-[10px] text-[var(--color-text-secondary)]">Run to replay this story.</p>
     </div>
   );
 }

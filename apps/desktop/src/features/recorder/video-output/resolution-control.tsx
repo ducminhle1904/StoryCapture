@@ -1,16 +1,8 @@
+import { NumberInput as AstryxNumberInput } from "@astryxdesign/core/NumberInput";
+import { Selector as AstryxSelector } from "@astryxdesign/core/Selector";
 import type { OutputResolutionDto } from "@storycapture/shared-types";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useId, useState } from "react";
-
-import { NumberField } from "@/components/ui/number-field";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useOutputPrefsStore } from "@/state/output-prefs";
 
 import { type ValidationResult, validateCustomDims } from "./bitrate";
@@ -39,8 +31,8 @@ export function ResolutionControl({ disabled, onErrorChange }: Props) {
   const errorId = useId();
 
   const isCustom = resolution.kind === "custom";
-  const [wRaw, setWRaw] = useState<number | "">(isCustom ? resolution.w : 1280);
-  const [hRaw, setHRaw] = useState<number | "">(isCustom ? resolution.h : 720);
+  const [wRaw, setWRaw] = useState<number | null>(isCustom ? resolution.w : 1280);
+  const [hRaw, setHRaw] = useState<number | null>(isCustom ? resolution.h : 720);
 
   useEffect(() => {
     if (!isCustom) {
@@ -66,9 +58,15 @@ export function ResolutionControl({ disabled, onErrorChange }: Props) {
 
   return (
     <div className="flex flex-col gap-2">
-      <Select
+      <AstryxSelector
+        label={LABEL_RESOLUTION}
+        isLabelHidden
         value={resolution.kind}
-        onValueChange={(raw) => {
+        options={KIND_OPTIONS.map((kind) => ({
+          value: kind,
+          label: RESOLUTION_OPTION_LABELS[kind],
+        }))}
+        onChange={(raw) => {
           const k = raw as ResKind;
           if (k === "custom") {
             const cw = typeof wRaw === "number" ? wRaw : 1280;
@@ -80,21 +78,9 @@ export function ResolutionControl({ disabled, onErrorChange }: Props) {
             setKnob("resolution", { kind: k } as OutputResolutionDto);
           }
         }}
-        disabled={disabled}
-      >
-        <SelectTrigger aria-label={LABEL_RESOLUTION} className="w-full">
-          <SelectValue>{RESOLUTION_OPTION_LABELS[resolution.kind]}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            {KIND_OPTIONS.map((k) => (
-              <SelectItem key={k} value={k}>
-                {RESOLUTION_OPTION_LABELS[k]}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
+        isDisabled={disabled}
+        width="100%"
+      />
 
       <AnimatePresence initial={false}>
         {isCustom && (
@@ -106,38 +92,48 @@ export function ResolutionControl({ disabled, onErrorChange }: Props) {
             className="overflow-hidden"
           >
             <div className="flex items-center gap-2">
-              <div className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] text-[var(--color-fg-muted)]">
+              <div className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] text-[var(--color-text-secondary)]">
                 <label htmlFor={`${errorId}-w`}>{LABEL_CUSTOM_W}</label>
-                <NumberField
+                <AstryxNumberInput
+                  label={LABEL_CUSTOM_W}
+                  isLabelHidden
                   id={`${errorId}-w`}
                   value={wRaw}
+                  hasClear
                   onChange={setWRaw}
                   min={16}
                   max={7680}
                   step={2}
-                  invalid={invalid}
-                  errorId={errorId}
-                  disabled={disabled}
+                  status={invalid ? { type: "error" } : undefined}
+                  aria-describedby={invalid ? errorId : undefined}
+                  isDisabled={disabled}
+                  width="100%"
                 />
               </div>
-              <div className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] text-[var(--color-fg-muted)]">
+              <div className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] text-[var(--color-text-secondary)]">
                 <label htmlFor={`${errorId}-h`}>{LABEL_CUSTOM_H}</label>
-                <NumberField
+                <AstryxNumberInput
+                  label={LABEL_CUSTOM_H}
+                  isLabelHidden
                   id={`${errorId}-h`}
                   value={hRaw}
+                  hasClear
                   onChange={setHRaw}
                   min={16}
                   max={4320}
                   step={2}
-                  invalid={invalid}
-                  errorId={errorId}
-                  disabled={disabled}
+                  status={invalid ? { type: "error" } : undefined}
+                  aria-describedby={invalid ? errorId : undefined}
+                  isDisabled={disabled}
+                  width="100%"
                 />
               </div>
             </div>
-            <p className="mt-1 text-[10px] text-[var(--color-fg-muted)]">{HELPER_CUSTOM_DIMS}</p>
+            <p className="mt-1 text-[10px] text-[var(--color-text-secondary)]">
+              {HELPER_CUSTOM_DIMS}
+            </p>
             {invalid && (
-              <p id={errorId} className="mt-1 text-[11px] text-[var(--color-danger)]" role="alert">
+              <p id={errorId} className="mt-1 text-[11px] text-[var(--color-error)]" role="alert">
                 {WARN_HARD_CUSTOM_DIMS}
               </p>
             )}

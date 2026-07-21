@@ -1,10 +1,11 @@
-import { ScButton, ScCard, ScInput } from "@storycapture/ui";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { Card as AstryxCard } from "@astryxdesign/core/Card";
+import { TextInput as AstryxTextInput } from "@astryxdesign/core/TextInput";
 import { AlertTriangle, Search } from "lucide-react";
 import { useMemo, useRef } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useNavigate } from "react-router-dom";
-import storyToVideoEmptySrc from "@/assets/illustrations/story-to-video-empty.png";
-import { EmptyState } from "@/components/empty-state/empty-state";
+import { StoryEmptyState } from "@/components/empty-state/empty-state";
 import { PageContentTransition } from "@/components/page-content-transition";
 import { ProjectGrid } from "@/features/dashboard/project-grid";
 import { filterAndSort, mostRecentTimestamp } from "@/features/dashboard/project-utils";
@@ -12,40 +13,15 @@ import { useProjects } from "@/ipc/projects";
 import { relativeTime } from "@/lib/utils";
 import { useDashboardStore } from "@/state/projects";
 
-function StoryToVideoIllustration() {
-  return (
-    <img
-      src={storyToVideoEmptySrc}
-      alt=""
-      aria-hidden="true"
-      style={{
-        display: "block",
-        width: 172,
-        height: 172,
-        objectFit: "cover",
-        borderRadius: "var(--sc-r-lg)",
-        border: "1px solid var(--sc-border)",
-        boxShadow: "0 18px 50px rgba(0,0,0,0.34)",
-      }}
-    />
-  );
-}
-
 function EmptyPostProduction({ onGoToProjects }: { onGoToProjects: () => void }) {
   return (
-    <EmptyState
-      illustration={<StoryToVideoIllustration />}
+    <StoryEmptyState
       title="No recordings yet"
-      body="Record a story to start post-production."
+      description="Record a story to start post-production."
       actions={
-        <ScButton variant="primary" onClick={onGoToProjects}>
+        <AstryxButton variant="primary" onClick={onGoToProjects} label="Go to Projects">
           Go to Projects
-        </ScButton>
-      }
-      footer={
-        <>
-          Try <span className="sc-kbd">⌘K</span> for commands.
-        </>
+        </AstryxButton>
       }
     />
   );
@@ -87,29 +63,31 @@ export default function PostProductionLandingRoute() {
       id="main-content"
       style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}
     >
-      <div className="sc-toolbar sc-window-chrome">
+      <div className="story-toolbar story-window-chrome">
         <div>
-          <div className="sc-toolbar-title">Post-Production</div>
-          <div style={{ fontSize: 11, color: "var(--sc-text-4)", marginTop: 1 }}>{metaLine}</div>
+          <div className="story-toolbar-title">Post-Production</div>
+          <div style={{ fontSize: 11, color: "var(--color-text-disabled)", marginTop: 1 }}>
+            {metaLine}
+          </div>
         </div>
-        <span className="sc-spacer" />
-        <ScInput
+        <span className="story-spacer" />
+        <AstryxTextInput
           ref={searchRef}
-          icon={<Search size={13} aria-hidden="true" />}
-          kbd="⌘F"
+          label="Search projects"
+          isLabelHidden
+          startIcon={<Search size={13} aria-hidden="true" />}
           placeholder="Search projects"
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          aria-label="Search projects"
+          onChange={setSearchQuery}
           style={{ width: 240 }}
         />
       </div>
 
-      <PageContentTransition className="sc-scroll" style={{ flex: 1, padding: 20 }}>
+      <PageContentTransition className="story-scroll" style={{ flex: 1, padding: 20 }}>
         {isLoading ? (
-          <ScCard role="status" style={{ padding: 32, color: "var(--sc-text-4)" }}>
+          <AstryxCard role="status" style={{ padding: 32, color: "var(--color-text-disabled)" }}>
             Loading projects…
-          </ScCard>
+          </AstryxCard>
         ) : error ? (
           <div
             role="alert"
@@ -120,7 +98,7 @@ export default function PostProductionLandingRoute() {
               border: "1px solid oklch(0.65 0.20 22 / 0.28)",
               background: "oklch(0.65 0.20 22 / 0.10)",
               color: "oklch(0.80 0.18 22)",
-              borderRadius: "var(--sc-r-lg)",
+              borderRadius: "var(--radius-container)",
               padding: 16,
               fontSize: 13,
             }}
@@ -140,8 +118,8 @@ export default function PostProductionLandingRoute() {
                 gap: 10,
               }}
             >
-              <div className="sc-h">Pick a project</div>
-              <div style={{ height: 1, flex: 1, background: "var(--sc-border)" }} />
+              <div className="story-section-heading">Pick a project</div>
+              <div style={{ height: 1, flex: 1, background: "var(--color-border)" }} />
             </div>
             <ProjectGrid projects={visible} onOpen={openProject} onNewStory={goToProjects} />
           </>

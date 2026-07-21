@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("sonner", () => ({
-  toast: Object.assign(vi.fn(), {
+vi.mock("@/lib/notifications", () => ({
+  notifications: Object.assign(vi.fn(), {
     success: vi.fn(),
     error: vi.fn(),
     info: vi.fn(),
@@ -42,7 +42,12 @@ function makeStory(): Story {
       name: "Outro",
       span: span(10, 100),
       commands: [
-        { verb: "type", target: { kind: "selector", value: "#a" }, text: "hi", span: span(11, 110) },
+        {
+          verb: "type",
+          target: { kind: "selector", value: "#a" },
+          text: "hi",
+          span: span(11, 110),
+        },
       ],
     },
   ];

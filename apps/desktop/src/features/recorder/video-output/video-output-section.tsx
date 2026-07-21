@@ -1,8 +1,7 @@
 import { forwardRef, useCallback, useEffect } from "react";
 import { create } from "zustand";
-
-import { BitratePreview } from "./bitrate-preview";
 import type { ValidationResult } from "./bitrate";
+import { BitratePreview } from "./bitrate-preview";
 import {
   LABEL_FIT,
   LABEL_FPS,
@@ -58,45 +57,45 @@ export const VideoOutputSection = forwardRef<HTMLDivElement, Props>(function Vid
   return (
     <section
       ref={ref}
-      className="flex flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3"
+      className="flex flex-col gap-3 rounded-[var(--radius-element)] border border-[var(--color-border)] bg-[var(--color-background-card)] p-3"
     >
       <header className="flex flex-col gap-2">
-        <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-fg-primary)]">
+        <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-text-primary)]">
           {SECTION_TITLE}
         </h3>
         <PresetSelect disabled={disabled} />
       </header>
 
       <div className="grid grid-cols-[96px_minmax(0,1fr)] items-start gap-x-3 gap-y-3">
-        <span aria-hidden="true" className="pt-1.5 text-xs text-[var(--color-fg-muted)]">
+        <span aria-hidden="true" className="pt-1.5 text-xs text-[var(--color-text-secondary)]">
           {LABEL_RESOLUTION}
         </span>
         <div>
           <ResolutionControl disabled={disabled} onErrorChange={handleError} />
         </div>
 
-        <span aria-hidden="true" className="pt-1.5 text-xs text-[var(--color-fg-muted)]">
+        <span aria-hidden="true" className="pt-1.5 text-xs text-[var(--color-text-secondary)]">
           {LABEL_FPS}
         </span>
         <div>
           <FpsControl disabled={disabled} />
         </div>
 
-        <span aria-hidden="true" className="pt-1.5 text-xs text-[var(--color-fg-muted)]">
+        <span aria-hidden="true" className="pt-1.5 text-xs text-[var(--color-text-secondary)]">
           {LABEL_FIT}
         </span>
         <div>
           <FitModeControl disabled={disabled} />
         </div>
 
-        <span aria-hidden="true" className="pt-1.5 text-xs text-[var(--color-fg-muted)]">
+        <span aria-hidden="true" className="pt-1.5 text-xs text-[var(--color-text-secondary)]">
           {LABEL_PAD}
         </span>
         <div>
           <PadColorControl disabled={disabled} />
         </div>
 
-        <span aria-hidden="true" className="pt-1.5 text-xs text-[var(--color-fg-muted)]">
+        <span aria-hidden="true" className="pt-1.5 text-xs text-[var(--color-text-secondary)]">
           {LABEL_QUALITY}
         </span>
         <div>

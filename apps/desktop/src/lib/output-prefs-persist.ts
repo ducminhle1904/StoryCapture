@@ -3,9 +3,8 @@ import {
   readRecordingDeliveryPolicy,
 } from "@storycapture/shared-types/recording-v2";
 import { mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import { toast } from "sonner";
-
 import { getStore, LATEST_VERSION, STORE_KEY } from "@/ipc/output-prefs";
+import { notifications } from "@/lib/notifications";
 import {
   DEFAULT_EXPORT_KNOBS,
   DEFAULT_RECORDING_PACING,
@@ -244,7 +243,7 @@ export async function loadProjectOverride(projectFolder: string): Promise<Partia
   try {
     return JSON.parse(text) as PartialPersist;
   } catch {
-    toast("Failed to read project-specific preferences. Falling back to defaults.");
+    notifications.info("Failed to read project-specific preferences. Falling back to defaults.");
     return null;
   }
 }
@@ -259,7 +258,7 @@ export async function saveProjectOverride(
     await mkdir(dir, { recursive: true });
     await writeTextFile(path, JSON.stringify(prefs, null, 2));
   } catch (err) {
-    toast.error("Failed to save preferences to project.");
+    notifications.error("Failed to save preferences to project.");
     throw err;
   }
 }

@@ -1,20 +1,10 @@
+import { StoryCaptureThemeProvider } from "@storycapture/ui/theme";
 import { Analytics } from "@vercel/analytics/next";
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { AstryxBrowserSupport } from "@/components/astryx-browser-support";
 import { TRPCReactProvider } from "@/trpc/client";
+import "@/styles/layers.css";
 import "@/styles/globals.css";
-
-const geist = Geist({
-  subsets: ["latin"],
-  variable: "--font-geist",
-  display: "swap",
-});
-
-const geistMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-geist-mono",
-  display: "swap",
-});
 
 const siteUrl = "https://story-capture-web.vercel.app";
 const siteDescription =
@@ -95,9 +85,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`dark ${geist.variable} ${geistMono.variable}`}>
+    <html lang="en">
       <body>
-        <TRPCReactProvider>{children}</TRPCReactProvider>
+        <StoryCaptureThemeProvider>
+          <TRPCReactProvider>{children}</TRPCReactProvider>
+          <AstryxBrowserSupport />
+        </StoryCaptureThemeProvider>
         <Analytics />
       </body>
     </html>

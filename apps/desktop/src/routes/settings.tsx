@@ -1,4 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { Badge as AstryxBadge } from "@astryxdesign/core/Badge";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { SideNav, SideNavItem, SideNavSection } from "@astryxdesign/core/SideNav";
 import {
   Download,
   FileText,
@@ -7,24 +9,23 @@ import {
   Keyboard,
   Lock,
   Monitor,
-  User,
   Settings as SettingsIcon,
+  User,
 } from "lucide-react";
-import { toast } from "sonner";
-import { ScBadge, ScButton } from "@storycapture/ui";
-
+import { type ReactNode, useState } from "react";
 import { PageContentTransition } from "@/components/page-content-transition";
-import { GeneralCategory } from "@/features/settings/categories/general-category";
-import { ApiKeysCategory } from "@/features/settings/categories/api-keys-category";
-import { CaptureCategory } from "@/features/settings/categories/capture-category";
-import { RenderCategory } from "@/features/settings/categories/render-category";
-import { KeyboardCategory } from "@/features/settings/categories/keyboard-category";
-import { PrivacyCategory } from "@/features/settings/categories/privacy-category";
-import { LogsCategory } from "@/features/settings/categories/logs-category";
 import { AboutCategory } from "@/features/settings/categories/about-category";
 import { AccountCategory } from "@/features/settings/categories/account-category";
-import { useAppSettingsStore } from "@/state/app-settings";
+import { ApiKeysCategory } from "@/features/settings/categories/api-keys-category";
+import { CaptureCategory } from "@/features/settings/categories/capture-category";
+import { GeneralCategory } from "@/features/settings/categories/general-category";
+import { KeyboardCategory } from "@/features/settings/categories/keyboard-category";
+import { LogsCategory } from "@/features/settings/categories/logs-category";
+import { PrivacyCategory } from "@/features/settings/categories/privacy-category";
+import { RenderCategory } from "@/features/settings/categories/render-category";
 import type { SettingsCategory } from "@/ipc/settings";
+import { notifications } from "@/lib/notifications";
+import { useAppSettingsStore } from "@/state/app-settings";
 import {
   applyCaptureFpsDefault,
   DEFAULT_EXPORT_KNOBS,
@@ -90,9 +91,9 @@ export default function SettingsRoute() {
         setRecordingKnob("resolution", PRESET_BUNDLES.Standard.resolution);
         setExportKnob("hwEncoder", DEFAULT_EXPORT_KNOBS.hwEncoder);
       }
-      toast.success("Settings reset");
+      notifications.success("Settings reset");
     } catch (err) {
-      toast.error("Could not reset settings", {
+      notifications.error("Could not reset settings", {
         description: err instanceof Error ? err.message : String(err),
       });
     }
@@ -103,63 +104,38 @@ export default function SettingsRoute() {
       id="main-content"
       style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}
     >
-      <div className="sc-toolbar sc-window-chrome">
-        <div className="sc-toolbar-title">Settings</div>
-        <ScBadge tone="muted">Workspace · Local</ScBadge>
-        <span className="sc-spacer" />
+      <div className="story-toolbar story-window-chrome">
+        <div className="story-toolbar-title">Settings</div>
+        <AstryxBadge variant="neutral" label="Workspace · Local" />
+        <span className="story-spacer" />
         {resetTarget && settings ? (
-          <ScButton size="sm" variant="ghost" onClick={() => void resetActive()}>
+          <AstryxButton
+            size="sm"
+            variant="ghost"
+            onClick={() => void resetActive()}
+            label="Reset to defaults"
+          >
             Reset to defaults
-          </ScButton>
+          </AstryxButton>
         ) : null}
       </div>
 
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        <nav
-          aria-label="Settings sections"
-          style={{
-            width: 200,
-            borderRight: "1px solid var(--sc-border)",
-            background: "var(--sc-chrome-2)",
-            padding: "10px 0",
-          }}
-        >
-          {SECTIONS.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setSection(s.id)}
-              className={`sc-nav-item ${section === s.id ? "active" : ""}`}
-              style={{
-                width: "100%",
-                fontSize: 12,
-                textAlign: "left",
-                border: "none",
-                background: "transparent",
-                color: section === s.id ? "var(--sc-accent-400)" : "inherit",
-                cursor: "default",
-              }}
-              aria-current={section === s.id ? "page" : undefined}
-            >
-              <span
-                style={{
-                  width: 14,
-                  display: "grid",
-                  placeItems: "center",
-                  color: section === s.id ? "currentColor" : "var(--sc-text-3)",
-                }}
-              >
-                {s.icon}
-              </span>
-              {s.label}
-            </button>
-          ))}
-        </nav>
+        <SideNav style={{ width: 200 }}>
+          <SideNavSection title="Settings sections" isHeaderHidden>
+            {SECTIONS.map((item) => (
+              <SideNavItem
+                key={item.id}
+                label={item.label}
+                icon={item.icon}
+                isSelected={section === item.id}
+                onClick={() => setSection(item.id)}
+              />
+            ))}
+          </SideNavSection>
+        </SideNav>
 
-        <PageContentTransition
-          className="sc-scroll"
-          style={{ flex: 1, padding: "24px 32px" }}
-        >
+        <PageContentTransition className="story-scroll" style={{ flex: 1, padding: "24px 32px" }}>
           {section === "general" && <GeneralCategory />}
           {section === "keys" && <ApiKeysCategory />}
           {section === "capture" && <CaptureCategory />}

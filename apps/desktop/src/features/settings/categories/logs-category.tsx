@@ -1,21 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { NumberInput as AstryxNumberInput } from "@astryxdesign/core/NumberInput";
+import { TextInput as AstryxTextInput } from "@astryxdesign/core/TextInput";
 import { open } from "@tauri-apps/plugin-dialog";
-import { toast } from "sonner";
 import { FolderOpen, FolderSearch, RotateCcw, X } from "lucide-react";
-import { ScButton, ScInput } from "@storycapture/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { getLogConfig, type LogConfig, openLogDir, setLogConfig } from "@/ipc/settings";
+import { notifications } from "@/lib/notifications";
 
-import {
-  getLogConfig,
-  openLogDir,
-  setLogConfig,
-  type LogConfig,
-} from "@/ipc/settings";
-
-import {
-  SettingsCard,
-  SettingsPanel,
-  SettingsRow,
-} from "../settings-row";
+import { SettingsCard, SettingsPanel, SettingsRow } from "../settings-row";
 
 const BYTES_PER_MIB = 1024 * 1024;
 
@@ -50,8 +42,8 @@ function validateRange(value: number, rule: RangeRule): string | null {
 
 export function LogsCategory() {
   const [config, setConfig] = useState<LogConfig | null>(null);
-  const [maxSizeMibInput, setMaxSizeMibInput] = useState("");
-  const [maxFilesInput, setMaxFilesInput] = useState("");
+  const [maxSizeMibInput, setMaxSizeMibInput] = useState(0);
+  const [maxFilesInput, setMaxFilesInput] = useState(0);
   const [logDirInput, setLogDirInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -60,8 +52,8 @@ export function LogsCategory() {
     try {
       const cfg = await getLogConfig();
       setConfig(cfg);
-      setMaxSizeMibInput(String(bytesToMib(cfg.max_file_size_bytes)));
-      setMaxFilesInput(String(cfg.max_files));
+      setMaxSizeMibInput(bytesToMib(cfg.max_file_size_bytes));
+      setMaxFilesInput(cfg.max_files);
       setLogDirInput(cfg.log_dir_override ?? "");
       setLoadError(null);
     } catch (e) {
@@ -127,14 +119,14 @@ export function LogsCategory() {
         max_files: files,
       });
       setConfig(next);
-      setMaxSizeMibInput(String(bytesToMib(next.max_file_size_bytes)));
-      setMaxFilesInput(String(next.max_files));
+      setMaxSizeMibInput(bytesToMib(next.max_file_size_bytes));
+      setMaxFilesInput(next.max_files);
       setLogDirInput(next.log_dir_override ?? "");
-      toast.success("Log settings saved", {
+      notifications.success("Log settings saved", {
         description: "Restart StoryCapture for changes to take effect.",
       });
     } catch (e) {
-      toast.error("Could not save log settings", {
+      notifications.error("Could not save log settings", {
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {
@@ -144,14 +136,14 @@ export function LogsCategory() {
 
   const resetForm = useCallback(() => {
     if (!config) return;
-    setMaxSizeMibInput(String(bytesToMib(config.max_file_size_bytes)));
-    setMaxFilesInput(String(config.max_files));
+    setMaxSizeMibInput(bytesToMib(config.max_file_size_bytes));
+    setMaxFilesInput(config.max_files);
     setLogDirInput(config.log_dir_override ?? "");
   }, [config]);
 
   const restoreDefaults = useCallback(() => {
-    setMaxSizeMibInput(String(bytesToMib(10 * BYTES_PER_MIB)));
-    setMaxFilesInput("10");
+    setMaxSizeMibInput(bytesToMib(10 * BYTES_PER_MIB));
+    setMaxFilesInput(10);
     setLogDirInput("");
   }, []);
 
@@ -170,7 +162,7 @@ export function LogsCategory() {
     try {
       await openLogDir();
     } catch (e) {
-      toast.error("Could not open log folder", {
+      notifications.error("Could not open log folder", {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -179,7 +171,7 @@ export function LogsCategory() {
   if (loadError) {
     return (
       <SettingsPanel title="Logs">
-        <div style={{ color: "var(--sc-danger, #c33)", fontSize: 13 }}>
+        <div style={{ color: "var(--color-error, #c33)", fontSize: 13 }}>
           Could not load log settings: {loadError}
         </div>
       </SettingsPanel>
@@ -200,15 +192,16 @@ export function LogsCategory() {
               : "Per-file rotation threshold."
           }
           control={
-            <ScInput
-              type="number"
+            <AstryxNumberInput
+              label="Max file size"
+              isLabelHidden
               value={maxSizeMibInput}
-              onChange={(e) => setMaxSizeMibInput(e.currentTarget.value)}
+              onChange={setMaxSizeMibInput}
               min={sizeRange?.minMib ?? 0.0625}
               max={sizeRange?.maxMib ?? 1024}
               step={1}
               style={{ width: 110 }}
-              disabled={busy || !config}
+              isDisabled={busy || !config}
             />
           }
         />
@@ -220,15 +213,16 @@ export function LogsCategory() {
               : "Total log files retained."
           }
           control={
-            <ScInput
-              type="number"
+            <AstryxNumberInput
+              label="Max files"
+              isLabelHidden
               value={maxFilesInput}
-              onChange={(e) => setMaxFilesInput(e.currentTarget.value)}
+              onChange={setMaxFilesInput}
               min={config?.min_files ?? 1}
               max={config?.max_allowed_files ?? 100}
               step={1}
               style={{ width: 110 }}
-              disabled={busy || !config}
+              isDisabled={busy || !config}
             />
           }
           last
@@ -248,33 +242,37 @@ export function LogsCategory() {
             }
             control={
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <ScInput
+                <AstryxTextInput
+                  label="Log folder"
+                  isLabelHidden
                   value={logDirInput}
                   placeholder={config?.default_log_dir ?? ""}
-                  onChange={(e) => setLogDirInput(e.currentTarget.value)}
-                  icon={<FolderOpen size={12} />}
+                  onChange={setLogDirInput}
+                  startIcon={<FolderOpen size={12} />}
                   style={{ width: 280 }}
-                  disabled={busy || !config}
+                  isDisabled={busy || !config}
                 />
-                <ScButton
+                <AstryxButton
                   size="sm"
                   variant="ghost"
                   onClick={() => void pickDir()}
-                  disabled={busy || !config}
-                  title="Browse for a folder"
+                  isDisabled={busy || !config}
+                  tooltip="Browse for a folder"
+                  label="Browse for a folder"
                 >
                   <FolderSearch size={12} />
-                </ScButton>
+                </AstryxButton>
                 {logDirInput.length > 0 && (
-                  <ScButton
+                  <AstryxButton
                     size="sm"
                     variant="ghost"
                     onClick={() => setLogDirInput("")}
-                    disabled={busy}
-                    title="Clear override (use platform default)"
+                    isDisabled={busy}
+                    tooltip="Clear override (use platform default)"
+                    label="Clear override (use platform default)"
                   >
                     <X size={12} />
-                  </ScButton>
+                  </AstryxButton>
                 )}
               </div>
             }
@@ -286,11 +284,10 @@ export function LogsCategory() {
             style={{
               marginTop: 8,
               fontSize: 11.5,
-              color: "var(--sc-text-4)",
+              color: "var(--color-text-disabled)",
             }}
           >
-            Currently writing to{" "}
-            <code style={{ fontSize: 11 }}>{config.effective_log_dir}</code>.
+            Currently writing to <code style={{ fontSize: 11 }}>{config.effective_log_dir}</code>.
           </div>
         )}
       </div>
@@ -300,7 +297,7 @@ export function LogsCategory() {
           style={{
             marginTop: 12,
             fontSize: 12,
-            color: "var(--sc-danger, #c33)",
+            color: "var(--color-error, #c33)",
           }}
         >
           {validation.message}
@@ -316,57 +313,60 @@ export function LogsCategory() {
           flexWrap: "wrap",
         }}
       >
-        <ScButton
+        <AstryxButton
           size="sm"
           variant="primary"
           onClick={() => void save()}
-          disabled={!dirty || !validation.ok || busy || !config}
+          isDisabled={!dirty || !validation.ok || busy || !config}
+          label="Save"
         >
           Save
-        </ScButton>
-        <ScButton
+        </AstryxButton>
+        <AstryxButton
           size="sm"
           variant="ghost"
           onClick={resetForm}
-          disabled={!dirty || busy}
+          isDisabled={!dirty || busy}
+          label="Cancel"
         >
           Cancel
-        </ScButton>
-        <ScButton
+        </AstryxButton>
+        <AstryxButton
           size="sm"
           variant="ghost"
           onClick={restoreDefaults}
-          disabled={busy}
-          title="Reset inputs to 10 MiB × 10 files, platform default folder"
+          isDisabled={busy}
+          tooltip="Reset inputs to 10 MiB × 10 files, platform default folder"
+          label="Reset inputs to 10 MiB × 10 files, platform default folder"
         >
           <RotateCcw size={12} /> Defaults
-        </ScButton>
+        </AstryxButton>
         <span style={{ flex: 1 }} />
-        <ScButton
+        <AstryxButton
           size="sm"
           variant="ghost"
           onClick={() => void reveal()}
-          disabled={busy || !config}
-          title="Open the current log folder in your file browser"
+          isDisabled={busy || !config}
+          tooltip="Open the current log folder in your file browser"
+          label="Open the current log folder in your file browser"
         >
           <FolderOpen size={12} /> Open log folder
-        </ScButton>
+        </AstryxButton>
       </div>
 
       <div
         style={{
           marginTop: 18,
           padding: 12,
-          background: "var(--sc-surface-2)",
-          border: "1px solid var(--sc-border)",
-          borderRadius: "var(--sc-r-md)",
+          background: "var(--color-background-card)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-element)",
           fontSize: 11.5,
-          color: "var(--sc-text-3)",
+          color: "var(--color-text-secondary)",
           lineHeight: 1.5,
         }}
       >
-        Changes apply on the next launch of StoryCapture. Logs are local-only
-        — nothing is uploaded.
+        Changes apply on the next launch of StoryCapture. Logs are local-only — nothing is uploaded.
       </div>
     </SettingsPanel>
   );

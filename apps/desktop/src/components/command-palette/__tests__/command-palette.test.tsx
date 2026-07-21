@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -31,18 +31,20 @@ describe("CommandPalette", () => {
   it("opens on Cmd/Ctrl+K", async () => {
     const user = userEvent.setup();
     renderWithRouter();
-    expect(screen.queryByPlaceholderText(/type a command/i)).not.toBeInTheDocument();
+    const dialog = document.querySelector('dialog[aria-label="Command palette"]');
+    expect(dialog).not.toHaveAttribute("open");
     await user.keyboard("{Meta>}k{/Meta}");
-    expect(screen.getByPlaceholderText(/type a command/i)).toBeInTheDocument();
+    await waitFor(() => expect(dialog).toHaveAttribute("open"));
   });
 
   it("closes on Escape", async () => {
     const user = userEvent.setup();
     renderWithRouter();
+    const dialog = document.querySelector('dialog[aria-label="Command palette"]');
     await user.keyboard("{Meta>}k{/Meta}");
-    expect(screen.getByPlaceholderText(/type a command/i)).toBeInTheDocument();
+    await waitFor(() => expect(dialog).toHaveAttribute("open"));
     await user.keyboard("{Escape}");
-    expect(screen.queryByPlaceholderText(/type a command/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(dialog).not.toHaveAttribute("open"));
   });
 
   it("navigates when a command is activated", async () => {
@@ -51,7 +53,8 @@ describe("CommandPalette", () => {
     await user.keyboard("{Meta>}k{/Meta}");
     const input = screen.getByPlaceholderText(/type a command/i);
     await user.type(input, "settings");
-    await user.keyboard("{Enter}");
+    await screen.findByText("Open Settings");
+    await user.keyboard("{ArrowDown}{Enter}");
     expect(screen.getByTestId("location")).toHaveTextContent("/settings");
   });
 });

@@ -1,4 +1,4 @@
-import { ScBadge } from "@storycapture/ui";
+import { Badge as AstryxBadge } from "@astryxdesign/core/Badge";
 import { ChevronRight, Layers } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { useMemo } from "react";
@@ -120,27 +120,27 @@ export function SceneListPanel({
   }, [cursorLine, scenes]);
 
   return (
-    <div className="flex h-full flex-col border-r border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
-      <div className="flex items-center gap-2 border-b border-[var(--color-border-subtle)] px-3 py-2">
-        <Layers size={12} className="text-[var(--color-fg-muted)]" />
-        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+    <div className="flex h-full flex-col border-r border-[var(--color-border)] bg-[var(--color-background-card)]">
+      <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-3 py-2">
+        <Layers size={12} className="text-[var(--color-text-secondary)]" />
+        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
           Outline
         </span>
         {scenes.length > 0 && !showStaleChip && (
-          <span className="ml-auto font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+          <span className="ml-auto font-mono text-[10px] tabular-nums text-[var(--color-text-secondary)]">
             {scenes.length}
           </span>
         )}
         {showStaleChip && (
           <span className="ml-auto">
-            <ScBadge tone="warn">parse error — showing last known</ScBadge>
+            <AstryxBadge variant="warning" label="parse error — showing last known" />
           </span>
         )}
       </div>
 
       {scenes.length === 0 ? (
         <div className="flex h-full items-center justify-center p-3">
-          <span className="font-mono text-[11px] italic text-[var(--sc-text-4)]">
+          <span className="font-mono text-[11px] italic text-[var(--color-text-disabled)]">
             No scenes parsed
           </span>
         </div>
@@ -158,8 +158,8 @@ export function SceneListPanel({
                   }}
                   className={`group relative flex w-full items-center gap-1.5 overflow-hidden py-1.5 text-left transition-colors ${
                     isActiveScene
-                      ? "border-l-2 border-[var(--sc-accent-400)] pl-[6px] pr-2 text-[var(--color-fg-primary)]"
-                      : "px-2 text-[var(--color-fg-secondary)] hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)]"
+                      ? "border-l-2 border-[var(--color-accent)] pl-[6px] pr-2 text-[var(--color-text-primary)]"
+                      : "px-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-background-popover)] hover:text-[var(--color-text-primary)]"
                   }`}
                   title={scene.name || `Scene ${scene.index + 1}`}
                 >
@@ -167,23 +167,23 @@ export function SceneListPanel({
                     size={11}
                     className={`relative z-10 shrink-0 transition-transform ${
                       isActiveScene
-                        ? "rotate-90 text-[var(--color-accent-primary)]"
-                        : "text-[var(--color-fg-muted)] group-hover:text-[var(--color-fg-secondary)]"
+                        ? "rotate-90 text-[var(--color-accent)]"
+                        : "text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-secondary)]"
                     }`}
                   />
                   <div className="relative z-10 min-w-0 flex-1">
                     <div className="truncate text-xs font-medium">
                       {scene.name || `Scene ${scene.index + 1}`}
                     </div>
-                    <div className="flex items-center gap-2 font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+                    <div className="flex items-center gap-2 font-mono text-[10px] tabular-nums text-[var(--color-text-secondary)]">
                       <span>{scene.commands.length} steps</span>
-                      <span className="text-[var(--color-border-default)]">/</span>
+                      <span className="text-[var(--color-border)]">/</span>
                       <span>{(scene.duration / 1000).toFixed(1)}s</span>
                     </div>
                   </div>
                   {isActiveScene && (
                     <motion.div
-                      className="relative z-10 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-accent-primary)]"
+                      className="relative z-10 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-accent)]"
                       initial={reduceMotion ? false : { scale: 0.72, opacity: 0.45 }}
                       animate={{ scale: 1, opacity: 1 }}
                       transition={{ duration: 0.16, ease: "easeOut" }}
@@ -205,17 +205,19 @@ export function SceneListPanel({
                             onClick={() => onJumpTo?.(cmd.span.start)}
                             className={`flex w-full items-center gap-1.5 overflow-hidden py-1 pr-2 text-left transition-colors ${
                               isActiveStep
-                                ? "border-l-2 border-[var(--sc-accent-400)] pl-[6px] text-[var(--color-fg-primary)]"
-                                : "border-l-2 border-transparent pl-[6px] text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-secondary)]"
+                                ? "border-l-2 border-[var(--color-accent)] pl-[6px] text-[var(--color-text-primary)]"
+                                : "border-l-2 border-transparent pl-[6px] text-[var(--color-text-secondary)] hover:bg-[var(--color-background-popover)] hover:text-[var(--color-text-secondary)]"
                             }`}
                             title={`${stepIdx + 1}. ${cmd.verb} ${label}`}
                           >
                             <Icon size={10} aria-hidden="true" className="shrink-0" />
                             <span className="truncate font-mono text-[10.5px]">
-                              <span className="text-[var(--color-fg-muted)]">{stepIdx + 1}.</span>{" "}
-                              <span className="text-[var(--sc-text-2)]">{cmd.verb}</span>
+                              <span className="text-[var(--color-text-secondary)]">
+                                {stepIdx + 1}.
+                              </span>{" "}
+                              <span className="text-[var(--color-text-secondary)]">{cmd.verb}</span>
                               {label && (
-                                <span className="text-[var(--color-fg-muted)]"> {label}</span>
+                                <span className="text-[var(--color-text-secondary)]"> {label}</span>
                               )}
                             </span>
                           </button>

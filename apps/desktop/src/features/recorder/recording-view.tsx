@@ -1,3 +1,5 @@
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { Switch as AstryxSwitch } from "@astryxdesign/core/Switch";
 import { listen } from "@tauri-apps/api/event";
 import {
   AlertTriangle,
@@ -12,10 +14,8 @@ import {
   Square as StopIcon,
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { toast } from "sonner";
-
 import { TargetPicker } from "@/features/capture/TargetPicker";
 import {
   type AutomationChannelHandle,
@@ -50,6 +50,7 @@ import {
   openRecordingDiagnosticBundle,
 } from "@/ipc/recording-failure";
 import { frontendLog } from "@/lib/log";
+import { notifications } from "@/lib/notifications";
 import { useAppSettingsStore } from "@/state/app-settings";
 import {
   applyCaptureFpsDefault,
@@ -184,22 +185,22 @@ export function RecordingView({
   const appSettings = useAppSettingsStore((s) => s.settings);
   const recordingDeliveryPolicy = useOutputPrefsStore((s) => s.recordingDeliveryPolicy);
 
-  const applyRecorderDefaults = () => {
-    const capture = useAppSettingsStore.getState().settings?.capture;
-    setAudioDeviceId(capture?.audio_input_default === "system_default" ? "default" : null);
-    setIncludeCursor(capture?.include_cursor_default ?? false);
-    if (capture) applyCaptureFpsDefault(capture);
-  };
+  const applyRecorderDefaults = useCallback(
+    (capture = useAppSettingsStore.getState().settings?.capture) => {
+      setAudioDeviceId(capture?.audio_input_default === "system_default" ? "default" : null);
+      setIncludeCursor(capture?.include_cursor_default ?? false);
+      if (capture) applyCaptureFpsDefault(capture);
+    },
+    [setAudioDeviceId, setIncludeCursor],
+  );
 
   useEffect(() => {
     setBrowserPreset(appSettings?.browser_executable ?? null);
   }, [appSettings?.browser_executable]);
 
   useEffect(() => {
-    applyRecorderDefaults();
-    // Run when persisted defaults hydrate/change; setter identities are stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appSettings?.capture]);
+    applyRecorderDefaults(appSettings?.capture);
+  }, [appSettings?.capture, applyRecorderDefaults]);
 
   const reduceMotion = useReducedMotion();
   const [permissionReport, setPermissionReport] =
@@ -354,8 +355,7 @@ export function RecordingView({
       previewLeaseRef.current = null;
       reset();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadCaptureTargets, reset, setError]);
 
   // Derive steps before capture starts.
   useEffect(() => {
@@ -388,7 +388,7 @@ export function RecordingView({
         typeof event.payload === "string"
           ? event.payload
           : "Microphone disconnected — continuing video-only.";
-      toast.warning(msg);
+      notifications.warning(msg);
     })
       .then((fn) => {
         unlisten = fn;
@@ -459,13 +459,13 @@ export function RecordingView({
         typeof result.actual_capture_fps === "number" && typeof result.requested_fps === "number"
           ? `${result.actual_capture_fps} / ${result.requested_fps} fps`
           : null;
-      toast.warning("Recording complete with low cadence", {
+      notifications.warning("Recording complete with low cadence", {
         description: [result.cadence_warning_message, cadence, result.output_path]
           .filter(Boolean)
           .join(" · "),
       });
     } else {
-      toast.success("Recording complete", { description: result.output_path });
+      notifications.success("Recording complete", { description: result.output_path });
     }
     if (autoOpenPostProduction && projectId) {
       navigate(`/post-production/${projectId}`, { replace: true });
@@ -482,7 +482,7 @@ export function RecordingView({
     setSession(null);
     setStatus("failed");
     setError(message);
-    toast.error(`Recording failed: ${message}`);
+    notifications.error(`Recording failed: ${message}`);
   };
 
   const failQualityRecording = (
@@ -503,7 +503,7 @@ export function RecordingView({
       .concat(result.quality_evidence.failure_codes)
       .join(", ");
     setError(message || "Strict verification failed");
-    toast.error("Strict verification failed", {
+    notifications.error("Strict verification failed", {
       description: message || result.diagnostic_bundle_path || undefined,
     });
   };
@@ -539,7 +539,7 @@ export function RecordingView({
         break;
       case "audio-unavailable":
         // Mic negotiation failed; recording continues video-only.
-        toast.error(`Audio unavailable: ${event.reason}`);
+        notifications.error(`Audio unavailable: ${event.reason}`);
         setAudioUnavailable(true);
         break;
       case "heartbeat":
@@ -568,7 +568,7 @@ export function RecordingView({
       return;
     }
     if (selectedDisplay == null) {
-      toast.error("Pick a Target before recording.");
+      notifications.error("Pick a Target before recording.");
       setStatus("idle");
       startInFlightRef.current = false;
       return;
@@ -648,7 +648,7 @@ export function RecordingView({
             target_kind: recordingTarget.kind,
           },
         });
-        toast.info("Recording browser preview content");
+        notifications.info("Recording browser preview content");
       }
       let ownerSessionId: string | null = null;
       const pendingRecordingEvents: RecordingEvent[] = [];
@@ -719,7 +719,7 @@ export function RecordingView({
           ) {
             automationFailedOrdinalRef.current = outcome.story.failed_ordinal;
             advanceStep(outcome.story.failed_ordinal - 1, "failed");
-            toast.warning(
+            notifications.warning(
               `Story finished with ${outcome.story.failed} failure(s) at step ${outcome.story.failed_ordinal}`,
             );
           }
@@ -739,7 +739,7 @@ export function RecordingView({
           if (!ownsActiveSession(ownerSessionId)) return;
           automationOwnsStopRef.current = false;
           const msg = formatIpcError(e);
-          toast.error(`Automation failed: ${msg}`);
+          notifications.error(`Automation failed: ${msg}`);
           setError(msg);
           void handleStop(ownerSessionId);
         });
@@ -750,7 +750,7 @@ export function RecordingView({
       // toast + error banner still surface the failure to the user.
       setStatus("idle");
       startInFlightRef.current = false;
-      toast.error(`Recording failed to start: ${formatIpcError(e)}`);
+      notifications.error(`Recording failed to start: ${formatIpcError(e)}`);
     }
   };
 
@@ -786,29 +786,32 @@ export function RecordingView({
           const body = RECORD_PATH_MISS_BODY.replace("{N}", String(evt.ordinal));
           const targetOrdinal = evt.ordinal;
           const clampedProjectId = projectId;
-          toast.error(`Step ${targetOrdinal}: ${miss.verbExcerpt} could not match any element.`, {
-            description: body,
-            duration: 12_000,
-            action: clampedProjectId
-              ? {
-                  label: "Open in Simulator",
-                  // User decides when to start the simulator — this
-                  // action only routes into the Editor at the failed
-                  // step.
-                  onClick: () => {
-                    window.location.hash = `#/editor/${clampedProjectId}?step=${targetOrdinal}`;
-                  },
-                }
-              : undefined,
-          });
+          notifications.error(
+            `Step ${targetOrdinal}: ${miss.verbExcerpt} could not match any element.`,
+            {
+              description: body,
+              duration: 12_000,
+              action: clampedProjectId
+                ? {
+                    label: "Open in Simulator",
+                    // User decides when to start the simulator — this
+                    // action only routes into the Editor at the failed
+                    // step.
+                    onClick: () => {
+                      window.location.hash = `#/editor/${clampedProjectId}?step=${targetOrdinal}`;
+                    },
+                  }
+                : undefined,
+            },
+          );
         } else {
-          toast.error(`Step ${evt.ordinal} failed: ${evt.error_message}`);
+          notifications.error(`Step ${evt.ordinal} failed: ${evt.error_message}`);
         }
         break;
       }
       case "story_ended":
         if (evt.status.failed > 0) {
-          toast.warning(`Story finished with ${evt.status.failed} failure(s)`);
+          notifications.warning(`Story finished with ${evt.status.failed} failure(s)`);
         }
         if (!automationOwnsStopRef.current) {
           // Stop capture after the DSL finishes when the host isn't already
@@ -849,7 +852,7 @@ export function RecordingView({
       const message = formatIpcError(e);
       setStatus("failed");
       setError(message);
-      toast.error(`Stop failed: ${message}`);
+      notifications.error(`Stop failed: ${message}`);
     } finally {
       if (stopInFlightRef.current === ownerSessionId) stopInFlightRef.current = null;
     }
@@ -894,7 +897,7 @@ export function RecordingView({
     } catch (e) {
       const message = formatIpcError(e);
       setError(message);
-      toast.error(`Pause failed: ${message}`);
+      notifications.error(`Pause failed: ${message}`);
     }
   };
 
@@ -911,7 +914,7 @@ export function RecordingView({
     } catch (e) {
       const message = formatIpcError(e);
       setError(message);
-      toast.error(`Resume failed: ${message}`);
+      notifications.error(`Resume failed: ${message}`);
     }
   };
 
@@ -946,9 +949,12 @@ export function RecordingView({
   const permissionPending = permission === "undetermined";
 
   return (
-    <main id="main-content" className="relative flex h-full flex-col bg-[var(--color-bg-primary)]">
+    <main
+      id="main-content"
+      className="relative flex h-full flex-col bg-[var(--color-background-body)]"
+    >
       {/* ─── Header ─── */}
-      <header className="sc-window-chrome flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1.5">
+      <header className="story-window-chrome flex shrink-0 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-background-card)] px-3 py-1.5">
         <div className="flex min-w-0 items-center gap-3">
           {/* Back to editor (falls back to dashboard). Blocked while recording. */}
           {status === "recording" ||
@@ -956,27 +962,27 @@ export function RecordingView({
           status === "stopping" ||
           status === "verifying" ? (
             <span
-              aria-label="Back button disabled during recording"
-              className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-1 text-[var(--color-fg-muted)] opacity-50"
+              className="inline-flex items-center gap-1 rounded-[var(--radius-inner)] px-1.5 py-1 text-[var(--color-text-secondary)] opacity-50"
               title="Stop recording to go back"
             >
               <ArrowLeft size={14} aria-hidden="true" />
+              <span className="sr-only">Back disabled during recording</span>
             </span>
           ) : (
             <Link
               to={projectId ? `/editor/${projectId}` : "/"}
               aria-label={projectId ? "Back to editor" : "Back to projects"}
-              className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-1 text-[var(--color-fg-secondary)] transition-colors hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+              className="inline-flex items-center gap-1 rounded-[var(--radius-inner)] px-1.5 py-1 text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-background-popover)] hover:text-[var(--color-text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
             >
               <ArrowLeft size={14} aria-hidden="true" />
             </Link>
           )}
 
-          <div className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--color-fg-muted)]">
+          <div className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
             {projectId ? (
               <Link
                 to={`/editor/${projectId}`}
-                className="transition-colors hover:text-[var(--color-fg-primary)]"
+                className="transition-colors hover:text-[var(--color-text-primary)]"
               >
                 Editor
               </Link>
@@ -984,7 +990,7 @@ export function RecordingView({
               <span>Record</span>
             )}
             <span>/</span>
-            <span className="truncate font-medium text-[var(--color-fg-primary)]">
+            <span className="truncate font-medium text-[var(--color-text-primary)]">
               {projectName}
             </span>
             <span>/</span>
@@ -1010,9 +1016,9 @@ export function RecordingView({
             </span>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--color-fg-muted)]">
+        <div className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--color-text-secondary)]">
           <span
-            className="rounded-full border border-[var(--color-border-subtle)] px-2 py-0.5 font-medium text-[var(--color-fg-secondary)]"
+            className="rounded-full border border-[var(--color-border)] px-2 py-0.5 font-medium text-[var(--color-text-secondary)]"
             title={
               recordingDeliveryPolicy === "strict"
                 ? "Publishes only after exact 1080p60 verification passes"
@@ -1037,7 +1043,7 @@ export function RecordingView({
                 try {
                   await loadCaptureTargets();
                 } catch (e) {
-                  toast.error(`loadCaptureTargets failed: ${formatIpcError(e)}`);
+                  notifications.error(`loadCaptureTargets failed: ${formatIpcError(e)}`);
                 }
               }
             } catch {
@@ -1057,11 +1063,11 @@ export function RecordingView({
               try {
                 await loadCaptureTargets();
               } catch (e) {
-                toast.error(`loadCaptureTargets failed: ${formatIpcError(e)}`);
+                notifications.error(`loadCaptureTargets failed: ${formatIpcError(e)}`);
               }
-              toast.success("Screen recording permission granted");
+              notifications.success("Screen recording permission granted");
             } else {
-              toast.message("Permission still needed", {
+              notifications.message("Permission still needed", {
                 description: `After granting in System Settings, relaunch ${next.appName} so macOS picks up the change.`,
               });
             }
@@ -1077,9 +1083,9 @@ export function RecordingView({
                   setTccOpen(false);
                   try {
                     await loadCaptureTargets();
-                    toast.success("Debug permission bypassed");
+                    notifications.success("Debug permission bypassed");
                   } catch (e) {
-                    toast.error(`Could not load capture targets: ${formatIpcError(e)}`);
+                    notifications.error(`Could not load capture targets: ${formatIpcError(e)}`);
                   }
                 }
               : undefined
@@ -1093,24 +1099,24 @@ export function RecordingView({
           className={`flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2 text-xs ${
             preflight.strict_eligible
               ? "border-[var(--color-success)]/30 bg-[var(--color-success)]/10"
-              : "border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10"
+              : "border-[var(--color-error)]/30 bg-[var(--color-error)]/10"
           }`}
         >
           <div className="flex min-w-0 items-center gap-2">
             {preflight.strict_eligible ? (
               <CheckCircle2 size={13} className="text-[var(--color-success)]" aria-hidden="true" />
             ) : (
-              <AlertTriangle size={13} className="text-[var(--color-danger)]" aria-hidden="true" />
+              <AlertTriangle size={13} className="text-[var(--color-error)]" aria-hidden="true" />
             )}
-            <span className="font-medium text-[var(--color-fg-primary)]">
+            <span className="font-medium text-[var(--color-text-primary)]">
               {preflight.strict_eligible ? "Strict preflight passed" : "Strict preflight blocked"}
             </span>
-            <span className="text-[var(--color-fg-secondary)]">
+            <span className="text-[var(--color-text-secondary)]">
               {preflight.backend_id} {preflight.backend_version}
               {preflight.certification ? ` · ${preflight.certification.id}` : " · uncertified"}
             </span>
           </div>
-          <span className="font-mono text-[11px] text-[var(--color-fg-secondary)]">
+          <span className="font-mono text-[11px] text-[var(--color-text-secondary)]">
             {liveEvidence
               ? `${liveEvidence.encoder_acked_frames}/${liveEvidence.expected_slots} committed`
               : preflight.failure_codes.join(", ") || "60/1 · 1920×1080"}
@@ -1119,58 +1125,61 @@ export function RecordingView({
       ) : null}
 
       {qualityFailure ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-2 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-error)]/30 bg-[var(--color-error)]/10 px-4 py-2 text-xs">
           <div className="min-w-0">
-            <div className="font-medium text-[var(--color-fg-primary)]">
+            <div className="font-medium text-[var(--color-text-primary)]">
               Strict take was not published
             </div>
-            <div className="truncate text-[var(--color-fg-secondary)]">
+            <div className="truncate text-[var(--color-text-secondary)]">
               {qualityFailure.cadence_evidence.failure_codes
                 .concat(qualityFailure.quality_evidence.failure_codes)
                 .join(", ") || "Verification failed"}
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
+            <AstryxButton
+              variant="secondary"
+              size="sm"
               onClick={() => resetTake()}
-              className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)]"
+              label="Retry recording"
             >
               Retry
-            </button>
-            <button
-              type="button"
-              disabled={!qualityFailure.diagnostic_bundle_path}
+            </AstryxButton>
+            <AstryxButton
+              variant="secondary"
+              size="sm"
+              isDisabled={!qualityFailure.diagnostic_bundle_path}
               onClick={() => {
                 if (qualityFailure.diagnostic_bundle_path) {
                   void openRecordingDiagnosticBundle(qualityFailure.diagnostic_bundle_path);
                 }
               }}
-              className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] disabled:opacity-40"
+              label="Open recording diagnostics"
             >
               Open diagnostics
-            </button>
-            <button
-              type="button"
-              disabled={!qualityFailure.diagnostic_bundle_path}
+            </AstryxButton>
+            <AstryxButton
+              variant="destructive"
+              size="sm"
+              isDisabled={!qualityFailure.diagnostic_bundle_path}
               onClick={() => {
                 const bundlePath = qualityFailure.diagnostic_bundle_path;
                 if (!bundlePath) return;
                 void deleteFailedRecordingBundle(projectFolder, bundlePath)
                   .then(() => {
                     resetTake();
-                    toast.success("Failed take deleted");
+                    notifications.success("Failed take deleted");
                   })
                   .catch((deleteError) => {
-                    toast.error("Could not delete failed take", {
+                    notifications.error("Could not delete failed take", {
                       description: formatIpcError(deleteError),
                     });
                   });
               }}
-              className="rounded-[var(--radius-sm)] bg-[var(--color-danger)] px-2.5 py-1 text-[11px] font-medium text-white disabled:opacity-40"
+              label="Delete failed recording"
             >
               Delete
-            </button>
+            </AstryxButton>
           </div>
         </div>
       ) : null}
@@ -1180,48 +1189,52 @@ export function RecordingView({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-2 text-xs">
           <div className="flex min-w-0 items-center gap-2 text-[var(--color-warning)]">
             <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
-            <span className="font-medium text-[var(--color-fg-primary)]">
+            <span className="font-medium text-[var(--color-text-primary)]">
               Stage Manager is on — window capture will black out if you switch stages.
             </span>
-            <span className="text-[var(--color-fg-secondary)]">
+            <span className="text-[var(--color-text-secondary)]">
               Turn it off in Control Centre for reliable browser recording.
             </span>
           </div>
-          <button
+          <AstryxButton
+            variant="ghost"
+            size="sm"
             onClick={() => setStageManagerWarning(false)}
-            className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"
+            label="Dismiss Stage Manager warning"
           >
             Dismiss
-          </button>
+          </AstryxButton>
         </div>
       ) : null}
 
       {/* Heartbeat-watchdog banner. Renders only while recording and the
           host has gone >5s without a heartbeat. */}
       {desynced && (status === "recording" || status === "paused") ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-2 text-xs">
-          <div className="flex min-w-0 items-center gap-2 text-[var(--color-danger)]">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-error)]/30 bg-[var(--color-error)]/10 px-4 py-2 text-xs">
+          <div className="flex min-w-0 items-center gap-2 text-[var(--color-error)]">
             <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
-            <span className="font-medium text-[var(--color-fg-primary)]">
+            <span className="font-medium text-[var(--color-text-primary)]">
               Recording state out of sync
             </span>
-            <span className="text-[var(--color-fg-secondary)]">
+            <span className="text-[var(--color-text-secondary)]">
               No heartbeat from the recorder for 5s. Force stop to recover.
             </span>
           </div>
-          <button
+          <AstryxButton
+            variant="destructive"
+            size="sm"
             onClick={() => void forceStop()}
-            className="rounded-[var(--radius-sm)] bg-[var(--color-danger)] px-2.5 py-1 text-[11px] font-medium text-white transition-[filter] duration-150 hover:brightness-110"
+            label="Force stop recording"
           >
             Force stop
-          </button>
+          </AstryxButton>
         </div>
       ) : null}
 
       {/* ─── Main workspace: 3-zone ─── */}
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px]">
         {/* LEFT: preview/stage */}
-        <section className="flex min-h-0 flex-col border-r border-[var(--color-border-subtle)]">
+        <section className="flex min-h-0 flex-col border-r border-[var(--color-border)]">
           <div className="flex min-h-0 flex-1 items-center justify-center p-6">
             <PreviewStage
               status={status}
@@ -1236,13 +1249,13 @@ export function RecordingView({
           </div>
 
           {/* Step rail — horizontal chips */}
-          <div className="shrink-0 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-3">
+          <div className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-background-card)] px-4 py-3">
             <StepRail steps={steps} currentStep={currentStep} completedSteps={completedSteps} />
           </div>
 
           {/* Primary action strip */}
-          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-3">
-            <div className="text-[11px] text-[var(--color-fg-muted)]">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--color-border)] bg-[var(--color-background-card)] px-4 py-3">
+            <div className="text-[11px] text-[var(--color-text-secondary)]">
               {status === "idle" && canRecord ? (
                 <span>Ready · {steps.length} steps</span>
               ) : status === "idle" && !canRecord ? (
@@ -1256,9 +1269,9 @@ export function RecordingView({
               ) : status === "completed" ? (
                 <span className="text-[var(--color-success)]">Recording complete</span>
               ) : status === "quality_failed" ? (
-                <span className="text-[var(--color-danger)]">Strict verification failed</span>
+                <span className="text-[var(--color-error)]">Strict verification failed</span>
               ) : status === "failed" ? (
-                <span className="text-[var(--color-danger)]">Recording failed</span>
+                <span className="text-[var(--color-error)]">Recording failed</span>
               ) : null}
             </div>
 
@@ -1284,65 +1297,72 @@ export function RecordingView({
                   {/* Recorder-side element picker removed; picking is
                       exclusively author-side via PreviewPickerButton in
                       the Preview panel. */}
-                  <button
+                  <AstryxButton
+                    variant="secondary"
+                    size="sm"
                     onClick={handlePause}
-                    aria-label="Pause recording"
-                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] transition-[transform,background-color] duration-150 hover:bg-[var(--color-surface-300)] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+                    label="Pause recording"
+                    icon={<Pause size={13} aria-hidden="true" />}
                   >
-                    <Pause size={13} aria-hidden="true" />
                     Pause
-                  </button>
-                  <button
+                  </AstryxButton>
+                  <AstryxButton
+                    variant="destructive"
+                    size="sm"
                     onClick={() => void handleStop()}
-                    aria-label="Stop recording"
-                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--color-danger)] px-3 py-1.5 text-xs font-medium text-white transition-[transform,filter] duration-150 hover:brightness-110 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+                    label="Stop recording"
+                    icon={<StopIcon size={13} aria-hidden="true" />}
                   >
-                    <StopIcon size={13} aria-hidden="true" />
                     Stop
-                  </button>
+                  </AstryxButton>
                 </>
               )}
               {status === "paused" && (
                 <>
-                  <button
+                  <AstryxButton
+                    variant="primary"
+                    size="sm"
                     onClick={handleResume}
-                    aria-label="Resume recording"
-                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--color-warning)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] transition-[transform,filter] duration-150 hover:brightness-105 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+                    label="Resume recording"
+                    icon={<Play size={13} aria-hidden="true" />}
                   >
-                    <Play size={13} aria-hidden="true" />
                     Resume
-                  </button>
-                  <button
+                  </AstryxButton>
+                  <AstryxButton
+                    variant="destructive"
+                    size="sm"
                     onClick={() => void handleStop()}
-                    aria-label="Stop recording"
-                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--color-danger)] px-3 py-1.5 text-xs font-medium text-white transition-[transform,filter] duration-150 hover:brightness-110 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+                    label="Stop recording"
+                    icon={<StopIcon size={13} aria-hidden="true" />}
                   >
-                    <StopIcon size={13} aria-hidden="true" />
                     Stop
-                  </button>
+                  </AstryxButton>
                 </>
               )}
               {status === "completed" && (
-                <button
+                <AstryxButton
+                  variant="secondary"
+                  size="sm"
                   onClick={() => {
                     resetTake();
                     applyRecorderDefaults();
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-1.5 text-xs text-[var(--color-fg-primary)] hover:bg-[var(--color-surface-300)]"
+                  label="New take"
+                  tooltip="Start a new take"
                 >
                   New take
-                </button>
+                </AstryxButton>
               )}
             </div>
           </div>
         </section>
 
         {/* RIGHT: settings rail */}
-        <aside className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto overflow-x-hidden bg-[var(--color-surface-100)] px-4 py-4">
+        <aside className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto overflow-x-hidden bg-[var(--color-background-card)] px-4 py-4">
           <SettingsGroup label="Source" icon={<Monitor size={13} />}>
             <label
               htmlFor="target-select"
-              className="mb-1.5 block text-xs text-[var(--color-fg-muted)]"
+              className="mb-1.5 block text-xs text-[var(--color-text-secondary)]"
             >
               Target
             </label>
@@ -1360,7 +1380,7 @@ export function RecordingView({
           <SettingsGroup label="Microphone" icon={<SettingsIcon size={13} />}>
             <label
               htmlFor="audio-device-select"
-              className="mb-1.5 block text-xs text-[var(--color-fg-muted)]"
+              className="mb-1.5 block text-xs text-[var(--color-text-secondary)]"
             >
               Audio input
             </label>
@@ -1374,7 +1394,7 @@ export function RecordingView({
                 status === "verifying"
               }
             />
-            <p className="mt-1.5 text-[10px] text-[var(--color-fg-muted)]">
+            <p className="mt-1.5 text-[10px] text-[var(--color-text-secondary)]">
               Default is off; choose "System default" to include voice-over. Resets every recording.
             </p>
           </SettingsGroup>
@@ -1427,11 +1447,11 @@ export function RecordingView({
             captureDims={selectedCaptureDims}
           />
 
-          <div className="mt-auto rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-2.5">
-            <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+          <div className="mt-auto rounded-[var(--radius-element)] border border-[var(--color-border)] bg-[var(--color-background-surface)] px-3 py-2.5">
+            <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
               Project folder
             </div>
-            <div className="mt-1 font-mono text-[10px] text-[var(--color-fg-secondary)]">
+            <div className="mt-1 font-mono text-[10px] text-[var(--color-text-secondary)]">
               {projectFolder.split("/").slice(-2).join("/")}
             </div>
           </div>
@@ -1457,12 +1477,12 @@ function LiveRecordingBadge({ paused, reduceMotion }: { paused: boolean; reduceM
       className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
         paused
           ? "bg-[var(--color-warning)]/15 text-[var(--color-warning)]"
-          : "bg-[var(--color-danger)]/10 text-[var(--color-danger)]"
+          : "bg-[var(--color-error)]/10 text-[var(--color-error)]"
       }`}
     >
       <motion.span
         className={`h-1.5 w-1.5 rounded-full ${
-          paused ? "bg-[var(--color-warning)]" : "bg-[var(--color-danger)]"
+          paused ? "bg-[var(--color-warning)]" : "bg-[var(--color-error)]"
         }`}
         animate={reduceMotion ? undefined : { opacity: [1, 0.35, 1] }}
         transition={{
@@ -1495,14 +1515,14 @@ function PermissionBanner({
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-2 text-xs">
       <div className="flex min-w-0 items-center gap-2 text-[var(--color-warning)]">
         <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
-        <span className="font-medium text-[var(--color-fg-primary)]">
+        <span className="font-medium text-[var(--color-text-primary)]">
           {identityError
             ? "Dev app identity is not configured."
             : isDenied
               ? "Screen recording permission denied."
               : "Screen recording permission needed."}
         </span>
-        <span className="text-[var(--color-fg-secondary)]">
+        <span className="text-[var(--color-text-secondary)]">
           {identityError
             ? `macOS sees ${report.bundleId ?? report.appName}; dev should appear as StoryCapture Dev.`
             : `Grant Screen Recording access to ${report.appName} in System Settings, then relaunch.`}
@@ -1510,32 +1530,40 @@ function PermissionBanner({
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         {onBypass ? (
-          <button
+          <AstryxButton
+            variant="ghost"
+            size="sm"
             onClick={onBypass}
-            title="Debug-only: skip the permission check and try to record anyway"
-            className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"
+            tooltip="Debug-only: skip the permission check and try to record anyway"
+            label="Debug bypass"
           >
             Debug bypass
-          </button>
+          </AstryxButton>
         ) : null}
-        <button
+        <AstryxButton
+          variant="secondary"
+          size="sm"
           onClick={onRecheck}
-          className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"
+          label="Recheck screen recording permission"
         >
           Recheck
-        </button>
-        <button
+        </AstryxButton>
+        <AstryxButton
+          variant="secondary"
+          size="sm"
           onClick={onRelaunch}
-          className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"
+          label="Relaunch StoryCapture"
         >
           Relaunch
-        </button>
-        <button
+        </AstryxButton>
+        <AstryxButton
+          variant="primary"
+          size="sm"
           onClick={onOpenSettings}
-          className="rounded-[var(--radius-sm)] bg-[var(--color-accent-primary)] px-2.5 py-1 text-[11px] font-medium text-white transition-[filter] duration-150 hover:brightness-110"
+          label="Open Screen Recording settings"
         >
           Open Settings
-        </button>
+        </AstryxButton>
       </div>
     </div>
   );
@@ -1563,7 +1591,7 @@ function PreviewStage({
   reduceMotion,
 }: PreviewStageProps) {
   return (
-    <div className="relative flex aspect-video w-full max-w-5xl flex-col items-center justify-center overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)]">
+    <div className="relative flex aspect-video w-full max-w-5xl flex-col items-center justify-center overflow-hidden rounded-[var(--radius-container)] border border-[var(--color-border)] bg-[var(--color-background-surface)]">
       {/* Subtle grid texture */}
       <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:radial-gradient(rgba(38,37,30,0.05)_1px,transparent_1px)] [background-size:18px_18px]" />
 
@@ -1577,13 +1605,17 @@ function PreviewStage({
             transition={{ duration: 0.2 }}
             className="relative flex flex-col items-center text-center"
           >
-            <div className="grid h-14 w-14 place-items-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
-              <Monitor size={22} className="text-[var(--color-fg-muted)]" aria-hidden="true" />
+            <div className="grid h-14 w-14 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-background-card)]">
+              <Monitor
+                size={22}
+                className="text-[var(--color-text-secondary)]"
+                aria-hidden="true"
+              />
             </div>
-            <p className="mt-4 text-sm font-medium text-[var(--color-fg-primary)]">
+            <p className="mt-4 text-sm font-medium text-[var(--color-text-primary)]">
               Ready to record
             </p>
-            <p className="font-serif mt-1 max-w-xs text-xs leading-relaxed text-[var(--color-fg-secondary)]">
+            <p className="font-serif mt-1 max-w-xs text-xs leading-relaxed text-[var(--color-text-secondary)]">
               {totalSteps > 0
                 ? `${totalSteps} scripted steps will execute against the selected display.`
                 : "Add scenes to your story to schedule a scripted run."}
@@ -1600,17 +1632,17 @@ function PreviewStage({
             transition={{ duration: 0.2 }}
             className="relative flex flex-col items-center text-center"
           >
-            <div className="font-mono text-[clamp(2.5rem,7vw,4.5rem)] font-semibold tabular-nums tracking-[-0.04em] text-[var(--color-fg-primary)]">
+            <div className="font-mono text-[clamp(2.5rem,7vw,4.5rem)] font-semibold tabular-nums tracking-[-0.04em] text-[var(--color-text-primary)]">
               {formatTime(elapsedMs)}
             </div>
-            <div className="mt-3 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+            <div className="mt-3 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
               <span>{status === "paused" ? "Paused" : "Recording"}</span>
               <span>/</span>
               <span>Step {Math.min(currentStepIndex + 1, totalSteps)}</span>
               <span>/</span>
               <span>{totalSteps}</span>
             </div>
-            <p className="font-mono mt-2 max-w-md truncate text-xs text-[var(--color-fg-secondary)]">
+            <p className="font-mono mt-2 max-w-md truncate text-xs text-[var(--color-text-secondary)]">
               {currentStepLabel ?? "waiting…"}
             </p>
           </motion.div>
@@ -1629,10 +1661,10 @@ function PreviewStage({
               className="animate-spin text-[var(--color-accent)]"
               aria-hidden="true"
             />
-            <p className="mt-4 text-sm font-medium text-[var(--color-fg-primary)]">
+            <p className="mt-4 text-sm font-medium text-[var(--color-text-primary)]">
               Verifying lossless master
             </p>
-            <p className="mt-1 text-xs text-[var(--color-fg-secondary)]">
+            <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
               Checking every frame hash and exact 60/1 cadence before publishing.
             </p>
           </motion.div>
@@ -1650,11 +1682,11 @@ function PreviewStage({
             <div className="grid h-14 w-14 place-items-center rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)]">
               <CheckCircle2 size={26} aria-hidden="true" />
             </div>
-            <p className="mt-4 text-sm font-medium text-[var(--color-fg-primary)]">
+            <p className="mt-4 text-sm font-medium text-[var(--color-text-primary)]">
               Recording complete
             </p>
             {outputPath && (
-              <p className="font-mono mt-1 max-w-md truncate text-[11px] text-[var(--color-fg-secondary)]">
+              <p className="font-mono mt-1 max-w-md truncate text-[11px] text-[var(--color-text-secondary)]">
                 {outputPath}
               </p>
             )}
@@ -1669,11 +1701,11 @@ function PreviewStage({
             exit={reduceMotion ? undefined : { opacity: 0 }}
             className="relative flex max-w-md flex-col items-center text-center"
           >
-            <AlertTriangle size={26} className="text-[var(--color-danger)]" aria-hidden="true" />
-            <p className="mt-3 text-sm font-medium text-[var(--color-fg-primary)]">
+            <AlertTriangle size={26} className="text-[var(--color-error)]" aria-hidden="true" />
+            <p className="mt-3 text-sm font-medium text-[var(--color-text-primary)]">
               {status === "quality_failed" ? "Strict verification failed" : "Recording failed"}
             </p>
-            <p className="font-mono mt-1 text-[11px] text-[var(--color-fg-secondary)]">{error}</p>
+            <p className="font-mono mt-1 text-[11px] text-[var(--color-text-secondary)]">{error}</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1691,7 +1723,7 @@ function StepRail({ steps, currentStep, completedSteps }: StepRailProps) {
   if (steps.length === 0) {
     return (
       <div className="flex items-center justify-between">
-        <span className="text-[11px] text-[var(--color-fg-muted)]">
+        <span className="text-[11px] text-[var(--color-text-secondary)]">
           No steps yet — add scenes to the story.
         </span>
       </div>
@@ -1713,10 +1745,10 @@ function StepRail({ steps, currentStep, completedSteps }: StepRailProps) {
           <span
             className={`grid h-4 w-4 shrink-0 place-items-center rounded-full ${
               activeFailed
-                ? "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"
+                ? "bg-[var(--color-error)]/15 text-[var(--color-error)]"
                 : activeRunning
-                  ? "bg-[var(--color-accent-primary)]/15 text-[var(--color-accent-primary)]"
-                  : "bg-[var(--color-surface-300)] text-[var(--color-fg-muted)]"
+                  ? "bg-[var(--color-accent)]/15 text-[var(--color-accent)]"
+                  : "bg-[var(--color-background-popover)] text-[var(--color-text-secondary)]"
             }`}
           >
             {activeFailed ? (
@@ -1727,23 +1759,23 @@ function StepRail({ steps, currentStep, completedSteps }: StepRailProps) {
               <Circle size={7} aria-hidden="true" />
             )}
           </span>
-          <span className="font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+          <span className="font-mono text-[10px] tabular-nums text-[var(--color-text-secondary)]">
             {String(activeIdx + 1).padStart(2, "0")}
             <span className="opacity-50">/{String(steps.length).padStart(2, "0")}</span>
           </span>
-          <span className="min-w-0 truncate text-[11px] text-[var(--color-fg-primary)]">
+          <span className="min-w-0 truncate text-[11px] text-[var(--color-text-primary)]">
             {activeStep?.verb ?? "—"}
           </span>
         </div>
-        <div className="flex shrink-0 items-center gap-3 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+        <div className="flex shrink-0 items-center gap-3 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
           <span>
             <span className="text-[var(--color-success)]">{completedSteps}</span>
             <span className="mx-1 opacity-40">·</span>
-            <span className={failedCount ? "text-[var(--color-danger)]" : ""}>
+            <span className={failedCount ? "text-[var(--color-error)]" : ""}>
               {failedCount} failed
             </span>
           </span>
-          <span className="font-mono tabular-nums text-[var(--color-fg-secondary)]">
+          <span className="font-mono tabular-nums text-[var(--color-text-secondary)]">
             {progressPct}%
           </span>
         </div>
@@ -1763,15 +1795,15 @@ function StepRail({ steps, currentStep, completedSteps }: StepRailProps) {
           const running = step.status === "running";
           const failed = step.status === "failed";
           const tone = failed
-            ? "bg-[var(--color-danger)]"
+            ? "bg-[var(--color-error)]"
             : done
               ? "bg-[var(--color-success)]"
               : running
-                ? "bg-[var(--color-accent-primary)]"
-                : "bg-[var(--color-surface-300)]";
+                ? "bg-[var(--color-accent)]"
+                : "bg-[var(--color-background-popover)]";
           return (
             <motion.div
-              key={i}
+              key={step.index}
               layout
               title={`${i + 1}. ${step.verb}${
                 failed ? " — failed" : done ? " — done" : running ? " — running" : ""
@@ -1787,7 +1819,7 @@ function StepRail({ steps, currentStep, completedSteps }: StepRailProps) {
               {active && (
                 <motion.span
                   layoutId="step-indicator"
-                  className="pointer-events-none absolute -inset-x-0.5 -inset-y-1 rounded-[3px] ring-1 ring-[var(--color-fg-primary)]/70"
+                  className="pointer-events-none absolute -inset-x-0.5 -inset-y-1 rounded-[3px] ring-1 ring-[var(--color-text-primary)]/70"
                   transition={{ type: "spring", stiffness: 400, damping: 34 }}
                 />
               )}
@@ -1801,20 +1833,27 @@ function StepRail({ steps, currentStep, completedSteps }: StepRailProps) {
 
 function RecordButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
   return (
-    <button
+    <AstryxButton
+      variant="destructive"
+      size="sm"
       onClick={onClick}
-      disabled={disabled}
-      aria-label="Start recording"
-      className="group inline-flex items-center gap-2 rounded-[var(--radius-pill)] bg-[var(--color-danger)] px-4 py-1.5 text-xs font-medium text-white shadow-[0_6px_20px_-8px_rgba(207,45,86,0.55)] transition-[transform,filter,box-shadow] duration-150 hover:brightness-110 hover:shadow-[0_10px_24px_-8px_rgba(207,45,86,0.65)] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+      isDisabled={disabled}
+      label="Start recording"
+      icon={
+        <span className="grid h-4 w-4 place-items-center" aria-hidden="true">
+          <span className="h-2 w-2 rounded-full bg-current" />
+        </span>
+      }
+      endContent={
+        <span aria-hidden="true">
+          <kbd className="font-mono rounded-[var(--radius-inner)] px-1 py-0.5 text-[9px] tabular-nums">
+            ⌘R
+          </kbd>
+        </span>
+      }
     >
-      <span className="grid h-4 w-4 place-items-center">
-        <span className="h-2 w-2 rounded-full bg-white" />
-      </span>
       Start recording
-      <kbd className="font-mono ml-1 rounded-[var(--radius-xs)] bg-white/15 px-1 py-0.5 text-[9px] tabular-nums">
-        ⌘R
-      </kbd>
-    </button>
+    </AstryxButton>
   );
 }
 
@@ -1829,7 +1868,7 @@ function SettingsGroup({
 }) {
   return (
     <section>
-      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
         {icon}
         <span>{label}</span>
       </div>
@@ -1841,8 +1880,8 @@ function SettingsGroup({
 function SettingsRow({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex items-center justify-between">
-      <dt className="text-[var(--color-fg-muted)]">{k}</dt>
-      <dd className="font-mono text-[11px] text-[var(--color-fg-primary)]">{v}</dd>
+      <dt className="text-[var(--color-text-secondary)]">{k}</dt>
+      <dd className="font-mono text-[11px] text-[var(--color-text-primary)]">{v}</dd>
     </div>
   );
 }
@@ -1857,23 +1896,13 @@ function Toggle({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-center justify-between text-[var(--color-fg-secondary)]">
-      <span>{label}</span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={`relative h-4 w-7 rounded-full transition-colors duration-150 ${
-          checked ? "bg-[var(--color-accent-primary)]" : "bg-[var(--color-surface-400)]"
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 left-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform duration-150 ${
-            checked ? "translate-x-3" : "translate-x-0"
-          }`}
-        />
-      </button>
-    </label>
+    <AstryxSwitch
+      label={label}
+      value={checked}
+      onChange={onChange}
+      labelPosition="start"
+      labelSpacing="spread"
+      width="100%"
+    />
   );
 }

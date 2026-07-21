@@ -73,8 +73,8 @@ describe("AdvancedOutputOptions", () => {
       </Wrapped>,
     );
     await flushQueries();
-    expect(screen.getByText(/Quality \(lower/)).toBeInTheDocument();
-    expect(screen.getByText(/Encoding speed/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Quality \(lower/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Encoding speed/).length).toBeGreaterThan(0);
   });
 
   it("unavailable persisted HW encoder shows soft warning", async () => {
@@ -86,8 +86,8 @@ describe("AdvancedOutputOptions", () => {
       </Wrapped>,
     );
     await flushQueries();
-    expect(screen.getByRole("status")).toHaveTextContent(/h264-nvenc/);
-    expect(screen.getByRole("status")).toHaveTextContent(/is not available/);
+    expect(screen.getByTestId("hw-encoder-warning")).toHaveTextContent(/h264-nvenc/);
+    expect(screen.getByTestId("hw-encoder-warning")).toHaveTextContent(/is not available/);
   });
 
   it("shows all field labels when encoder has full controls", async () => {
@@ -98,13 +98,17 @@ describe("AdvancedOutputOptions", () => {
       </Wrapped>,
     );
     await flushQueries();
-    expect(screen.getByText("File format")).toBeInTheDocument();
-    expect(screen.getByText("Codec")).toBeInTheDocument();
-    expect(screen.getByText("Hardware encoder")).toBeInTheDocument();
-    expect(screen.getByText(/Keyframe interval/)).toBeInTheDocument();
-    expect(screen.getByText("Audio codec")).toBeInTheDocument();
-    expect(screen.getByText(/Audio bitrate/)).toBeInTheDocument();
-    expect(screen.getByText("Channels")).toBeInTheDocument();
+    for (const label of [
+      "File format",
+      "Codec",
+      "Hardware encoder",
+      /Keyframe interval/,
+      "Audio codec",
+      /Audio bitrate/,
+      "Channels",
+    ]) {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    }
   });
 
   it("uses probe result to derive available encoders (no NVENC when absent)", async () => {

@@ -1,14 +1,10 @@
-import { useState, useCallback } from "react";
+import { AlertDialog } from "@astryxdesign/core/AlertDialog";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { TextInput as AstryxTextInput } from "@astryxdesign/core/TextInput";
 import { invoke } from "@tauri-apps/api/core";
-import { Dialog } from "@base-ui/react/dialog";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import {
-  dialogBackdropMotionClassName,
-  dialogCenteredPopupMotionClassName,
-  dialogViewportClassName,
-} from "@/components/ui/dialog-motion";
 import { Loader2 } from "lucide-react";
+import { useCallback, useState } from "react";
+import { cn } from "@/lib/utils";
 
 export interface ApiKeyRowProps {
   providerId: string;
@@ -16,9 +12,7 @@ export interface ApiKeyRowProps {
   present: boolean;
   testStatus?: "valid" | "invalid" | "rate_limited" | "untested";
   onPresenceChange: (present: boolean) => void;
-  onTestStatusChange: (
-    status: "valid" | "invalid" | "rate_limited" | "untested",
-  ) => void;
+  onTestStatusChange: (status: "valid" | "invalid" | "rate_limited" | "untested") => void;
 }
 
 export function ApiKeyRow({
@@ -86,16 +80,16 @@ export function ApiKeyRow({
   return (
     <div
       className={cn(
-        "flex items-center gap-4 rounded-[var(--radius-lg)] border px-4 py-3 transition-colors",
+        "flex items-center gap-4 rounded-[var(--radius-container)] border px-4 py-3 transition-colors",
         present
-          ? "border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]"
-          : "border-dashed border-[var(--color-border-default)] bg-transparent",
+          ? "border-[var(--color-border)] bg-[var(--color-background-card)]"
+          : "border-dashed border-[var(--color-border)] bg-transparent",
       )}
     >
       {/* Provider name + status */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-[var(--color-fg-primary)]">
+          <span className="text-sm font-medium text-[var(--color-text-primary)]">
             {displayName}
           </span>
           {testStatus === "valid" && (
@@ -104,7 +98,7 @@ export function ApiKeyRow({
             </span>
           )}
           {testStatus === "invalid" && (
-            <span className="rounded-full bg-[var(--color-danger)]/12 px-2 py-0.5 text-[10px] font-medium text-[var(--color-danger)]">
+            <span className="rounded-full bg-[var(--color-error)]/12 px-2 py-0.5 text-[10px] font-medium text-[var(--color-error)]">
               invalid
             </span>
           )}
@@ -115,7 +109,7 @@ export function ApiKeyRow({
           )}
         </div>
         {present && !editing && (
-          <span className="mt-0.5 block font-mono text-xs text-[var(--color-fg-muted)]">
+          <span className="mt-0.5 block font-mono text-xs text-[var(--color-text-secondary)]">
             ••••••••
           </span>
         )}
@@ -124,33 +118,37 @@ export function ApiKeyRow({
       {/* Inline edit form */}
       {editing && (
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <input
+          <AstryxTextInput
             type="password"
-            autoComplete="off"
             value={keyValue}
-            onChange={(e) => setKeyValue(e.target.value)}
+            onChange={setKeyValue}
             placeholder={`Paste ${displayName} key`}
-            className="min-w-0 flex-1 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-1.5 font-mono text-xs text-[var(--color-fg-primary)] placeholder:text-[var(--color-fg-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent-primary)]"
-            aria-label={`API key for ${displayName}`}
+            label={`API key for ${displayName}`}
+            isLabelHidden
+            size="sm"
+            width="100%"
+            className="min-w-0 flex-1 font-mono"
           />
-          <Button
+          <AstryxButton
             size="sm"
             onClick={handleSave}
-            disabled={saving || !keyValue.trim()}
-            className="shrink-0 rounded-[var(--radius-md)] px-3 text-xs"
+            isDisabled={saving || !keyValue.trim()}
+            className="shrink-0 rounded-[var(--radius-element)] px-3 text-xs"
+            label="Save API key"
           >
             {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
-          </Button>
-          <button
-            type="button"
+          </AstryxButton>
+          <AstryxButton
+            variant="ghost"
+            size="sm"
             onClick={() => {
               setEditing(false);
               setKeyValue("");
             }}
-            className="shrink-0 text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg-primary)]"
+            label="Cancel API key edit"
           >
             Cancel
-          </button>
+          </AstryxButton>
         </div>
       )}
 
@@ -158,83 +156,58 @@ export function ApiKeyRow({
       {!editing && (
         <div className="flex shrink-0 items-center gap-2">
           {!present && (
-            <button
-              type="button"
+            <AstryxButton
+              variant="ghost"
+              size="sm"
               onClick={() => setEditing(true)}
-              className="text-xs font-medium text-[var(--color-accent-primary)] hover:underline"
+              label={`Add ${displayName} API key`}
             >
               Add key
-            </button>
+            </AstryxButton>
           )}
           {present && (
             <>
-              <button
-                type="button"
+              <AstryxButton
+                variant="ghost"
+                size="sm"
                 onClick={handleTest}
-                disabled={testing}
-                className="text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg-primary)] disabled:opacity-50"
+                isDisabled={testing}
+                label={`Test ${displayName} API key`}
               >
-                {testing ? (
-                  <Loader2 className="inline h-3 w-3 animate-spin" />
-                ) : (
-                  "Test"
-                )}
-              </button>
-              <span className="text-[var(--color-border-default)]">|</span>
-              <button
-                type="button"
+                {testing ? <Loader2 className="inline h-3 w-3 animate-spin" /> : "Test"}
+              </AstryxButton>
+              <span className="text-[var(--color-border)]">|</span>
+              <AstryxButton
+                variant="ghost"
+                size="sm"
                 onClick={() => setEditing(true)}
-                className="text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg-primary)]"
+                label={`Replace ${displayName} API key`}
               >
                 Replace
-              </button>
-              <span className="text-[var(--color-border-default)]">|</span>
-              <button
-                type="button"
+              </AstryxButton>
+              <span className="text-[var(--color-border)]">|</span>
+              <AstryxButton
+                variant="ghost"
+                size="sm"
                 onClick={() => setShowConfirm(true)}
-                className="text-xs text-[var(--color-danger)]/70 hover:text-[var(--color-danger)]"
-                aria-label={`Remove ${displayName} key`}
+                label={`Remove ${displayName} key`}
               >
                 Remove
-              </button>
+              </AstryxButton>
             </>
           )}
         </div>
       )}
 
-      {/* Delete confirmation dialog */}
-      <Dialog.Root open={showConfirm} onOpenChange={setShowConfirm}>
-        <Dialog.Portal>
-          <Dialog.Backdrop
-            className={`fixed inset-0 z-50 bg-black/40 backdrop-blur-sm ${dialogBackdropMotionClassName}`}
-          />
-          <Dialog.Viewport className={dialogViewportClassName}>
-            <Dialog.Popup
-              className={`w-full max-w-sm rounded-[var(--radius-xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-6 shadow-[var(--shadow-card)] ${dialogCenteredPopupMotionClassName}`}
-            >
-              <Dialog.Title className="text-base font-semibold text-[var(--color-fg-primary)]">
-              Remove {displayName} key?
-            </Dialog.Title>
-            <Dialog.Description className="mt-2 text-sm text-[var(--color-fg-muted)]">
-              This deletes the key from the OS keychain. You can add it again
-              later.
-            </Dialog.Description>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowConfirm(false)}
-              >
-                Cancel
-              </Button>
-              <Button variant="destructive" size="sm" onClick={handleDelete}>
-                Remove
-              </Button>
-            </div>
-            </Dialog.Popup>
-          </Dialog.Viewport>
-        </Dialog.Portal>
-      </Dialog.Root>
+      <AlertDialog
+        isOpen={showConfirm}
+        onOpenChange={setShowConfirm}
+        title={`Remove ${displayName} key?`}
+        description="This deletes the key from the OS keychain. You can add it again later."
+        actionLabel="Remove"
+        actionVariant="destructive"
+        onAction={() => void handleDelete()}
+      />
     </div>
   );
 }

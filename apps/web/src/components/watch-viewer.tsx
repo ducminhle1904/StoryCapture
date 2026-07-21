@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import type { Chapter, AnalyticsEvent } from "./video-player";
+import { Link } from "@astryxdesign/core/Link";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChapterNav } from "./chapter-nav";
+import type { AnalyticsEvent, Chapter } from "./video-player";
 
 interface WatchViewerProps {
   videoUrl: string;
@@ -137,9 +138,7 @@ export function WatchViewer({
 
   return (
     <div className="mx-auto w-full max-w-4xl">
-      <h1 className="mb-4 text-xl font-semibold text-zinc-100">
-        {projectName}
-      </h1>
+      <h1 className="mb-4 text-xl font-semibold text-[var(--color-text-primary)]">{projectName}</h1>
 
       <VideoPlayerWithSeek
         src={videoUrl}
@@ -153,23 +152,14 @@ export function WatchViewer({
       />
 
       {chapters.length > 0 && (
-        <ChapterNav
-          chapters={chapters}
-          currentTime={currentTime}
-          onSeek={handleSeek}
-        />
+        <ChapterNav chapters={chapters} currentTime={currentTime} onSeek={handleSeek} />
       )}
 
-      <footer className="mt-8 border-t border-zinc-800 pt-4 text-center text-xs text-zinc-500">
+      <footer className="mt-8 border-t border-[var(--color-border)] pt-4 text-center text-xs text-[var(--color-text-secondary)]">
         Made with{" "}
-        <a
-          href="https://storycapture.app"
-          className="text-zinc-400 underline hover:text-zinc-300"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+        <Link href="https://storycapture.app" isExternalLink hasUnderline type="inherit">
           StoryCapture
-        </a>
+        </Link>
       </footer>
     </div>
   );
@@ -200,6 +190,7 @@ function VideoPlayerWithSeek({
       className="relative w-full overflow-hidden rounded-lg bg-black"
       style={{ aspectRatio: "16 / 9" }}
     >
+      {/* biome-ignore lint/a11y/useMediaCaption: User recordings do not always include a captions track. */}
       <video
         ref={videoRef}
         src={src}

@@ -33,15 +33,15 @@ export default function RecorderRoute() {
 
   if (error) {
     return (
-      <main id="main-content" className="sc-window-chrome h-full p-8" role="alert">
-        <div className="mx-auto flex max-w-2xl items-start gap-3 rounded-lg border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-4 text-sm text-[var(--color-danger)]">
+      <main id="main-content" className="story-window-chrome h-full p-8" role="alert">
+        <div className="mx-auto flex max-w-2xl items-start gap-3 rounded-lg border border-[var(--color-error)]/40 bg-[var(--color-error)]/10 p-4 text-sm text-[var(--color-error)]">
           <AlertTriangle size={16} aria-hidden="true" className="mt-0.5" />
           <div>
             <p className="font-medium">Failed to open project</p>
-            <p className="mt-1 text-[var(--color-fg-secondary)]">{error}</p>
+            <p className="mt-1 text-[var(--color-text-secondary)]">{error}</p>
             <Link
               to="/"
-              className="mt-3 inline-flex items-center gap-1 text-[var(--color-accent-secondary)] hover:underline"
+              className="mt-3 inline-flex items-center gap-1 text-[var(--color-accent)] hover:underline"
             >
               <ArrowLeft size={14} aria-hidden="true" /> Back to dashboard
             </Link>
@@ -55,7 +55,7 @@ export default function RecorderRoute() {
     return (
       <main
         id="main-content"
-        className="sc-window-chrome h-full p-8 text-sm text-[var(--color-fg-muted)]"
+        className="story-window-chrome h-full p-8 text-sm text-[var(--color-text-secondary)]"
       >
         <div className="mx-auto max-w-2xl">Loading project…</div>
       </main>

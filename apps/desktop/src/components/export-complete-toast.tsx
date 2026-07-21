@@ -5,6 +5,7 @@
  * Disabled if no web account is connected.
  */
 
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
 import { useUploadStore } from "@/stores/upload-store";
 import { useWebAccountStore } from "@/stores/web-account-store";
 
@@ -44,49 +45,53 @@ export function ExportCompleteToast({
   };
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-neutral-700 bg-neutral-900 p-4 shadow-lg">
+    <div className="flex flex-col gap-3 rounded-[var(--radius-container)] border border-[var(--color-border)] bg-[var(--color-background-card)] p-4 shadow-[var(--shadow-med)]">
       <div className="flex items-center gap-2">
-        <span className="text-green-400">Export complete</span>
+        <span className="text-[var(--color-success)]">Export complete</span>
       </div>
 
-      <p className="text-sm text-neutral-400">
+      <p className="text-sm text-[var(--color-text-secondary)]">
         Video saved to{" "}
-        <span className="font-mono text-xs text-neutral-300">
+        <span className="font-mono text-xs text-[var(--color-text-primary)]">
           {filePath.split("/").pop() ?? filePath}
         </span>
       </p>
 
       <div className="flex items-center gap-2">
         <div className="relative">
-          <button
+          <AstryxButton
+            variant="primary"
             onClick={handleUpload}
-            disabled={!isConnected || isUploading}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-[var(--color-fg-primary)] transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-            title={
+            isDisabled={!isConnected || isUploading}
+            tooltip={
               !isConnected
                 ? "Connect a web account in Settings > Accounts"
                 : isUploading
                   ? "Upload in progress..."
                   : "Upload this video to storycapture.app"
             }
+            label="Upload to Web"
           >
             {isUploading ? "Uploading..." : "Upload to Web"}
-          </button>
+          </AstryxButton>
         </div>
 
         {!isConnected && (
-          <span className="text-xs text-neutral-500">
+          <span className="text-xs text-[var(--color-text-disabled)]">
             Connect a web account in Settings &gt; Accounts
           </span>
         )}
 
         {onDismiss && (
-          <button
+          <AstryxButton
+            variant="ghost"
+            size="sm"
             onClick={onDismiss}
-            className="ml-auto rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+            label="Dismiss export notification"
+            className="ml-auto"
           >
             Dismiss
-          </button>
+          </AstryxButton>
         )}
       </div>
     </div>

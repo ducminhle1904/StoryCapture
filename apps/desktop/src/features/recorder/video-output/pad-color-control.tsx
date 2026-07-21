@@ -1,17 +1,15 @@
 /**
- * Pad-color knob. ToggleGroup over {black, white, custom}; Custom reveals
+ * Pad-color knob. Astryx ToggleButtonGroup over {black, white, custom}; Custom reveals
  * a ColorField. hex↔rgb helpers are colocated pure functions — kept out
  * of bitrate.ts.
  */
 
+import { ToggleButton, ToggleButtonGroup } from "@astryxdesign/core/ToggleButton";
 import type { PadColorDto } from "@storycapture/shared-types";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-
-import { ColorField } from "@/components/ui/color-field";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useOutputPrefsStore } from "@/state/output-prefs";
-
 import { LABEL_PAD, PAD_OPTION_LABELS } from "./copy";
+import { StoryColorField } from "./story-color-field";
 
 const ORDER: PadColorDto["kind"][] = ["black", "white", "custom"];
 
@@ -50,11 +48,11 @@ export function PadColorControl({ disabled }: Props) {
 
   return (
     <div className="flex flex-col gap-2">
-      <ToggleGroup
-        aria-label={LABEL_PAD}
-        value={[pad.kind]}
-        onValueChange={(next) => {
-          const v = next[0];
+      <ToggleButtonGroup
+        label={LABEL_PAD}
+        value={pad.kind}
+        onChange={(next) => {
+          const v = next;
           if (v === "black") setKnob("pad", { kind: "black" });
           else if (v === "white") setKnob("pad", { kind: "white" });
           else if (v === "custom") {
@@ -63,14 +61,13 @@ export function PadColorControl({ disabled }: Props) {
             setKnob("pad", { kind: "custom", r, g, b });
           }
         }}
-        disabled={disabled}
+        isDisabled={disabled}
+        size="sm"
       >
         {ORDER.map((k) => (
-          <ToggleGroupItem key={k} value={k}>
-            {PAD_OPTION_LABELS[k]}
-          </ToggleGroupItem>
+          <ToggleButton key={k} value={k} label={PAD_OPTION_LABELS[k]} />
         ))}
-      </ToggleGroup>
+      </ToggleButtonGroup>
 
       <AnimatePresence initial={false}>
         {pad.kind === "custom" && (
@@ -81,7 +78,7 @@ export function PadColorControl({ disabled }: Props) {
             transition={{ duration: 0.16 }}
             className="overflow-hidden"
           >
-            <ColorField
+            <StoryColorField
               value={padToHex(pad)}
               onChange={(hex) => {
                 const { r, g, b } = rgbFromHex(hex);

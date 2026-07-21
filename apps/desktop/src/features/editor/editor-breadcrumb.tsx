@@ -41,20 +41,20 @@ function resolve(story: Story, cursorLine: number): Resolved | null {
 
 const SEG_BASE: React.CSSProperties = {
   fontSize: 12.5,
-  fontFamily: "var(--sc-font-mono)",
+  fontFamily: "var(--font-family-code)",
   background: "transparent",
   border: "none",
   padding: 0,
   cursor: "pointer",
-  color: "var(--sc-text-3)",
+  color: "var(--color-text-secondary)",
 };
 
 const SEG_ACTIVE: React.CSSProperties = {
   ...SEG_BASE,
-  color: "var(--sc-text)",
+  color: "var(--color-text-primary)",
 };
 
-const CHEVRON_STYLE = { color: "var(--sc-text-4)" } as const;
+const CHEVRON_STYLE = { color: "var(--color-text-disabled)" } as const;
 
 export function EditorBreadcrumb({ story, cursorLine, onJumpToOffset }: EditorBreadcrumbProps) {
   const resolved = useMemo(() => resolve(story, cursorLine), [story, cursorLine]);

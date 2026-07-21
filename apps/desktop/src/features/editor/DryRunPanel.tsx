@@ -3,13 +3,13 @@
  * Cmd+Shift+D starts; Esc (hold 400ms) cancels.
  */
 
-import * as React from "react";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { Play, X } from "lucide-react";
+import type * as React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Play, X } from "lucide-react";
-import { useDryRunStore } from "./dryRunStore";
 import { DryRunStepRow } from "./DryRunStepRow";
+import { useDryRunStore } from "./dryRunStore";
 import type { StoryStep } from "./useDryRun";
 
 export interface DryRunPanelProps {
@@ -27,23 +27,15 @@ export function DryRunPanel({
   onStepClick,
   className,
 }: DryRunPanelProps) {
-  const {
-    statusByStep,
-    timingByStep,
-    fallbackChainByStep,
-    summary,
-    panelOpen,
-    togglePanel,
-  } = useDryRunStore();
+  const { statusByStep, timingByStep, fallbackChainByStep, summary, panelOpen, togglePanel } =
+    useDryRunStore();
 
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [cancelHoldProgress, setCancelHoldProgress] = useState(false);
   const cancelTimerRef = useRef<number | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const isRunning = Object.values(statusByStep).some(
-    (s) => s === "running" || s === "queued",
-  );
+  const isRunning = Object.values(statusByStep).some((s) => s === "running" || s === "queued");
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -114,13 +106,12 @@ export function DryRunPanel({
   const hasResults = summary !== null || Object.keys(statusByStep).length > 0;
 
   return (
-    <div
+    <section
       ref={panelRef}
       data-testid="dryrun-panel"
-      role="region"
       aria-labelledby="dryrun-panel-title"
       className={cn(
-        "border-t border-[var(--color-border,#242733)] bg-[var(--color-card,#13151C)]",
+        "border-t border-[var(--color-border,#242733)] bg-[var(--color-background-card,#13151C)]",
         "min-h-[120px] max-h-[40vh] overflow-hidden flex flex-col",
         className,
       )}
@@ -129,51 +120,57 @@ export function DryRunPanel({
       <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--color-border,#242733)]">
         <h3
           id="dryrun-panel-title"
-          className="text-sm font-semibold text-[var(--color-foreground,#E6E8EE)]"
+          className="text-sm font-semibold text-[var(--color-text-primary,#E6E8EE)]"
         >
           Dry-Run
         </h3>
         <div className="flex items-center gap-2">
           {isRunning ? (
-            <Button
+            <AstryxButton
               size="sm"
               variant="destructive"
               onClick={onCancel}
               data-testid="dryrun-cancel-btn"
+              label="Hủy dry-run"
             >
               <X className="w-3.5 h-3.5 mr-1" />
               {cancelHoldProgress ? "Gi\u1eef \u0111\u1ec3 hu\u1ef7\u2026" : "Hu\u1ef7"}
-            </Button>
+            </AstryxButton>
           ) : (
-            <Button
+            <AstryxButton
               size="sm"
-              className="bg-[var(--color-accent,#7C3AED)] hover:bg-[var(--color-accent,#7C3AED)]/90 text-[var(--color-fg-primary)]"
+              className="bg-[var(--color-accent,#7C3AED)] hover:bg-[var(--color-accent,#7C3AED)]/90 text-[var(--color-text-primary)]"
               onClick={() => onStart(steps)}
               data-testid="dryrun-start-btn"
+              label="Chạy thử"
             >
               <Play className="w-3.5 h-3.5 mr-1" />
               {"Ch\u1ea1y th\u1eed"}
-            </Button>
+            </AstryxButton>
           )}
-          <Button
+          <AstryxButton
             size="sm"
             variant="ghost"
             onClick={togglePanel}
             aria-label="Thu g\u1ecdn panel"
+            label="Thu g\u1ecdn panel"
           >
             <X className="w-4 h-4" />
-          </Button>
+          </AstryxButton>
         </div>
       </div>
 
+      {/* biome-ignore lint/a11y/useSemanticElements: Dry-run rows implement a keyboard-managed ARIA grid. */}
       <div className="flex-1 overflow-y-auto px-2 py-1" role="grid">
         {!hasResults ? (
           <div className="flex flex-col items-center justify-center h-full py-8 text-center">
-            <p className="text-sm text-[var(--color-muted-foreground,#8A90A2)]">
+            <p className="text-sm text-[var(--color-text-secondary,#8A90A2)]">
               {"Ch\u01b0a c\u00f3 l\u1ea7n ch\u1ea1y th\u1eed n\u00e0o"}
             </p>
-            <p className="text-xs text-[var(--color-muted-foreground,#8A90A2)] mt-1">
-              {"Nh\u1ea5n \"Ch\u1ea1y th\u1eed\" \u0111\u1ec3 chromiumoxide th\u1ef1c thi story m\u00e0 kh\u00f4ng quay m\u00e0n h\u00ecnh \u2014 h\u1eefu \u00edch \u0111\u1ec3 debug selector nhanh."}
+            <p className="text-xs text-[var(--color-text-secondary,#8A90A2)] mt-1">
+              {
+                'Nh\u1ea5n "Ch\u1ea1y th\u1eed" \u0111\u1ec3 chromiumoxide th\u1ef1c thi story m\u00e0 kh\u00f4ng quay m\u00e0n h\u00ecnh \u2014 h\u1eefu \u00edch \u0111\u1ec3 debug selector nhanh.'
+              }
             </p>
           </div>
         ) : (
@@ -201,14 +198,14 @@ export function DryRunPanel({
           <span className="text-[var(--color-success,#30A46C)] font-semibold">
             {summary.passed} pass
           </span>
-          <span className="text-[var(--color-destructive,#E5484D)] font-semibold">
+          <span className="text-[var(--color-error,#E5484D)] font-semibold">
             {summary.failed} fail
           </span>
-          <span className="text-[var(--color-muted-foreground,#8A90A2)] tabular-nums font-[family-name:var(--font-mono,'JetBrains_Mono')]">
+          <span className="text-[var(--color-text-secondary,#8A90A2)] tabular-nums font-[family-name:var(--font-family-code,'JetBrains_Mono')]">
             {summary.totalMs}ms total
           </span>
         </div>
       )}
-    </div>
+    </section>
   );
 }

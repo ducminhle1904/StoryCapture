@@ -3,6 +3,7 @@
  * format + resolution + live progress + a cancel button.
  */
 
+import { Button } from "@astryxdesign/core/Button";
 import { ACTIVE_EXPORT_JOB_STATUSES } from "@storycapture/shared-types";
 import { X } from "lucide-react";
 import { memo } from "react";
@@ -71,40 +72,43 @@ function JobRowBase({ job, progress, onCancel }: JobRowProps) {
   return (
     <li
       aria-label={`Render job ${label} — ${roundedPct} percent complete`}
-      className="flex flex-col gap-1 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] p-3 text-xs"
+      className="flex flex-col gap-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-background-muted)] p-3 text-xs"
     >
       <div className="flex items-center justify-between">
-        <span className="font-medium text-[var(--color-fg)]">{label}</span>
+        <span className="font-medium text-[var(--color-text-primary)]">{label}</span>
         {ACTIVE_STATUSES.has(job.status) ? (
-          <button
-            type="button"
-            aria-label={`Cancel ${label}`}
+          <Button
+            label={`Cancel ${label}`}
+            variant="ghost"
+            size="sm"
+            isIconOnly
+            icon={<X className="h-3 w-3" />}
             onClick={() => onCancel(job.id)}
-            className="rounded p-0.5 text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-300)] hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
-          >
-            <X className="h-3 w-3" />
-          </button>
+          />
         ) : null}
       </div>
       <ProgressBar pct={pct} label={`${label} progress`} />
-      <div className="flex justify-between gap-3 text-[10px] text-[var(--color-fg-muted)]">
+      <div className="flex justify-between gap-3 text-[10px] text-[var(--color-text-secondary)]">
         <span className="tabular-nums">{roundedPct}% complete</span>
         <span className="min-w-0 truncate text-right" title={statusLabel}>
           {statusLabel}
         </span>
       </div>
       {eta ? (
-        <div className="text-right text-[10px] text-[var(--color-fg-muted)]">ETA {eta}</div>
+        <div className="text-right text-[10px] text-[var(--color-text-secondary)]">ETA {eta}</div>
       ) : null}
       {progress ? (
-        <div className="flex justify-end text-[10px] text-[var(--color-fg-muted)]">
+        <div className="flex justify-end text-[10px] text-[var(--color-text-secondary)]">
           <span>
             {progress.fps.toFixed(1)} fps • {progress.speed.toFixed(2)}×
           </span>
         </div>
       ) : null}
       {job.status === "completed" && job.output_path ? (
-        <div className="truncate text-[10px] text-[var(--color-fg-muted)]" title={job.output_path}>
+        <div
+          className="truncate text-[10px] text-[var(--color-text-secondary)]"
+          title={job.output_path}
+        >
           Saved to {job.output_path}
         </div>
       ) : null}

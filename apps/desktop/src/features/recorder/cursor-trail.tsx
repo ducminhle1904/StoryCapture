@@ -12,10 +12,7 @@ export function CursorTrail() {
   const ring = useRecorderStore((s) => s.cursorPositions);
   const points = useMemo(() => getCursorPositions(ring), [ring]);
 
-  const polylinePoints = useMemo(
-    () => points.map((p) => `${p.x},${p.y}`).join(" "),
-    [points],
-  );
+  const polylinePoints = useMemo(() => points.map((p) => `${p.x},${p.y}`).join(" "), [points]);
 
   if (points.length < 2) return null;
 
@@ -29,7 +26,7 @@ export function CursorTrail() {
       <polyline
         points={polylinePoints}
         fill="none"
-        stroke="var(--color-accent-primary)"
+        stroke="var(--color-accent)"
         strokeWidth={3}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -40,7 +37,7 @@ export function CursorTrail() {
           cx={points[points.length - 1].x}
           cy={points[points.length - 1].y}
           r={6}
-          fill="var(--color-accent-primary)"
+          fill="var(--color-accent)"
           opacity={0.9}
         />
       )}

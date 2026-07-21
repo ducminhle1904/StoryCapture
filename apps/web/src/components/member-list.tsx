@@ -1,8 +1,13 @@
 "use client";
 
-import { useTRPC } from "@/trpc/client";
+import { AlertDialog } from "@astryxdesign/core/AlertDialog";
+import { Badge } from "@astryxdesign/core/Badge";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { Selector } from "@astryxdesign/core/Selector";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useTRPC } from "@/trpc/client";
 
 type Member = {
   id: string;
@@ -35,6 +40,7 @@ export function MemberList({
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
 
   const updateRoleMutation = useMutation(
     trpc.workspace.updateMemberRole.mutationOptions({
@@ -53,23 +59,35 @@ export function MemberList({
         queryClient.invalidateQueries({
           queryKey: trpc.workspace.getById.queryKey({ workspaceId }),
         });
+        setMemberToRemove(null);
       },
     }),
   );
 
-  const roleBadgeStyles: Record<string, string> = {
-    OWNER: "bg-amber-900/50 text-amber-300 border-amber-800",
-    EDITOR: "bg-blue-900/50 text-blue-300 border-blue-800",
-    VIEWER: "bg-zinc-800 text-zinc-400 border-zinc-700",
+  const roleBadgeVariants = {
+    OWNER: "warning",
+    EDITOR: "info",
+    VIEWER: "neutral",
+  } as const;
+
+  const roleOptions = [
+    { value: "OWNER", label: "Owner" },
+    { value: "EDITOR", label: "Editor" },
+    { value: "VIEWER", label: "Viewer" },
+  ];
+
+  const confirmRemove = () => {
+    if (!memberToRemove) return;
+    removeMemberMutation.mutate({
+      workspaceId,
+      userId: memberToRemove.userId,
+    });
   };
 
   return (
     <div className="space-y-2">
       {members.map((member) => (
-        <div
-          key={member.id}
-          className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3"
-        >
+        <Card key={member.id} padding={3} className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             {member.user.image ? (
               <img
@@ -78,86 +96,79 @@ export function MemberList({
                 className="h-9 w-9 rounded-full"
               />
             ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-700 text-sm font-medium text-zinc-300">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-background-muted)] text-sm font-medium text-[var(--color-text-primary)]">
                 {member.user.name?.charAt(0)?.toUpperCase() ?? "?"}
               </div>
             )}
             <div>
-              <p className="text-sm font-medium text-zinc-200">
+              <p className="text-sm font-medium text-[var(--color-text-primary)]">
                 {member.user.name ?? "Unknown"}
                 {member.userId === currentUserId && (
-                  <span className="ml-1 text-xs text-zinc-500">(you)</span>
+                  <span className="ml-1 text-xs text-[var(--color-text-secondary)]">(you)</span>
                 )}
               </p>
-              <p className="text-xs text-zinc-500">{member.user.email}</p>
+              <p className="text-xs text-[var(--color-text-secondary)]">{member.user.email}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             {editingUserId === member.userId && currentUserRole === "OWNER" ? (
-              <select
+              <Selector
+                label={`Role for ${member.user.name ?? member.user.email ?? "member"}`}
+                isLabelHidden
+                size="sm"
+                width={120}
+                options={roleOptions}
                 value={member.role}
-                onChange={(e) => {
+                onChange={(role) => {
                   updateRoleMutation.mutate({
                     workspaceId,
                     userId: member.userId,
-                    role: e.target.value as "OWNER" | "EDITOR" | "VIEWER",
+                    role: role as "OWNER" | "EDITOR" | "VIEWER",
                   });
                 }}
-                className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:border-zinc-600 focus:outline-none"
-              >
-                <option value="OWNER">Owner</option>
-                <option value="EDITOR">Editor</option>
-                <option value="VIEWER">Viewer</option>
-              </select>
+                isDisabled={updateRoleMutation.isPending}
+              />
             ) : (
-              <span
-                className={`rounded border px-2 py-0.5 text-xs font-medium ${roleBadgeStyles[member.role]}`}
-              >
-                {member.role}
-              </span>
+              <Badge variant={roleBadgeVariants[member.role]} label={member.role} />
             )}
 
-            {currentUserRole === "OWNER" &&
-              member.userId !== currentUserId && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setEditingUserId(
-                        editingUserId === member.userId
-                          ? null
-                          : member.userId,
-                      )
-                    }
-                    className="rounded-lg px-2 py-1 text-xs text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-                  >
-                    {editingUserId === member.userId ? "Done" : "Edit"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `Remove ${member.user.name ?? member.user.email} from this workspace?`,
-                        )
-                      ) {
-                        removeMemberMutation.mutate({
-                          workspaceId,
-                          userId: member.userId,
-                        });
-                      }
-                    }}
-                    disabled={removeMemberMutation.isPending}
-                    className="rounded-lg px-2 py-1 text-xs text-red-400 transition-colors hover:bg-red-950 hover:text-red-300"
-                  >
-                    Remove
-                  </button>
-                </>
-              )}
+            {currentUserRole === "OWNER" && member.userId !== currentUserId && (
+              <>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  label={editingUserId === member.userId ? "Done" : "Edit"}
+                  onClick={() =>
+                    setEditingUserId(editingUserId === member.userId ? null : member.userId)
+                  }
+                />
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  label="Remove"
+                  onClick={() => setMemberToRemove(member)}
+                  isDisabled={removeMemberMutation.isPending}
+                />
+              </>
+            )}
           </div>
-        </div>
+        </Card>
       ))}
+
+      <AlertDialog
+        isOpen={memberToRemove !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setMemberToRemove(null);
+        }}
+        title="Remove member?"
+        description={`Remove ${memberToRemove?.user.name ?? memberToRemove?.user.email ?? "this member"} from this workspace?`}
+        cancelLabel="Cancel"
+        actionLabel="Remove"
+        actionVariant="destructive"
+        isActionLoading={removeMemberMutation.isPending}
+        onAction={confirmRemove}
+      />
     </div>
   );
 }

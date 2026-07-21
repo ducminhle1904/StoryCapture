@@ -140,7 +140,7 @@ function TrackBase({ id, clips, pxPerMs, durationMs, height = 40 }: TrackProps) 
       ref={containerRef}
       aria-label={`${TRACK_LABEL[id]} track`}
       tabIndex={-1}
-      className="relative border-b border-[var(--sc-border)] bg-[var(--sc-surface-2)]"
+      className="relative border-b border-[var(--color-border)] bg-[var(--color-background-card)]"
       style={{ height, width }}
       onPointerDown={onPointerDown}
       onClick={(e) => {

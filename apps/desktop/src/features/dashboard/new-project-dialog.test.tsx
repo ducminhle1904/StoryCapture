@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NewProjectDialog } from "./new-project-dialog";
@@ -34,6 +33,7 @@ describe("NewProjectDialog", () => {
   it("renders all guided workflow cards with roadmap details", () => {
     renderDialog();
 
+    expect(screen.getByRole("dialog", { name: "Create Story" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Product Demo/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Tutorial/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Feature Launch/i })).toBeInTheDocument();
@@ -46,7 +46,6 @@ describe("NewProjectDialog", () => {
   });
 
   it("creates a guided project with starter story and workflow metadata", async () => {
-    const user = userEvent.setup();
     const onCreated = vi.fn();
     let createArgs: unknown = null;
     mockIPC((cmd, args) => {
@@ -66,13 +65,15 @@ describe("NewProjectDialog", () => {
 
     renderDialog(onCreated);
 
-    await user.type(screen.getByLabelText("Name"), "Launch Demo");
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: "Launch Demo" } });
     fireEvent.click(screen.getByRole("button", { name: "Browse for parent folder" }));
     await waitFor(() =>
       expect(screen.getByLabelText("Parent folder path")).toHaveValue("/tmp/storycapture-projects"),
     );
     fireEvent.click(screen.getByRole("button", { name: /Feature Launch/i }));
-    await user.type(screen.getByLabelText("Target URL"), "https://app.story.test");
+    fireEvent.change(screen.getByLabelText("Target URL"), {
+      target: { value: "https://app.story.test" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Create Story" }));
 
     await waitFor(() =>
@@ -92,7 +93,6 @@ describe("NewProjectDialog", () => {
   });
 
   it("creates freestyle without guided metadata", async () => {
-    const user = userEvent.setup();
     let createArgs: unknown = null;
     mockIPC((cmd, args) => {
       if (cmd === "create_project") {
@@ -111,7 +111,7 @@ describe("NewProjectDialog", () => {
 
     renderDialog();
 
-    await user.type(screen.getByLabelText("Name"), "Blank Story");
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: "Blank Story" } });
     fireEvent.click(screen.getByRole("button", { name: "Browse for parent folder" }));
     await waitFor(() =>
       expect(screen.getByLabelText("Parent folder path")).toHaveValue("/tmp/storycapture-projects"),

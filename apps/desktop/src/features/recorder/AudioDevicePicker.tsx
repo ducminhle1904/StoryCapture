@@ -1,29 +1,15 @@
 /**
- * Base UI Select wrapping the cpal device list. Laziness: listAudioInputs
- * fires on the trigger's `open` — querying at mount trips cpal#901 (mic
+ * Astryx Selector wrapping the cpal device list. Laziness: listAudioInputs
+ * fires on first focus/pointer intent — querying at mount trips cpal#901 (mic
  * TCC prompt on cold launch). Non-sticky: parent state resets to null
  * every render so "No audio" is always the default.
  */
 
-import { useState } from "react";
+import { Selector as AstryxSelector } from "@astryxdesign/core/Selector";
 import { useQuery } from "@tanstack/react-query";
 import { Mic } from "lucide-react";
-
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectGroupLabel,
-  SelectItem,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  listAudioInputs,
-  type AudioInputInfo,
-  type AudioPickerValue,
-} from "@/ipc/audio";
+import { useState } from "react";
+import { type AudioInputInfo, type AudioPickerValue, listAudioInputs } from "@/ipc/audio";
 
 interface AudioDevicePickerProps {
   /** Current selection. `null` = no audio. */
@@ -35,7 +21,7 @@ interface AudioDevicePickerProps {
 }
 
 /**
- * Typed representation of what the Select is showing. The Base UI Select
+ * Typed representation of what the selector is showing.
  * requires a non-null string value, so we round-trip every choice through
  * a stable `kind:payload` string. Keeps magic strings out of the JSX.
  */
@@ -105,19 +91,12 @@ function choiceToValue(c: AudioPickerChoice): AudioPickerValue {
   }
 }
 
-export function AudioDevicePicker({
-  value,
-  onValueChange,
-  disabled,
-}: AudioDevicePickerProps) {
+export function AudioDevicePicker({ value, onValueChange, disabled }: AudioDevicePickerProps) {
   const [hasOpened, setHasOpened] = useState(false);
 
   // Query fires ONLY once the picker opens. staleTime: 0 + never refetch
   // so we don't spam CoreAudio while the picker is held open.
-  const {
-    data: devices = [],
-    isLoading,
-  } = useQuery<AudioInputInfo[]>({
+  const { data: devices = [], isLoading } = useQuery<AudioInputInfo[]>({
     queryKey: ["audio-inputs"],
     queryFn: listAudioInputs,
     enabled: hasOpened,
@@ -127,71 +106,59 @@ export function AudioDevicePicker({
   });
 
   return (
-    <Select
+    <AstryxSelector
+      label="Microphone input device"
+      isLabelHidden
       value={choiceToSelectValue(valueToChoice(value))}
-      onValueChange={(raw) => {
-        if (typeof raw !== "string") return;
+      options={[
+        {
+          type: "section",
+          options: [
+            { value: choiceToSelectValue({ kind: "none" }), label: "No audio" },
+            { value: choiceToSelectValue({ kind: "default" }), label: "System default" },
+          ],
+        },
+        ...(hasOpened
+          ? [
+              {
+                type: "section" as const,
+                title: "Input devices",
+                options: [
+                  ...(isLoading
+                    ? [
+                        {
+                          value: choiceToSelectValue({ kind: "loading" }),
+                          label: "Loading…",
+                          disabled: true,
+                        },
+                      ]
+                    : []),
+                  ...(!isLoading && devices.length === 0
+                    ? [
+                        {
+                          value: choiceToSelectValue({ kind: "empty" }),
+                          label: "No microphones detected",
+                          disabled: true,
+                        },
+                      ]
+                    : []),
+                  ...devices.map((device) => ({
+                    value: choiceToSelectValue({ kind: "device", id: device.id }),
+                    label: `${device.name}${device.is_default ? " (default)" : ""}`,
+                  })),
+                ],
+              },
+            ]
+          : []),
+      ]}
+      onChange={(raw) => {
         onValueChange(choiceToValue(selectValueToChoice(raw)));
       }}
-      onOpenChange={(open) => {
-        if (open) setHasOpened(true);
-      }}
-      disabled={disabled}
-    >
-      <SelectTrigger
-        aria-label="Microphone input device"
-        className="flex w-full items-center gap-2"
-      >
-        <Mic
-          size={13}
-          className="shrink-0 text-[var(--color-fg-muted)]"
-          aria-hidden="true"
-        />
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectGroup>
-          <SelectItem value={choiceToSelectValue({ kind: "none" })}>
-            No audio
-          </SelectItem>
-          <SelectItem value={choiceToSelectValue({ kind: "default" })}>
-            System default
-          </SelectItem>
-        </SelectGroup>
-        {hasOpened && (
-          <>
-            <SelectSeparator />
-            <SelectGroup>
-              <SelectGroupLabel>Input devices</SelectGroupLabel>
-              {isLoading && (
-                <SelectItem
-                  value={choiceToSelectValue({ kind: "loading" })}
-                  disabled
-                >
-                  Loading…
-                </SelectItem>
-              )}
-              {!isLoading && devices.length === 0 && (
-                <SelectItem
-                  value={choiceToSelectValue({ kind: "empty" })}
-                  disabled
-                >
-                  No microphones detected
-                </SelectItem>
-              )}
-              {devices.map((d) => (
-                <SelectItem
-                  key={d.id}
-                  value={choiceToSelectValue({ kind: "device", id: d.id })}
-                >
-                  {d.name}
-                  {d.is_default ? " (default)" : ""}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </>
-        )}
-      </SelectContent>
-    </Select>
+      onFocus={() => setHasOpened(true)}
+      onPointerDown={() => setHasOpened(true)}
+      startIcon={<Mic size={13} aria-hidden="true" />}
+      isDisabled={disabled}
+      width="100%"
+    />
   );
 }

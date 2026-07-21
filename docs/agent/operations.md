@@ -41,6 +41,10 @@ migrations, generated files, or release tooling.
   - `apps/desktop/scripts/build-native-capture.mjs`
   - `apps/desktop/scripts/verify-packaged-native-capture.mjs`
 - Electron package output is `apps/desktop/release-electron`.
+- `apps/desktop/scripts/build-electron.mjs` bundles StoryCapture workspace
+  runtime subpaths into the Electron main bundle and fails the build if an
+  `@storycapture/*` runtime import remains external. Do not remove this guard:
+  packaged Electron cannot strip TypeScript from `app.asar/node_modules`.
 - Electron Builder packages the ScreenCaptureKit helper at
   `resources/native/macos/storycapture-screen-capture-helper` and the WGC helper
   at `resources/native/windows/${arch}/storycapture-wgc.exe`.

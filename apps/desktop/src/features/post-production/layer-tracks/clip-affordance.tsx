@@ -4,15 +4,14 @@
  * touching the shared Track component:
  *
  *   1. A right-click context menu per clip ("Properties" + "Delete")
- *      rendered with Base UI's `Menu`, anchored at the cursor via a
- *      VirtualElement. Pointer-down events (drag) still flow through to
- *      the underlying Track unimpeded.
+ *      rendered with Astryx ContextMenu. Pointer-down events (drag) still
+ *      flow through to the underlying Track unimpeded.
  *
  * Sound + Video tracks intentionally stay as thin Track wrappers — these
  * affordances are scoped to the three layers the user requested.
  */
 
-import { Menu } from "@base-ui/react/menu";
+import { ContextMenu } from "@astryxdesign/core/ContextMenu";
 import { useCallback, useMemo, useState } from "react";
 
 import { useEditorStore } from "../state/store";
@@ -27,16 +26,6 @@ export interface ClipAffordanceProps {
   height?: number;
 }
 
-interface MenuState {
-  open: boolean;
-  clipId: string | null;
-  /** Viewport coords used to build a VirtualElement for the positioner. */
-  x: number;
-  y: number;
-}
-
-const CLOSED: MenuState = { open: false, clipId: null, x: 0, y: 0 };
-
 export function ClipAffordance({
   id,
   clips,
@@ -44,7 +33,7 @@ export function ClipAffordance({
   durationMs,
   height = 40,
 }: ClipAffordanceProps) {
-  const [menu, setMenu] = useState<MenuState>(CLOSED);
+  const [contextClipId, setContextClipId] = useState<string | null>(null);
 
   const pushAction = useEditorStore((s) => s.pushAction);
   const setSelectedClipId = useEditorStore((s) => s.setSelectedClipId);
@@ -53,49 +42,35 @@ export function ClipAffordance({
   // Resolve clipId from the right-click target's data attribute. If the
   // user right-clicks on empty track space we no-op and let the browser
   // show its default menu.
-  const onContextMenu = useCallback((e: React.MouseEvent<HTMLElement>) => {
-    const target = (e.target as HTMLElement).closest<HTMLElement>("[data-clip-id]");
-    if (!target) return;
+  const prepareContextMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    const target = (event.target as HTMLElement).closest<HTMLElement>("[data-clip-id]");
+    if (!target) {
+      event.stopPropagation();
+      return;
+    }
     const clipId = target.dataset.clipId ?? null;
-    if (!clipId) return;
-    e.preventDefault();
-    setMenu({ open: true, clipId, x: e.clientX, y: e.clientY });
+    if (!clipId) {
+      event.stopPropagation();
+      return;
+    }
+    setContextClipId(clipId);
   }, []);
 
-  const onOpenChange = useCallback((next: boolean) => {
-    if (!next) setMenu(CLOSED);
+  const onOpenChange = useCallback((isOpen: boolean) => {
+    if (!isOpen) setContextClipId(null);
   }, []);
-
-  // Virtual anchor at the cursor position. Must be a stable reference
-  // for the open lifecycle so floating-ui doesn't re-measure each frame.
-  const virtualAnchor = useMemo(() => {
-    const { x, y } = menu;
-    return {
-      getBoundingClientRect: () => ({
-        x,
-        y,
-        left: x,
-        top: y,
-        right: x,
-        bottom: y,
-        width: 0,
-        height: 0,
-        toJSON: () => ({ x, y, left: x, top: y, right: x, bottom: y }),
-      }),
-    };
-  }, [menu]);
 
   const targetClip = useMemo(
-    () => (menu.clipId ? (clips.find((c) => c.id === menu.clipId) ?? null) : null),
-    [clips, menu.clipId],
+    () => (contextClipId ? (clips.find((clip) => clip.id === contextClipId) ?? null) : null),
+    [clips, contextClipId],
   );
 
   const onProperties = useCallback(() => {
-    if (!menu.clipId) return;
-    setSelectedClipId(menu.clipId);
+    if (!contextClipId) return;
+    setSelectedClipId(contextClipId);
     setSelectedTab("effects");
-    setMenu(CLOSED);
-  }, [menu.clipId, setSelectedClipId, setSelectedTab]);
+    setContextClipId(null);
+  }, [contextClipId, setSelectedClipId, setSelectedTab]);
 
   const onDelete = useCallback(() => {
     if (!targetClip) return;
@@ -107,41 +82,26 @@ export function ClipAffordance({
       snapshot: targetClip,
       atIndex: idx >= 0 ? idx : undefined,
     });
-    setMenu(CLOSED);
+    setContextClipId(null);
   }, [clips, id, pushAction, targetClip]);
 
   return (
-    <fieldset
-      className="relative m-0 min-w-0 border-0 p-0"
-      aria-label={`${id} track actions`}
-      onContextMenu={onContextMenu}
+    <ContextMenu
+      label="Clip actions"
+      menuWidth={160}
+      onOpenChange={onOpenChange}
+      items={[
+        { label: "Properties", onClick: onProperties },
+        { label: "Delete", onClick: onDelete },
+      ]}
     >
-      <Track id={id} clips={clips} pxPerMs={pxPerMs} durationMs={durationMs} height={height} />
-
-      <Menu.Root open={menu.open} onOpenChange={onOpenChange} modal={false}>
-        <Menu.Portal>
-          <Menu.Positioner anchor={virtualAnchor} sideOffset={4}>
-            <Menu.Popup
-              className="z-50 min-w-[160px] rounded-md border border-[var(--sc-border,var(--color-border))] bg-[var(--sc-surface-200,var(--color-surface))] p-1 text-sm text-[var(--sc-fg,var(--color-fg))] shadow-lg outline-none"
-              role="menu"
-              aria-label={`Clip actions`}
-            >
-              <Menu.Item
-                className="flex cursor-pointer items-center rounded px-3 py-1.5 text-[var(--sc-fg,var(--color-fg))] outline-none data-[highlighted]:bg-[var(--sc-surface-300,var(--color-surface-hi))]"
-                onClick={onProperties}
-              >
-                Properties
-              </Menu.Item>
-              <Menu.Item
-                className="flex cursor-pointer items-center rounded px-3 py-1.5 text-[var(--sc-fg,var(--color-fg))] outline-none data-[highlighted]:bg-[var(--sc-surface-300,var(--color-surface-hi))]"
-                onClick={onDelete}
-              >
-                Delete
-              </Menu.Item>
-            </Menu.Popup>
-          </Menu.Positioner>
-        </Menu.Portal>
-      </Menu.Root>
-    </fieldset>
+      <fieldset
+        className="relative m-0 min-w-0 border-0 p-0"
+        aria-label={`${id} track actions`}
+        onContextMenuCapture={prepareContextMenu}
+      >
+        <Track id={id} clips={clips} pxPerMs={pxPerMs} durationMs={durationMs} height={height} />
+      </fieldset>
+    </ContextMenu>
   );
 }

@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Info } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 import { ApiKeyRow } from "../ApiKeyRow";
 import { SettingsPanel } from "../settings-row";
@@ -45,15 +45,12 @@ export function ApiKeysCategory() {
     checkAll();
   }, []);
 
-  const handlePresenceChange = useCallback(
-    (providerId: string, present: boolean) => {
-      setProviders((prev) => ({
-        ...prev,
-        [providerId]: { ...prev[providerId], present },
-      }));
-    },
-    [],
-  );
+  const handlePresenceChange = useCallback((providerId: string, present: boolean) => {
+    setProviders((prev) => ({
+      ...prev,
+      [providerId]: { ...prev[providerId], present },
+    }));
+  }, []);
 
   const handleTestStatusChange = useCallback(
     (providerId: string, status: ProviderState["testStatus"]) => {
@@ -88,21 +85,21 @@ export function ApiKeysCategory() {
         style={{
           marginTop: 16,
           padding: 12,
-          background: "oklch(0.78 0.14 var(--sc-accent-h) / 0.08)",
-          border: "1px solid oklch(0.78 0.14 var(--sc-accent-h) / 0.2)",
-          borderRadius: "var(--sc-r-md)",
+          background: "color-mix(in srgb, var(--color-accent) 8%, transparent)",
+          border: "1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)",
+          borderRadius: "var(--radius-element)",
           display: "flex",
           gap: 10,
           alignItems: "flex-start",
           fontSize: 12,
-          color: "var(--sc-text-2)",
+          color: "var(--color-text-secondary)",
         }}
       >
-        <Info size={14} style={{ color: "var(--sc-accent-400)", marginTop: 1 }} />
+        <Info size={14} style={{ color: "var(--color-accent)", marginTop: 1 }} />
         <div>
-          <b style={{ color: "var(--sc-accent-300)" }}>Team BYOK</b> &mdash; workspace
-          admins can share keys scoped by scene type. Keys stay on this device;
-          team-wide sharing arrives with the web companion workspace plan.
+          <b style={{ color: "var(--color-text-accent)" }}>Team BYOK</b> &mdash; workspace admins
+          can share keys scoped by scene type. Keys stay on this device; team-wide sharing arrives
+          with the web companion workspace plan.
         </div>
       </div>
     </SettingsPanel>

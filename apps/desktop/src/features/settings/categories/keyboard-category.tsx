@@ -1,5 +1,6 @@
-import { SettingsPanel } from "../settings-row";
+import { Kbd as AstryxKbd } from "@astryxdesign/core/Kbd";
 import { SETTINGS_SHORTCUTS } from "@/lib/shortcuts";
+import { SettingsPanel } from "../settings-row";
 
 export function KeyboardCategory() {
   return (
@@ -9,9 +10,9 @@ export function KeyboardCategory() {
     >
       <div
         style={{
-          border: "1px solid var(--sc-border)",
-          borderRadius: "var(--sc-r-lg)",
-          background: "var(--sc-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-container)",
+          background: "var(--color-background-surface)",
         }}
       >
         {SETTINGS_SHORTCUTS.map((shortcut, i) => (
@@ -21,12 +22,12 @@ export function KeyboardCategory() {
               display: "flex",
               padding: "10px 16px",
               borderBottom:
-                i < SETTINGS_SHORTCUTS.length - 1 ? "1px solid var(--sc-border)" : "none",
+                i < SETTINGS_SHORTCUTS.length - 1 ? "1px solid var(--color-border)" : "none",
               fontSize: 12.5,
             }}
           >
             <span style={{ flex: 1 }}>{shortcut.label}</span>
-            <span className="sc-kbd">{shortcut.keys}</span>
+            <AstryxKbd keys={shortcut.keys} />
           </div>
         ))}
       </div>

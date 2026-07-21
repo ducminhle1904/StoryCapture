@@ -17,13 +17,13 @@ export function SettingsRow({ label, hint, control, last }: SettingsRowProps) {
         gap: 16,
         alignItems: "center",
         padding: "14px 0",
-        borderBottom: last ? "none" : "1px solid var(--sc-border)",
+        borderBottom: last ? "none" : "1px solid var(--color-border)",
       }}
     >
       <div>
         <div style={{ fontSize: 13, fontWeight: 500 }}>{label}</div>
         {hint && (
-          <div style={{ fontSize: 11, color: "var(--sc-text-4)", marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: "var(--color-text-disabled)", marginTop: 2 }}>
             {hint}
           </div>
         )}
@@ -47,7 +47,7 @@ export function SettingsPanel({ title, desc, children }: SettingsPanelProps) {
         <div
           style={{
             fontSize: 12.5,
-            color: "var(--sc-text-3)",
+            color: "var(--color-text-secondary)",
             marginBottom: 20,
             lineHeight: 1.5,
           }}
@@ -69,9 +69,9 @@ export function SettingsCard({ children }: SettingsCardProps) {
   return (
     <div
       style={{
-        border: "1px solid var(--sc-border)",
-        borderRadius: "var(--sc-r-lg)",
-        background: "var(--sc-surface)",
+        border: "1px solid var(--color-border)",
+        borderRadius: "var(--radius-container)",
+        background: "var(--color-background-surface)",
         padding: "0 16px",
       }}
     >

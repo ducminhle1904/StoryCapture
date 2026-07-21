@@ -5,6 +5,8 @@
  * user's pick.
  */
 
+import { NumberInput } from "@astryxdesign/core/NumberInput";
+import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
 import { memo } from "react";
 
 import type { ExportResolution } from "../state/export-slice";
@@ -33,65 +35,42 @@ function ResolutionPickerBase({
   onCustomSizeChange,
 }: ResolutionPickerProps) {
   return (
-    <fieldset className="space-y-3">
-      <legend className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
-        Resolution
-      </legend>
-      <div className="grid grid-cols-2 gap-2">
-        {OPTIONS.map((opt) => (
-          <label
-            key={opt.id}
-            className={`flex cursor-pointer items-center justify-center rounded-2xl border px-3 py-3 text-sm font-medium transition ${
-              value === opt.id
-                ? "border-[var(--color-accent-primary)]/50 bg-[var(--color-accent-primary)]/10 text-[var(--color-fg-primary)] shadow-[0_16px_32px_rgba(0,0,0,0.18)]"
-                : "border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] text-[var(--color-fg-secondary)] hover:border-[var(--color-border-default)] hover:bg-[var(--color-surface-100)] hover:text-[var(--color-fg-primary)]"
-            }`}
-          >
-            <input
-              type="radio"
-              name="export-resolution"
-              value={opt.id}
-              checked={value === opt.id}
-              onChange={() => onChange(opt.id)}
-              className="sr-only"
-            />
-            {opt.label}
-          </label>
+    <div className="space-y-3">
+      <RadioList
+        label="Resolution"
+        value={value}
+        onChange={(next) => onChange(next as ExportResolution)}
+        orientation="horizontal"
+        size="sm"
+        htmlName="export-resolution"
+      >
+        {OPTIONS.map((option) => (
+          <RadioListItem key={option.id} value={option.id} label={option.label} />
         ))}
-      </div>
+      </RadioList>
       {value === "custom" ? (
         <div className="grid grid-cols-2 gap-2">
-          <label className="grid gap-1 text-xs text-[var(--color-fg-secondary)]">
-            Width
-            <input
-              type="number"
-              min={16}
-              max={7680}
-              step={2}
-              value={customWidth}
-              onChange={(event) =>
-                onCustomSizeChange({ width: Number(event.target.value), height: customHeight })
-              }
-              className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-3 py-2 text-sm text-[var(--color-fg-primary)]"
-            />
-          </label>
-          <label className="grid gap-1 text-xs text-[var(--color-fg-secondary)]">
-            Height
-            <input
-              type="number"
-              min={16}
-              max={4320}
-              step={2}
-              value={customHeight}
-              onChange={(event) =>
-                onCustomSizeChange({ width: customWidth, height: Number(event.target.value) })
-              }
-              className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-3 py-2 text-sm text-[var(--color-fg-primary)]"
-            />
-          </label>
+          <NumberInput
+            label="Width"
+            min={16}
+            max={7680}
+            step={2}
+            value={customWidth}
+            onChange={(width) => onCustomSizeChange({ width, height: customHeight })}
+            width="100%"
+          />
+          <NumberInput
+            label="Height"
+            min={16}
+            max={4320}
+            step={2}
+            value={customHeight}
+            onChange={(height) => onCustomSizeChange({ width: customWidth, height })}
+            width="100%"
+          />
         </div>
       ) : null}
-    </fieldset>
+    </div>
   );
 }
 

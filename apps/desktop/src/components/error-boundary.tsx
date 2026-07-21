@@ -1,3 +1,4 @@
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 import { frontendLog } from "@/lib/log";
@@ -28,11 +29,10 @@ export class ErrorBoundary extends Component<Props, State> {
   override componentDidCatch(error: Error, info: ErrorInfo) {
     const fields: Record<string, unknown> = {};
     if (info.componentStack) fields.component_stack = info.componentStack;
-    frontendLog.error(
-      this.props.source ?? "ErrorBoundary",
-      "react render crashed",
-      { error, fields },
-    );
+    frontendLog.error(this.props.source ?? "ErrorBoundary", "react render crashed", {
+      error,
+      fields,
+    });
   }
 
   reset = () => this.setState({ error: null });
@@ -49,32 +49,30 @@ export class ErrorBoundary extends Component<Props, State> {
           padding: 24,
           margin: 24,
           fontSize: 13,
-          color: "var(--sc-text)",
-          background: "var(--sc-surface-2)",
-          border: "1px solid var(--sc-border)",
-          borderRadius: "var(--sc-r-md)",
+          color: "var(--color-text-primary)",
+          background: "var(--color-background-card)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-element)",
         }}
       >
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>
-          Something broke in the UI
-        </div>
-        <div style={{ color: "var(--sc-text-3)", marginBottom: 12 }}>
-          The error has been written to the log file. You can keep using
-          the app or reload the window.
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>Something broke in the UI</div>
+        <div style={{ color: "var(--color-text-secondary)", marginBottom: 12 }}>
+          The error has been written to the log file. You can keep using the app or reload the
+          window.
         </div>
         <code
           style={{
             display: "block",
             marginBottom: 12,
             fontSize: 11,
-            color: "var(--sc-text-4)",
+            color: "var(--color-text-disabled)",
           }}
         >
           {this.state.error.message}
         </code>
-        <button type="button" onClick={this.reset} className="sc-btn primary sm">
+        <AstryxButton label="Try again" variant="primary" size="sm" onClick={this.reset}>
           Try again
-        </button>
+        </AstryxButton>
       </section>
     );
   }

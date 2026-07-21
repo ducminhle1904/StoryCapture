@@ -38,13 +38,10 @@ describe("TextAppearanceControls", () => {
 
     expect(container.firstElementChild).toHaveClass("min-w-0", "max-w-full");
     const fontSearch = screen.getByLabelText("Search system fonts");
-    expect(fontSearch).toHaveClass("min-w-0", "max-w-full");
-    expect(fontSearch.parentElement).toHaveClass("min-w-0", "grid-cols-[minmax(0,1fr)_auto]");
-    expect(screen.getByLabelText("Annotation max width")).toHaveClass(
-      "w-full",
-      "min-w-0",
-      "max-w-full",
-    );
+    const fontField = fontSearch.closest(".astryx-field");
+    expect(fontField).toHaveStyle({ "--x-width": "100%" });
+    expect(fontField?.parentElement).toHaveClass("min-w-0", "grid-cols-[minmax(0,1fr)_auto]");
+    expect(screen.getByRole("slider", { name: "Annotation max width" })).toBeVisible();
   });
 
   it("exposes approved ranges and preserves null versus inherited semantics", async () => {
@@ -64,38 +61,82 @@ describe("TextAppearanceControls", () => {
       <TextAppearanceControls clip={annotation({ textShadow, boxStyle })} onChange={onChange} />,
     );
 
-    expect(screen.getByLabelText("Annotation size")).toHaveAttribute("min", "12");
-    expect(screen.getByLabelText("Annotation size")).toHaveAttribute("max", "72");
-    expect(screen.getByLabelText("Annotation max width")).toHaveAttribute("min", "20");
-    expect(screen.getByLabelText("Annotation max width")).toHaveAttribute("max", "100");
-    expect(screen.getByLabelText("Annotation line height")).toHaveAttribute("step", "0.05");
-    expect(screen.getByLabelText("Annotation letter spacing")).toHaveAttribute("min", "-4");
-    expect(screen.getByLabelText("Annotation letter spacing")).toHaveAttribute("max", "20");
-    expect(screen.getByLabelText("Text shadow blur")).toHaveAttribute("max", "64");
-    expect(screen.getByLabelText("Text shadow opacity")).toHaveAttribute("max", "100");
-    expect(screen.getByLabelText("Box shadow offset x")).toHaveAttribute("min", "-32");
-    expect(screen.getByLabelText("Box shadow blur")).toHaveAttribute("max", "64");
-    expect(screen.getByLabelText("Text background opacity")).toHaveAttribute("min", "0");
-    expect(screen.getByLabelText("Text background padding")).toHaveAttribute("max", "64");
-    expect(screen.getByLabelText("Text background radius")).toHaveAttribute("max", "100");
-    expect(screen.getByLabelText("Text border width")).toHaveAttribute("max", "8");
+    expect(screen.getByRole("slider", { name: "Annotation size" })).toHaveAttribute(
+      "aria-valuemin",
+      "12",
+    );
+    expect(screen.getByRole("slider", { name: "Annotation size" })).toHaveAttribute(
+      "aria-valuemax",
+      "72",
+    );
+    expect(screen.getByRole("slider", { name: "Annotation max width" })).toHaveAttribute(
+      "aria-valuemin",
+      "20",
+    );
+    expect(screen.getByRole("slider", { name: "Annotation max width" })).toHaveAttribute(
+      "aria-valuemax",
+      "100",
+    );
+    expect(screen.getByRole("slider", { name: "Annotation line height" })).toHaveAttribute(
+      "aria-valuenow",
+    );
+    expect(screen.getByRole("slider", { name: "Annotation letter spacing" })).toHaveAttribute(
+      "aria-valuemin",
+      "-4",
+    );
+    expect(screen.getByRole("slider", { name: "Annotation letter spacing" })).toHaveAttribute(
+      "aria-valuemax",
+      "20",
+    );
+    expect(screen.getByRole("slider", { name: "Text shadow blur" })).toHaveAttribute(
+      "aria-valuemax",
+      "64",
+    );
+    expect(screen.getByRole("slider", { name: "Text shadow opacity" })).toHaveAttribute(
+      "aria-valuemax",
+      "100",
+    );
+    expect(screen.getByRole("slider", { name: "Box shadow offset x" })).toHaveAttribute(
+      "aria-valuemin",
+      "-32",
+    );
+    expect(screen.getByRole("slider", { name: "Box shadow blur" })).toHaveAttribute(
+      "aria-valuemax",
+      "64",
+    );
+    expect(screen.getByRole("slider", { name: "Text background opacity" })).toHaveAttribute(
+      "aria-valuemin",
+      "0",
+    );
+    expect(screen.getByRole("slider", { name: "Text background padding" })).toHaveAttribute(
+      "aria-valuemax",
+      "64",
+    );
+    expect(screen.getByRole("slider", { name: "Text background radius" })).toHaveAttribute(
+      "aria-valuemax",
+      "100",
+    );
+    expect(screen.getByRole("slider", { name: "Text border width" })).toHaveAttribute(
+      "aria-valuemax",
+      "8",
+    );
 
-    fireEvent.change(screen.getByLabelText("Annotation max width"), {
-      target: { value: "77" },
-    });
-    expect(onChange).toHaveBeenCalledWith("maxWidthPct", undefined, 77);
+    const maxWidth = screen.getByRole("slider", { name: "Annotation max width" });
+    const maxWidthBefore = Number(maxWidth.getAttribute("aria-valuenow"));
+    fireEvent.keyDown(maxWidth, { key: "ArrowRight" });
+    expect(onChange).toHaveBeenCalledWith("maxWidthPct", undefined, maxWidthBefore + 1);
 
-    await user.click(screen.getByLabelText("Text shadow enabled"));
+    await user.click(screen.getByRole("switch", { name: "Text shadow" }));
     expect(onChange).toHaveBeenCalledWith("textShadow", textShadow, null);
     await user.click(screen.getByRole("button", { name: "Text shadow inherit" }));
     expect(onChange).toHaveBeenCalledWith("textShadow", textShadow, undefined);
 
-    await user.click(screen.getByLabelText("Text background enabled"));
+    await user.click(screen.getByRole("switch", { name: "Background" }));
     expect(onChange).toHaveBeenCalledWith("boxStyle", boxStyle, null);
     await user.click(screen.getByRole("button", { name: "Text background inherit" }));
     expect(onChange).toHaveBeenCalledWith("boxStyle", boxStyle, undefined);
 
-    await user.click(screen.getByLabelText("Box shadow enabled"));
+    await user.click(screen.getByRole("switch", { name: "Box shadow" }));
     expect(onChange).toHaveBeenCalledWith(
       "boxStyle",
       boxStyle,
@@ -108,7 +149,7 @@ describe("TextAppearanceControls", () => {
       expect.objectContaining({ shadow: undefined }),
     );
 
-    await user.click(screen.getByRole("button", { name: "Pill" }));
+    await user.click(screen.getByRole("button", { name: "Use pill text background" }));
     expect(onChange).toHaveBeenCalledWith(
       "boxStyle",
       boxStyle,
@@ -139,16 +180,15 @@ describe("TextAppearanceControls", () => {
     expect(queryLocalFonts).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Load system fonts" }));
     await waitFor(() => expect(queryLocalFonts).toHaveBeenCalledOnce());
-    expect(document.querySelector('optgroup[label="Inter"]')).not.toBeNull();
-    expect(document.querySelector('optgroup[label="Roboto"]')).not.toBeNull();
+    await user.click(screen.getByLabelText("Annotation font face"));
+    expect(await screen.findByRole("option", { name: "Inter Regular — Regular" })).toBeVisible();
+    expect(screen.getByRole("option", { name: "Roboto Bold — Bold" })).toBeVisible();
 
     await user.type(screen.getByLabelText("Search system fonts"), "Inter");
-    expect(document.querySelector('optgroup[label="Inter"]')).not.toBeNull();
-    expect(document.querySelector('optgroup[label="Roboto"]')).toBeNull();
+    expect(screen.getByRole("option", { name: "Inter Regular — Regular" })).toBeVisible();
+    expect(screen.queryByRole("option", { name: "Roboto Bold — Bold" })).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Annotation font face"), {
-      target: { value: "system:Inter-Regular" },
-    });
+    await user.click(screen.getByRole("option", { name: "Inter Regular — Regular" }));
     expect(onChange).toHaveBeenCalledWith(
       "font",
       undefined,
@@ -161,7 +201,8 @@ describe("TextAppearanceControls", () => {
 
     unmount();
     render(<TextAppearanceControls clip={annotation()} onChange={onChange} />);
-    expect(document.querySelector('optgroup[label="Inter"]')).not.toBeNull();
+    await user.click(screen.getByLabelText("Annotation font face"));
+    expect(await screen.findByRole("option", { name: "Inter Regular — Regular" })).toBeVisible();
     expect(queryLocalFonts).toHaveBeenCalledOnce();
   });
 

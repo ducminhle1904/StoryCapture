@@ -8,7 +8,7 @@ export default function PostProductionRoute() {
   const { storyId } = useParams<{ storyId: string }>();
   if (!storyId) {
     return (
-      <div className="sc-window-chrome h-full p-6 text-sm text-red-400" role="alert">
+      <div className="story-window-chrome h-full p-6 text-sm text-red-400" role="alert">
         Missing storyId in URL.
       </div>
     );

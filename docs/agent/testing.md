@@ -43,6 +43,9 @@
 - UI all tests: `pnpm --dir packages/ui test`.
 - UI focused test: `pnpm --dir packages/ui exec vitest run <path>`.
 - UI watch mode: `pnpm --dir packages/ui test:watch`.
+- Gothic generated-artifact check:
+  `pnpm --dir packages/ui run theme:check`.
+- Retired UI static gate: `pnpm ui:legacy-check`.
 
 ## Test Configs
 
@@ -77,7 +80,9 @@
   generated artifacts.
 - Web tests are narrow: workflow helpers, sync router metadata, and template
   router metadata.
-- UI tests cover `packages/ui/src/claude-design/primitives/__tests__/`.
+- UI tests cover the dark-only provider and representative Astryx Button,
+  TextInput, Card, Table, Dialog, and Toast rendering under the production CSS
+  reset/cascade.
 - `packages/story-dsl` currently relies on typecheck and consuming desktop
   tests; no package test script is present.
 - Playwright Electron tests live in `apps/desktop/e2e`; the cursor-sync smoke

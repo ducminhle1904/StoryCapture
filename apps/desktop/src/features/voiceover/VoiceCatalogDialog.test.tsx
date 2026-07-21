@@ -11,9 +11,9 @@
  * 7. At most 2 presets show Featured badge (accent rule #6)
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VoiceCatalogDialog } from "./VoiceCatalogDialog";
 import { useVoiceoverStore } from "./voiceoverStore";
 
@@ -112,9 +112,10 @@ describe("VoiceCatalogDialog", () => {
     await waitFor(() => {
       expect(screen.getAllByTestId("voice-preset-card").length).toBeGreaterThanOrEqual(6);
     });
-    const enChip = screen.getByRole("radio", { name: /en/i });
+    const localeFilter = screen.getByLabelText("Locale filter");
     await act(async () => {
-      fireEvent.click(enChip);
+      fireEvent.click(localeFilter);
+      fireEvent.click(screen.getByRole("option", { name: "en" }));
     });
     await waitFor(() => {
       const cards = screen.getAllByTestId("voice-preset-card");
@@ -157,9 +158,7 @@ describe("VoiceCatalogDialog", () => {
       useVoiceoverStore.getState().setFilter({ locale: "xx" });
     });
     await waitFor(() => {
-      expect(
-        screen.getByText(/Nothing matches these filters/),
-      ).toBeTruthy();
+      expect(screen.getByText(/Nothing matches these filters/)).toBeTruthy();
     });
   });
 
@@ -171,9 +170,7 @@ describe("VoiceCatalogDialog", () => {
     });
     renderDialog();
     await waitFor(() => {
-      expect(
-        screen.getByText(/Connect a provider first/),
-      ).toBeTruthy();
+      expect(screen.getByText(/Connect a provider first/)).toBeTruthy();
     });
     expect(screen.getByText(/Open settings/)).toBeTruthy();
   });

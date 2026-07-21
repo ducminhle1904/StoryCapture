@@ -28,7 +28,7 @@ packages/
   rimraf-compat/         CommonJS shim for legacy rimraf callback consumers
   shared-types/         browser presets, IPC surface, checked-in generated files
   story-dsl/            Story AST/vocabulary and CodeMirror language support
-  ui/                   shared tokens and claude-design primitives
+  ui/                   Astryx Gothic theme, fonts, and product tokens
 
 assets/                 sound library, fonts, image/assets/preset defaults
 scripts/                local CI, release, signing, benchmark helpers
@@ -276,8 +276,11 @@ host handlers.
   contract. `src/generated/effects.ts` is a checked-in
   `ts-rs`-generated file in the package tree, but it is not currently exposed
   through the package export map or root barrel.
-- `@storycapture/ui`: shared token layer, `claude-design` CSS, and `Sc*`
-  primitives. Base UI is the primitive foundation.
+- `@storycapture/ui`: dark-only StoryCapture Gothic theme provider, compiled
+  CSS/JS/type declarations, local font CSS, and product-specific tokens.
+  Generic UI is owned by Astryx and imported directly from
+  `@astryxdesign/core/<Component>`; this package does not re-export generic
+  components.
 
 ## Web Companion
 

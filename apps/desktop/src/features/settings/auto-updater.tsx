@@ -1,5 +1,7 @@
-import { useEffect, useState, useCallback } from "react";
-import { Download, RefreshCcw, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { Switch } from "@astryxdesign/core/Switch";
+import { AlertTriangle, CheckCircle2, Download, RefreshCcw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 import { checkUpdate, installUpdate, type UpdateInfo } from "@/ipc/updater";
 import { useAppSettingsStore } from "@/state/app-settings";
@@ -63,63 +65,45 @@ export function AutoUpdaterSettings() {
   }, []);
 
   return (
-    <div aria-labelledby="auto-updater-heading" className="space-y-4">
+    <div className="space-y-4">
       {/* Toggle */}
-      <label
-        htmlFor="check-on-launch"
-        className="flex cursor-pointer items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-3 transition-colors hover:bg-[var(--color-surface-200)]"
-      >
-        <input
-          id="check-on-launch"
-          type="checkbox"
-          checked={checkOnLaunch}
-          onChange={(e) => void onToggle(e.target.checked)}
-          className="h-4 w-4 rounded accent-[var(--color-accent-primary)]"
-        />
-        <div>
-          <div className="text-sm font-medium text-[var(--color-fg-primary)]">
-            Check on launch
-          </div>
-          <div className="text-xs text-[var(--color-fg-muted)]">
-            {checkOnLaunch
-              ? "The app will check when it starts."
-              : "No network calls until you press check."}
-          </div>
-        </div>
-      </label>
+      <Switch
+        label="Check on launch"
+        description={
+          checkOnLaunch
+            ? "The app will check when it starts."
+            : "No network calls until you press check."
+        }
+        value={checkOnLaunch}
+        onChange={(next) => void onToggle(next)}
+      />
 
       {/* Check button + status */}
       <div className="flex items-center gap-3">
-        <button
-          type="button"
+        <AstryxButton
+          variant="secondary"
           onClick={() => void runCheck()}
-          disabled={
-            checkState.kind === "checking" ||
-            checkState.kind === "installing"
+          isDisabled={checkState.kind === "checking" || checkState.kind === "installing"}
+          label="Check now"
+          icon={
+            <RefreshCcw
+              size={13}
+              aria-hidden="true"
+              className={checkState.kind === "checking" ? "animate-spin" : undefined}
+            />
           }
-          className="inline-flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-2 text-sm text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-200)] disabled:opacity-50"
         >
-          <RefreshCcw
-            size={13}
-            aria-hidden="true"
-            className={
-              checkState.kind === "checking" ? "animate-spin" : undefined
-            }
-          />
           Check now
-        </button>
+        </AstryxButton>
 
         {checkState.kind === "up-to-date" && (
-          <span className="flex items-center gap-1 text-xs text-[var(--color-fg-muted)]">
+          <span className="flex items-center gap-1 text-xs text-[var(--color-text-secondary)]">
             <CheckCircle2 size={13} aria-hidden="true" />
             Up to date
           </span>
         )}
         {checkState.kind === "error" && (
-          <span
-            role="alert"
-            className="flex items-center gap-1 text-xs text-[var(--color-danger)]"
-          >
+          <span role="alert" className="flex items-center gap-1 text-xs text-[var(--color-error)]">
             <AlertTriangle size={13} aria-hidden="true" />
             {checkState.message}
           </span>
@@ -128,34 +112,34 @@ export function AutoUpdaterSettings() {
 
       {/* Update available */}
       {checkState.kind === "available" && (
-        <div className="rounded-[var(--radius-lg)] border border-[var(--color-accent-primary)]/30 bg-[var(--color-accent-primary)]/6 p-4">
-          <div className="text-sm font-medium text-[var(--color-fg-primary)]">
-            {checkState.update.current_version} &rarr;{" "}
-            {checkState.update.version}
+        <div className="rounded-[var(--radius-container)] border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/6 p-4">
+          <div className="text-sm font-medium text-[var(--color-text-primary)]">
+            {checkState.update.current_version} &rarr; {checkState.update.version}
           </div>
           {checkState.update.date && (
-            <div className="mt-1 text-xs text-[var(--color-fg-muted)]">
+            <div className="mt-1 text-xs text-[var(--color-text-secondary)]">
               Released {checkState.update.date}
             </div>
           )}
           {checkState.update.body && (
-            <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-[var(--radius-md)] bg-[var(--color-surface-100)] p-3 text-xs text-[var(--color-fg-secondary)]">
+            <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-[var(--radius-element)] bg-[var(--color-background-card)] p-3 text-xs text-[var(--color-text-secondary)]">
               {checkState.update.body}
             </pre>
           )}
-          <button
-            type="button"
+          <AstryxButton
+            variant="primary"
             onClick={() => void runInstall()}
-            className="brand-button mt-3 inline-flex items-center gap-2 rounded-[var(--radius-md)] px-3 py-2 text-sm font-medium text-[var(--color-fg-primary)]"
+            label="Download and install"
+            icon={<Download size={13} aria-hidden="true" />}
+            className="mt-3"
           >
-            <Download size={13} aria-hidden="true" />
             Download and install
-          </button>
+          </AstryxButton>
         </div>
       )}
 
       {checkState.kind === "installing" && (
-        <div role="status" className="text-xs text-[var(--color-fg-muted)]">
+        <div role="status" className="text-xs text-[var(--color-text-secondary)]">
           Downloading — the app will relaunch when ready.
         </div>
       )}

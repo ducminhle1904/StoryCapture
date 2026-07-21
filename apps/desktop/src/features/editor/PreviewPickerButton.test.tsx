@@ -1,5 +1,5 @@
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,9 +9,9 @@ vi.mock("@/ipc/parse", () => ({
   parseStory: (...args: unknown[]) => parseStoryMock(...args),
 }));
 
-// Mock sonner BEFORE importing the button.
-vi.mock("sonner", () => ({
-  toast: Object.assign(vi.fn(), {
+// Mock notifications BEFORE importing the button.
+vi.mock("@/lib/notifications", () => ({
+  notifications: Object.assign(vi.fn(), {
     success: vi.fn(),
     error: vi.fn(),
     info: vi.fn(),
@@ -26,9 +26,9 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: (...args: unknown[]) => dialogOpenMock(...(args as [])),
 }));
 
-import { toast } from "sonner";
 import { useAuthorDriverStore } from "@/features/editor/authorDriverStore";
 import { editorController } from "@/features/editor/controller";
+import { notifications } from "@/lib/notifications";
 import { useEditorStore } from "@/state/editor";
 import { parseStorySource } from "../../../electron/ipc/story-parser";
 
@@ -102,12 +102,11 @@ describe("PreviewPickerButton", () => {
     useEditorStore.setState({ source: 'story "demo"\nscene "x"\n' });
     // Default to LivePreview with an active streamId so the button is armed.
     seedAuthorDriver({ variant: "live-preview", streamId: "author-stream-1" });
-    // Reset all sonner mocks between tests.
-    (toast as unknown as ReturnType<typeof vi.fn>).mockClear?.();
-    (toast.success as ReturnType<typeof vi.fn>).mockClear();
-    (toast.error as ReturnType<typeof vi.fn>).mockClear();
-    (toast.info as ReturnType<typeof vi.fn>).mockClear();
-    (toast.warning as ReturnType<typeof vi.fn>).mockClear();
+    // Reset all notification mocks between tests.
+    (notifications.success as ReturnType<typeof vi.fn>).mockClear();
+    (notifications.error as ReturnType<typeof vi.fn>).mockClear();
+    (notifications.info as ReturnType<typeof vi.fn>).mockClear();
+    (notifications.warning as ReturnType<typeof vi.fn>).mockClear();
   });
 
   afterEach(() => {
@@ -200,7 +199,7 @@ describe("PreviewPickerButton", () => {
     expect(invokeLog).not.toContain("picker_stamp_step_id");
   });
 
-  it("D-04 first-pick: choosing Click → toast.success with 'Added ... · line L'", async () => {
+  it("D-04 first-pick: choosing Click → notifications.success with 'Added ... · line L'", async () => {
     mockPickButtonSave({ wasFreshlyStamped: true });
 
     const user = userEvent.setup();
@@ -211,14 +210,14 @@ describe("PreviewPickerButton", () => {
     await user.click(screen.getByRole("menuitem", { name: /click element/i }));
     await flushAsync();
 
-    expect(toast.success).toHaveBeenCalled();
-    const msg = (toast.success as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(notifications.success).toHaveBeenCalled();
+    const msg = (notifications.success as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(msg).toContain('Added `click <button> "Save"`');
     expect(msg).toContain("line 12");
     expect(msg).not.toContain("Updated fallback");
   });
 
-  it("D-04 re-pick: wasFreshlyStamped=false → toast.success 'Updated fallback for step N'", async () => {
+  it("D-04 re-pick: wasFreshlyStamped=false → notifications.success 'Updated fallback for step N'", async () => {
     mockIPC((cmd) => {
       if (cmd === "picker_start_author") {
         return {
@@ -243,8 +242,8 @@ describe("PreviewPickerButton", () => {
     await user.click(screen.getByRole("menuitem", { name: /click element/i }));
     await flushAsync();
 
-    expect(toast.success).toHaveBeenCalled();
-    const msg = (toast.success as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(notifications.success).toHaveBeenCalled();
+    const msg = (notifications.success as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(msg).toBe("Updated fallback for step 3");
   });
 
@@ -319,7 +318,7 @@ scene "x" {
     await flushAsync();
 
     expect(insertSpy).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith(
+    expect(notifications.error).toHaveBeenCalledWith(
       expect.stringMatching(/canonical <button>.*not inserted/),
     );
   });
@@ -353,8 +352,8 @@ scene "x" {
     expect(insertSpy).not.toHaveBeenCalled();
     expect(replaceSpy).not.toHaveBeenCalled();
     expect(invokeLog).not.toContain("picker_stamp_step_id");
-    expect(toast.success).not.toHaveBeenCalled();
-    expect(toast.info).not.toHaveBeenCalled();
+    expect(notifications.success).not.toHaveBeenCalled();
+    expect(notifications.info).not.toHaveBeenCalled();
   });
 
   it("default-focused menu item matches the existing line's verb", async () => {
@@ -386,8 +385,8 @@ scene "x" {
 
     expect(screen.queryByRole("dialog", { name: /picker action menu/i })).toBeNull();
     expect(insertSpy).not.toHaveBeenCalled();
-    expect(toast.success).not.toHaveBeenCalled();
-    expect(toast.info).not.toHaveBeenCalled();
+    expect(notifications.success).not.toHaveBeenCalled();
+    expect(notifications.info).not.toHaveBeenCalled();
   });
 
   it("Esc during picking invokes pickElementCancel", async () => {
@@ -479,7 +478,7 @@ scene "x" {
 
     const input = screen.getByRole("textbox");
     await user.type(input, "alice@example.com");
-    await user.click(screen.getByRole("button", { name: /^insert$/i }));
+    await user.click(screen.getByRole("button", { name: "Insert action" }));
     await flushAsync();
 
     expect(insertSpy).toHaveBeenCalledWith('fill field "Email" with "alice@example.com"\n');
@@ -512,12 +511,22 @@ scene "x" {
     await flushAsync();
 
     await user.click(screen.getByRole("menuitem", { name: /scroll this container/i }));
-    const insert = screen.getByRole("button", { name: /^insert$/i });
+    const insert = screen.getByRole("button", { name: "Insert action" });
     expect(insert).toBeDisabled();
 
-    await user.selectOptions(screen.getByLabelText("Scroll direction"), "up");
+    await user.click(screen.getByLabelText("Scroll direction"));
+    await user.click(
+      within(screen.getByRole("listbox", { name: "Scroll direction" })).getByRole("option", {
+        name: "Up",
+      }),
+    );
     await user.type(screen.getByLabelText("Scroll amount"), "50");
-    await user.selectOptions(screen.getByLabelText("Scroll unit"), "vh");
+    await user.click(screen.getByLabelText("Scroll unit"));
+    await user.click(
+      within(screen.getByRole("listbox", { name: "Scroll unit" })).getByRole("option", {
+        name: "vh",
+      }),
+    );
     await user.click(insert);
     await flushAsync();
 
@@ -635,7 +644,7 @@ scene "x" {
     expect(pickCount).toBe(2);
     expect(insertSpy).toHaveBeenCalledWith('drag testid "src" to testid "dst"\n');
     expect(invokeLog).not.toContain("picker_stamp_step_id");
-    const successMsg = (toast.success as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const successMsg = (notifications.success as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(successMsg).toMatch(/selector healing for drag targets/i);
   });
 

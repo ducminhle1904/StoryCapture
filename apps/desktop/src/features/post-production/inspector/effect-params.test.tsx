@@ -164,15 +164,14 @@ describe("EffectParams", () => {
       next: { kind: "element", selector: "" },
     });
 
-    fireEvent.change(screen.getByLabelText("Zoom scale"), {
-      target: { value: "2" },
-    });
+    const zoomScale = screen.getByRole("slider", { name: "Zoom scale" });
+    fireEvent.keyDown(zoomScale, { key: "ArrowRight" });
     expectSetParam(pushAction, {
       kind: "set-effect-param",
       nodePath: "tracks.zoom[0]",
       field: "scale",
       prev: 1.5,
-      next: 2,
+      next: 1.55,
     });
 
     fireEvent.change(screen.getByLabelText("Zoom center x"), {
@@ -238,8 +237,8 @@ describe("EffectParams", () => {
     render(<EffectParams />);
 
     expect(screen.getByRole("button", { name: /Text\s+1/i })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+      "aria-current",
+      "page",
     );
     expect(screen.getByLabelText("Annotation text")).toBeInTheDocument();
 
@@ -248,8 +247,8 @@ describe("EffectParams", () => {
     expect(useEditorStore.getState().selectedClipId).toBe("zoom-1");
     expect(useEditorStore.getState().playheadMs).toBe(2500);
     expect(screen.getByRole("button", { name: /Zoom\s+1/i })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+      "aria-current",
+      "page",
     );
     expect(screen.getByLabelText("Zoom scale")).toBeInTheDocument();
 
@@ -309,15 +308,15 @@ describe("EffectParams", () => {
       next: 0.75,
     });
 
-    fireEvent.change(screen.getByLabelText("Annotation size"), {
-      target: { value: "36" },
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Annotation size" }), {
+      key: "ArrowRight",
     });
     expectSetParam(pushAction, {
       kind: "set-effect-param",
       nodePath: "tracks.annotations[0]",
       field: "sizePt",
       prev: 24,
-      next: 36,
+      next: 25,
     });
 
     fireEvent.change(screen.getByLabelText("Annotation color"), {
@@ -558,7 +557,7 @@ describe("EffectParams", () => {
     );
 
     await user.click(first(screen.getAllByText("Apply style")));
-    await user.click(first(screen.getAllByRole("button", { name: "Same preset / role" })));
+    await user.click(first(screen.getAllByRole("menuitem", { name: "Same preset / role" })));
     expect(pushAction).toHaveBeenCalledWith({
       kind: "edit-clip-snapshots",
       before: [expect.objectContaining({ id: "text-2" })],
@@ -630,7 +629,7 @@ describe("EffectParams", () => {
     render(<EffectParams />);
 
     await user.click(first(screen.getAllByText("Apply style")));
-    await user.click(first(screen.getAllByRole("button", { name: "All text" })));
+    await user.click(first(screen.getAllByRole("menuitem", { name: "All text" })));
 
     expect(pushAction).toHaveBeenCalledTimes(1);
     const action = pushAction.mock.calls[0]?.[0];

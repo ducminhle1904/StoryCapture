@@ -7,17 +7,17 @@ import { COALESCE_IDLE_MS, Coalescer } from "../undo/coalesce";
 import { HISTORY_CAP, HistoryBuffer } from "../undo/history-buffer";
 import { BackgroundPanel } from "./background-panel";
 
-vi.mock("@/components/ui/slider", () => ({
+vi.mock("@astryxdesign/core/Slider", () => ({
   Slider: ({
     id,
     min,
     max,
     step,
     value,
-    format,
-    disabled,
-    onValueChange,
-    onValueCommitted,
+    formatValue,
+    isDisabled,
+    onChange,
+    onChangeEnd,
     onKeyDownCapture,
     onKeyUpCapture,
     onBlurCapture,
@@ -29,10 +29,10 @@ vi.mock("@/components/ui/slider", () => ({
     max?: number;
     step?: number;
     value?: number | readonly number[];
-    format?: Intl.NumberFormatOptions;
-    disabled?: boolean;
-    onValueChange?: (value: number) => void;
-    onValueCommitted?: (value: number) => void;
+    formatValue?: (value: number) => string;
+    isDisabled?: boolean;
+    onChange?: (value: number) => void;
+    onChangeEnd?: (value: number) => void;
     onKeyDownCapture?: React.KeyboardEventHandler<HTMLInputElement>;
     onKeyUpCapture?: React.KeyboardEventHandler<HTMLInputElement>;
     onBlurCapture?: React.FocusEventHandler<HTMLInputElement>;
@@ -44,20 +44,20 @@ vi.mock("@/components/ui/slider", () => ({
       <input
         id={`${id}-input`}
         aria-labelledby={`${id}-label`}
-        aria-valuetext={new Intl.NumberFormat("en", format).format(currentValue)}
         type="range"
         min={min}
         max={max}
         step={step}
         value={currentValue}
-        disabled={disabled}
+        disabled={isDisabled}
+        aria-valuetext={formatValue?.(currentValue)}
         onKeyDownCapture={onKeyDownCapture}
         onKeyUpCapture={onKeyUpCapture}
         onBlurCapture={onBlurCapture}
         onPointerCancelCapture={onPointerCancelCapture}
         onLostPointerCapture={onLostPointerCapture}
-        onChange={(event) => onValueChange?.(Number(event.currentTarget.value))}
-        onPointerUp={(event) => onValueCommitted?.(Number(event.currentTarget.value))}
+        onChange={(event) => onChange?.(Number(event.currentTarget.value))}
+        onPointerUp={(event) => onChangeEnd?.(Number(event.currentTarget.value))}
         onKeyDown={(event) => {
           if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
           const direction = event.key === "ArrowRight" ? 1 : -1;
@@ -65,8 +65,8 @@ vi.mock("@/components/ui/slider", () => ({
             max ?? 100,
             Math.max(min ?? 0, Number(event.currentTarget.value) + direction * (step ?? 1)),
           );
-          onValueChange?.(nextValue);
-          onValueCommitted?.(nextValue);
+          onChange?.(nextValue);
+          onChangeEnd?.(nextValue);
         }}
       />
     );

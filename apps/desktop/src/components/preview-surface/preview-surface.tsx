@@ -53,14 +53,14 @@ function RecordingPreview({ projectId }: { projectId: string }) {
 
   if (latest) {
     return (
-      <div className="flex h-full w-full flex-col bg-[var(--sc-surface)] text-[var(--sc-text)]">
+      <div className="flex h-full w-full flex-col bg-[var(--color-background-surface)] text-[var(--color-text-primary)]">
         <div className="flex flex-1 items-center justify-center overflow-hidden p-5">
           {/* biome-ignore lint/a11y/useMediaCaption: user-captured screen recording; no caption track exists in source */}
           <video
             src={convertFileSrc(latest.path)}
             controls
             preload="metadata"
-            className="h-full w-full max-w-3xl rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-black"
+            className="h-full w-full max-w-3xl rounded-[var(--radius-page)] border border-[var(--color-border)] bg-black"
             data-recording-present="true"
           />
         </div>
@@ -69,21 +69,23 @@ function RecordingPreview({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-[var(--sc-surface)] text-[var(--sc-text)]">
+    <div className="flex h-full w-full flex-col bg-[var(--color-background-surface)] text-[var(--color-text-primary)]">
       <div className="flex flex-1 items-center justify-center overflow-hidden p-5">
         <motion.div
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
-          className="flex h-full w-full max-w-3xl items-center justify-center rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-chrome)]"
+          className="flex h-full w-full max-w-3xl items-center justify-center rounded-[var(--radius-page)] border border-[var(--color-border)] bg-[var(--story-native-chrome)]"
           data-recording-present="false"
         >
           <div className="flex flex-col items-center gap-3 text-center">
-            <div className="grid h-14 w-14 place-items-center rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]">
-              <Film size={20} className="text-[var(--sc-text-3)]" aria-hidden="true" />
+            <div className="grid h-14 w-14 place-items-center rounded-[var(--radius-page)] border border-[var(--color-border)] bg-[var(--color-background-surface)]">
+              <Film size={20} className="text-[var(--color-text-secondary)]" aria-hidden="true" />
             </div>
-            <div className="text-[13px] font-medium text-[var(--sc-text-2)]">No recording yet</div>
-            <div className="max-w-sm text-[12px] leading-5 text-[var(--sc-text-4)]">
+            <div className="text-[13px] font-medium text-[var(--color-text-secondary)]">
+              No recording yet
+            </div>
+            <div className="max-w-sm text-[12px] leading-5 text-[var(--color-text-disabled)]">
               Record a story to see the preview.
             </div>
           </div>

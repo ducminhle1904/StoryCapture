@@ -10,9 +10,9 @@
  * 6. Password input type prevents plain-text display.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountsPage } from "./AccountsPage";
 
 // Mock Tauri invoke
@@ -105,7 +105,7 @@ describe("AccountsPage", () => {
     });
 
     // Click test button
-    const testBtn = screen.getAllByRole("button", { name: /^Test$/ })[0];
+    const testBtn = screen.getByRole("button", { name: "Test Anthropic API key" });
     await userEvent.click(testBtn);
 
     await waitFor(() => {
@@ -134,22 +134,22 @@ describe("AccountsPage", () => {
     });
 
     // Click remove button
-    const removeBtn = screen.getByLabelText(/Remove Anthropic key/i);
+    const removeBtn = screen.getByRole("button", { name: /Remove Anthropic key/i });
     await userEvent.click(removeBtn);
 
     // Alert dialog should appear with destructive copy
-    await waitFor(() => {
-      expect(screen.getByText(/Remove Anthropic key\?/)).toBeTruthy();
-    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("alertdialog", { name: /Remove Anthropic key\?/i }),
+      ).toBeInTheDocument(),
+    );
   });
 
   it("header callout badge renders keychain security notice with aria-describedby", async () => {
     render(<AccountsPage />);
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/Stored in OS keychain/)
-      ).toBeTruthy();
+      expect(screen.getByText(/Stored in OS keychain/)).toBeTruthy();
     });
 
     // aria-describedby should link to docs

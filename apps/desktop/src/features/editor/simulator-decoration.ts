@@ -46,9 +46,7 @@ interface FailedStepState {
 const failedLineMark = (errorMessage: string | null) =>
   Decoration.line({
     class: "cm-simulator-failed-step",
-    attributes: errorMessage
-      ? { "data-sim-error": errorMessage, title: errorMessage }
-      : undefined,
+    attributes: errorMessage ? { "data-sim-error": errorMessage, title: errorMessage } : undefined,
   });
 
 export const simulatorFailedStepField = StateField.define<FailedStepState>({
@@ -109,22 +107,22 @@ export const simulatorFailedStepHover = hoverTooltip((view, pos) => {
 
 export const simulatorDecorationTheme = EditorView.theme({
   ".cm-simulator-active-step": {
-    backgroundColor: "color-mix(in oklch, var(--sc-accent-400) 12%, transparent)",
-    borderLeft: "2px solid var(--sc-accent-400)",
+    backgroundColor: "color-mix(in oklch, var(--color-accent) 12%, transparent)",
+    borderLeft: "2px solid var(--color-accent)",
   },
   ".cm-simulator-failed-step": {
-    backgroundColor: "color-mix(in oklch, var(--sc-record) 14%, transparent)",
-    borderLeft: "2px solid var(--sc-record)",
+    backgroundColor: "color-mix(in oklch, var(--story-recording) 14%, transparent)",
+    borderLeft: "2px solid var(--story-recording)",
   },
   ".cm-simulator-failed-tooltip": {
     maxWidth: "420px",
     padding: "6px 8px",
-    fontFamily: "var(--font-mono, ui-monospace, monospace)",
+    fontFamily: "var(--font-family-code, ui-monospace, monospace)",
     fontSize: "11px",
-    color: "var(--sc-text)",
-    backgroundColor: "var(--sc-surface-3)",
-    border: "1px solid color-mix(in oklch, var(--sc-record) 50%, var(--sc-border))",
-    borderRadius: "var(--radius-sm, 4px)",
+    color: "var(--color-text-primary)",
+    backgroundColor: "var(--color-background-muted)",
+    border: "1px solid color-mix(in oklch, var(--story-recording) 50%, var(--color-border))",
+    borderRadius: "var(--radius-inner, 4px)",
     boxShadow: "0 4px 12px rgba(0,0,0,0.18)",
     whiteSpace: "pre-wrap",
   },

@@ -112,7 +112,7 @@ describe("SceneListPanel outline", () => {
     seed(makeStory());
     const { container } = render(<SceneListPanel cursorLine={5} />);
     const stepBtn = container.querySelector('[title="2. click Sign In"]');
-    expect(stepBtn?.className).toMatch(/border-\[var\(--sc-accent-400\)\]/);
+    expect(stepBtn?.className).toMatch(/border-\[var\(--color-accent\)\]/);
   });
 
   it("shows empty state when no scenes parsed", () => {

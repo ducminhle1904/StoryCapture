@@ -1,5 +1,6 @@
 "use client";
 
+import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import type { Chapter } from "./video-player";
 
 interface ChapterNavProps {
@@ -26,27 +27,21 @@ export function ChapterNav({ chapters, currentTime, onSeek }: ChapterNavProps) {
   }
 
   return (
-    <nav
-      className="flex gap-2 overflow-x-auto py-3 scrollbar-thin"
-      aria-label="Video chapters"
-    >
-      {chapters.map((chapter, index) => {
-        const isActive = index === activeIndex;
-        return (
-          <button
+    <nav className="overflow-x-auto py-3" aria-label="Video chapters">
+      <SegmentedControl
+        label="Video chapters"
+        value={String(activeIndex)}
+        onChange={(value) => onSeek(chapters[Number(value)]!.startTimeSec)}
+        size="sm"
+      >
+        {chapters.map((chapter, index) => (
+          <SegmentedControlItem
             key={`${chapter.label}-${chapter.startTimeSec}`}
-            onClick={() => onSeek(chapter.startTimeSec)}
-            className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-              isActive
-                ? "bg-zinc-100 text-zinc-900"
-                : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-            }`}
-            aria-current={isActive ? "step" : undefined}
-          >
-            {chapter.label}
-          </button>
-        );
-      })}
+            value={String(index)}
+            label={chapter.label}
+          />
+        ))}
+      </SegmentedControl>
     </nav>
   );
 }

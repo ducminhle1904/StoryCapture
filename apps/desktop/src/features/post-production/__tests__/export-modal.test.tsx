@@ -9,8 +9,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { notifications } from "@/lib/notifications";
 
 // Tauri invoke mock — must be declared via vi.mock BEFORE importing modules
 // that read from @tauri-apps/api/core.
@@ -22,8 +22,8 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
   convertFileSrc: (s: string) => s,
 }));
-vi.mock("sonner", () => ({
-  toast: {
+vi.mock("@/lib/notifications", () => ({
+  notifications: {
     success: vi.fn(),
     error: vi.fn(),
   },
@@ -107,7 +107,7 @@ describe("ExportModal", () => {
       </Wrapped>,
     );
     const btn = screen.getByRole("button", { name: /start export/i });
-    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("aria-disabled", "true");
   });
 
   it("keeps Export disabled when timeline has no renderable video clip", () => {
@@ -133,8 +133,8 @@ describe("ExportModal", () => {
     );
 
     const btn = screen.getByRole("button", { name: /start export/i });
-    expect(btn).toBeDisabled();
-    expect(btn.getAttribute("title")).toMatch(/sourcePath/i);
+    expect(btn).toHaveAttribute("aria-disabled", "true");
+    expect(btn).toHaveAccessibleDescription(/sourcePath/i);
   });
 
   it("enables Export once a video clip with sourcePath is present", () => {
@@ -172,7 +172,7 @@ describe("ExportModal", () => {
     );
 
     const btn = screen.getByRole("button", { name: /start export/i });
-    expect(btn).not.toBeDisabled();
+    expect(btn).not.toHaveAttribute("aria-disabled");
   });
 
   it.each([
@@ -232,7 +232,7 @@ describe("ExportModal", () => {
       </Wrapped>,
     );
     fireEvent.click(screen.getByRole("button", { name: /start export/i }));
-    const checkbox = await screen.findByRole("checkbox", {
+    const checkbox = await screen.findByRole("switch", {
       name: /Embed AI-generated voice metadata \(XMP\)/i,
     });
     if (!embedXmp) fireEvent.click(checkbox);
@@ -427,7 +427,7 @@ describe("ExportModal", () => {
       },
     });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: RENDER_KEYS.listActive("s1") });
-    expect(toast.success).toHaveBeenCalledWith("Export started: 2 jobs queued");
+    expect(notifications.success).toHaveBeenCalledWith("Export started: 2 jobs queued");
   });
 
   it("surfaces export_run fail-fast errors in the warning panel", async () => {
@@ -524,6 +524,6 @@ describe("ExportModal", () => {
     });
 
     const btn = screen.getByRole("button", { name: /start export/i });
-    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("aria-disabled", "true");
   });
 });

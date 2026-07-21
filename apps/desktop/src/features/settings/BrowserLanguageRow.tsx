@@ -1,18 +1,11 @@
+import { Selector as AstryxSelector } from "@astryxdesign/core/Selector";
 import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
-import {
-  ScSelect,
-  ScSelectContent,
-  ScSelectItem,
-  ScSelectTrigger,
-  ScSelectValue,
-} from "@storycapture/ui";
-
 import {
   type BrowserLanguageOption,
   getBrowserLanguageOptions,
   setBrowserLanguage,
 } from "@/ipc/settings";
+import { notifications } from "@/lib/notifications";
 import { useAppSettingsStore } from "@/state/app-settings";
 
 export function BrowserLanguageRow() {
@@ -44,10 +37,10 @@ export function BrowserLanguageRow() {
         const next = await setBrowserLanguage(nextLanguage);
         useAppSettingsStore.setState({ settings: next });
         setLanguage(next.browser_language);
-        toast.success("Browser language updated");
+        notifications.success("Browser language updated");
       } catch {
         setLanguage(language);
-        toast.error("Could not update browser language");
+        notifications.error("Could not update browser language");
       } finally {
         setBusy(false);
       }
@@ -56,33 +49,26 @@ export function BrowserLanguageRow() {
   );
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-4">
+    <div className="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-background-card)] p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[13px] font-medium text-[var(--color-fg-primary)]">
+          <div className="text-[13px] font-medium text-[var(--color-text-primary)]">
             Browser language
           </div>
-          <div className="mt-0.5 max-w-[480px] text-[11px] leading-4 text-[var(--color-fg-muted)]">
-            Requests this language for Live Preview, Simulator, and Record. Sites
-            that do not support it may use their own default language.
+          <div className="mt-0.5 max-w-[480px] text-[11px] leading-4 text-[var(--color-text-secondary)]">
+            Requests this language for Live Preview, Simulator, and Record. Sites that do not
+            support it may use their own default language.
           </div>
         </div>
-        <ScSelect value={language} onValueChange={(value) => save(String(value))}>
-          <ScSelectTrigger
-            disabled={busy}
-            aria-label="Browser language"
-            style={{ width: 220 }}
-          >
-            <ScSelectValue />
-          </ScSelectTrigger>
-          <ScSelectContent>
-            {options.map((option) => (
-              <ScSelectItem key={option.value} value={option.value}>
-                {option.label}
-              </ScSelectItem>
-            ))}
-          </ScSelectContent>
-        </ScSelect>
+        <AstryxSelector
+          label="Browser language"
+          isLabelHidden
+          value={language}
+          options={options}
+          onChange={(value) => void save(value)}
+          isDisabled={busy}
+          width={220}
+        />
       </div>
     </div>
   );

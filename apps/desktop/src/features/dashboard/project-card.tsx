@@ -1,14 +1,11 @@
-import { Dialog } from "@base-ui/react/dialog";
-import { ScBadge, ScButton, ScCard } from "@storycapture/ui";
+import { AlertDialog } from "@astryxdesign/core/AlertDialog";
+import { Badge as AstryxBadge } from "@astryxdesign/core/Badge";
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { Card as AstryxCard } from "@astryxdesign/core/Card";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Clock, MoreHorizontal, Play, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import {
-  dialogBackdropMotionClassName,
-  dialogCenteredPopupMotionClassName,
-  dialogViewportClassName,
-} from "@/components/ui/dialog-motion";
 import type { Project } from "@/ipc/projects";
 import { relativeTime } from "@/lib/utils";
 import { projectAccent } from "./hash-accent";
@@ -27,13 +24,13 @@ function ThumbMock({ hue, hash }: { hue: number; hash: string }) {
       style={{
         position: "relative",
         aspectRatio: "16/10",
-        borderRadius: "var(--sc-r-md)",
+        borderRadius: "var(--radius-element)",
         background: `
           radial-gradient(ellipse 60% 80% at 20% 10%, oklch(0.45 0.12 ${hue}) 0%, transparent 60%),
           radial-gradient(ellipse 80% 60% at 80% 100%, oklch(0.32 0.10 ${(hue + 40) % 360}) 0%, transparent 60%),
           linear-gradient(180deg, oklch(0.18 0.04 ${hue}), oklch(0.12 0.02 ${hue}))`,
         overflow: "hidden",
-        border: "1px solid var(--sc-border-2)",
+        border: "1px solid var(--color-border-emphasized)",
       }}
     >
       <div
@@ -106,7 +103,7 @@ function ThumbMock({ hue, hash }: { hue: number; hash: string }) {
           position: "absolute",
           top: 6,
           right: 6,
-          fontFamily: "var(--sc-font-mono)",
+          fontFamily: "var(--font-family-code)",
           fontSize: 9,
           color: "rgba(255,255,255,0.6)",
           background: "rgba(0,0,0,0.4)",
@@ -149,7 +146,7 @@ export function ProjectCard({
 
   return (
     <>
-      <ScCard
+      <AstryxCard
         role="button"
         tabIndex={0}
         aria-label={`Open project ${project.name}`}
@@ -161,7 +158,7 @@ export function ProjectCard({
           }
         }}
         style={{ padding: 10, cursor: "default" }}
-        className="sc-project-card"
+        className="story-project-card"
       >
         {project.thumbnail_path ? (
           <img
@@ -171,8 +168,8 @@ export function ProjectCard({
               aspectRatio: "16/10",
               width: "100%",
               objectFit: "cover",
-              borderRadius: "var(--sc-r-md)",
-              border: "1px solid var(--sc-border-2)",
+              borderRadius: "var(--radius-element)",
+              border: "1px solid var(--color-border-emphasized)",
             }}
           />
         ) : (
@@ -198,14 +195,14 @@ export function ProjectCard({
             >
               {project.name}
             </div>
-            <div style={{ fontSize: 11.5, color: "var(--sc-text-4)", marginTop: 2 }}>
+            <div style={{ fontSize: 11.5, color: "var(--color-text-disabled)", marginTop: 2 }}>
               {metaLine}
             </div>
-            <div style={{ fontSize: 11, color: "var(--sc-text-4)", marginTop: 1 }}>{subtitle}</div>
+            <div style={{ fontSize: 11, color: "var(--color-text-disabled)", marginTop: 1 }}>
+              {subtitle}
+            </div>
           </div>
-          <ScBadge tone="muted" dot>
-            Draft
-          </ScBadge>
+          <AstryxBadge variant="neutral" label="Draft" />
         </div>
         <div
           style={{
@@ -213,16 +210,16 @@ export function ProjectCard({
             alignItems: "center",
             gap: 6,
             padding: "8px 4px 0",
-            borderTop: "1px solid var(--sc-border)",
+            borderTop: "1px solid var(--color-border)",
             marginTop: 8,
             fontSize: 11,
-            color: "var(--sc-text-4)",
+            color: "var(--color-text-disabled)",
           }}
         >
           <Clock size={11} aria-hidden="true" />
           {relativeTime(project.last_opened_at)}
           <span style={{ flex: 1 }} />
-          <ScButton
+          <AstryxButton
             size="sm"
             variant="ghost"
             icon={<Play size={11} aria-hidden="true" />}
@@ -231,81 +228,53 @@ export function ProjectCard({
               onOpen(project.id);
             }}
             aria-label={`Play ${project.name}`}
+            label={`Play ${project.name}`}
           >
             Play
-          </ScButton>
+          </AstryxButton>
           {hasRemoveAction ? (
-            <ScButton
-              size="icon"
+            <AstryxButton
+              size="sm"
+              isIconOnly
               variant="ghost"
               icon={<Trash2 size={14} aria-hidden="true" />}
-              disabled={removePending}
+              isDisabled={removePending}
               onClick={(e) => {
                 e.stopPropagation();
                 setConfirmOpen(true);
               }}
               onKeyDown={(e) => e.stopPropagation()}
               aria-label={`Remove ${project.name} from dashboard`}
-              title="Remove from dashboard"
+              tooltip="Remove from dashboard"
+              label={`Remove ${project.name} from dashboard`}
             />
           ) : (
-            <ScButton
+            <AstryxButton
               size="sm"
               variant="ghost"
               icon={<MoreHorizontal size={14} aria-hidden="true" />}
-              disabled
+              isDisabled
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
               aria-label={`More actions for ${project.name} (coming soon)`}
-              title="More actions coming soon"
+              tooltip="More actions coming soon"
+              label={`More actions for ${project.name} (coming soon)`}
             />
           )}
         </div>
-      </ScCard>
+      </AstryxCard>
 
-      <Dialog.Root open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <Dialog.Portal>
-          <Dialog.Backdrop
-            className={`fixed inset-0 z-50 bg-black/40 backdrop-blur-sm ${dialogBackdropMotionClassName}`}
-          />
-          <Dialog.Viewport className={dialogViewportClassName}>
-            <Dialog.Popup
-              className={`w-full max-w-sm rounded-[var(--sc-r-xl)] border border-[var(--sc-border-2)] bg-[var(--sc-surface-1)] p-5 shadow-[var(--shadow-card)] ${dialogCenteredPopupMotionClassName}`}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Dialog.Title className="text-base font-semibold text-[var(--sc-text-1)]">
-                Remove project?
-              </Dialog.Title>
-              <Dialog.Description className="mt-2 text-sm leading-6 text-[var(--sc-text-3)]">
-                Remove "{project.name}" from this dashboard. The project folder stays on disk.
-              </Dialog.Description>
-              <div
-                className="mt-5 flex justify-end gap-2"
-                style={{ borderTop: "1px solid var(--sc-border)", paddingTop: 14 }}
-              >
-                <Dialog.Close
-                  className="sc-btn ghost sm"
-                  disabled={removePending}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  Cancel
-                </Dialog.Close>
-                <ScButton
-                  size="sm"
-                  variant="danger"
-                  disabled={removePending}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void confirmRemove();
-                  }}
-                >
-                  {removePending ? "Removing..." : "Remove"}
-                </ScButton>
-              </div>
-            </Dialog.Popup>
-          </Dialog.Viewport>
-        </Dialog.Portal>
-      </Dialog.Root>
+      <AlertDialog
+        isOpen={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Remove project?"
+        description={`Remove “${project.name}” from this dashboard. The project folder stays on disk.`}
+        cancelLabel="Cancel"
+        actionLabel="Remove"
+        actionVariant="destructive"
+        isActionLoading={removePending}
+        onAction={() => void confirmRemove()}
+      />
     </>
   );
 }

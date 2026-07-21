@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
@@ -112,8 +112,8 @@ describe("StoryBuilder UI/code synchronization", () => {
       />,
     );
 
-    const text = screen.getByLabelText("Text overlay text");
-    const duration = screen.getByLabelText("Text overlay duration");
+    const text = screen.getByLabelText(/^Text overlay text/);
+    const duration = screen.getByLabelText(/^Text overlay duration/);
     expect(screen.getByText("Text overlay")).toBeInTheDocument();
     expect(text).toHaveValue("Welcome");
     expect(duration).toHaveValue(2_000);
@@ -139,8 +139,8 @@ describe("StoryBuilder UI/code synchronization", () => {
       />,
     );
 
-    const text = screen.getByLabelText("Text overlay text");
-    const duration = screen.getByLabelText("Text overlay duration");
+    const text = screen.getByLabelText(/^Text overlay text/);
+    const duration = screen.getByLabelText(/^Text overlay duration/);
     fireEvent.change(text, { target: { value: "" } });
     fireEvent.change(duration, { target: { value: "99" } });
 
@@ -162,14 +162,14 @@ describe("StoryBuilder UI/code synchronization", () => {
     const user = userEvent.setup();
     render(<StoryBuilderHarness initialStory={parseStory(SOURCE_WITH_TWO_COMMANDS)} />);
 
-    const fullMotion = screen.getByRole("button", { name: "Full" });
-    const reducedMotion = screen.getByRole("button", { name: "Reduced" });
-    expect(fullMotion).toHaveAttribute("aria-pressed", "true");
+    const fullMotion = screen.getByRole("radio", { name: "Full" });
+    const reducedMotion = screen.getByRole("radio", { name: "Reduced" });
+    expect(fullMotion).toHaveAttribute("aria-checked", "true");
 
     await user.click(reducedMotion);
 
-    expect(reducedMotion).toHaveAttribute("aria-pressed", "true");
-    expect(fullMotion).toHaveAttribute("aria-pressed", "false");
+    expect(reducedMotion).toHaveAttribute("aria-checked", "true");
+    expect(fullMotion).toHaveAttribute("aria-checked", "false");
   });
 
   it("defaults zoom duration to 1600 ms and clamps manual input to 900 ms", () => {
@@ -192,7 +192,11 @@ describe("StoryBuilder UI/code synchronization", () => {
     fireEvent.change(duration, { target: { value: "2200" } });
 
     await user.click(screen.getByLabelText("Auto zoom"));
-    await user.click(screen.getByRole("option", { name: "Strong" }));
+    await user.click(
+      within(screen.getByRole("listbox", { name: "Auto zoom" })).getByRole("option", {
+        name: "Strong",
+      }),
+    );
 
     expect(duration).toHaveValue(2_200);
   });
@@ -210,7 +214,11 @@ describe("StoryBuilder UI/code synchronization", () => {
     );
 
     await user.click(screen.getByLabelText("Auto zoom"));
-    await user.click(screen.getByRole("option", { name: "Strong" }));
+    await user.click(
+      within(screen.getByRole("listbox", { name: "Auto zoom" })).getByRole("option", {
+        name: "Strong",
+      }),
+    );
 
     expect(screen.getByLabelText("Auto zoom duration")).toHaveValue(2_400);
   });
@@ -220,7 +228,10 @@ describe("StoryBuilder UI/code synchronization", () => {
       <StoryBuilderHarness initialStory={parseStory(SOURCE_WITH_TWO_COMMANDS)} simulatorActive />,
     );
 
-    expect(screen.getByLabelText("Motion mode")).toHaveAttribute("data-disabled");
+    expect(screen.getByRole("radiogroup", { name: "Motion mode" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     expect(screen.getByLabelText("Auto zoom duration")).toBeDisabled();
   });
 });

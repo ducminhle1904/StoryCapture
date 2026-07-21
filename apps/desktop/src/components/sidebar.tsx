@@ -1,3 +1,6 @@
+import { Button as AstryxButton } from "@astryxdesign/core/Button";
+import { Kbd as AstryxKbd } from "@astryxdesign/core/Kbd";
+import { SideNav, SideNavItem, SideNavSection } from "@astryxdesign/core/SideNav";
 import {
   Circle,
   Code,
@@ -85,94 +88,84 @@ export function Sidebar() {
   const startRecord = () => navigate("/recorder");
 
   return (
-    <nav aria-label="Main navigation" className="sc-nav sc-window-sidebar" style={{ width: 224 }}>
-      {/* Brand */}
-      <div className="sc-brand">
-        <BrandMark size={28} className="rounded-md" />
-        <div>
-          <div className="sc-brand-name">StoryCapture</div>
-          <div className="text-[10.5px] text-[var(--sc-text-4)] mt-[1px]">Electron desktop</div>
+    <SideNav
+      className="story-window-sidebar"
+      style={{ width: 224 }}
+      header={
+        <div className="flex items-center gap-2 px-3 py-3 text-[var(--color-text-primary)]">
+          <BrandMark size={28} className="rounded-md" />
+          <div>
+            <div className="text-sm font-semibold">StoryCapture</div>
+            <div className="text-[var(--color-text-disabled)]" style={{ fontSize: 11 }}>
+              Electron desktop
+            </div>
+          </div>
         </div>
-      </div>
-
-      {/* Search & commands */}
-      <div className="px-[10px] pb-2">
-        <button
-          type="button"
-          onClick={openPalette}
-          className="sc-btn w-full justify-between"
-          style={{ background: "var(--sc-surface-2)" }}
-        >
-          <span className="inline-flex items-center gap-[7px] text-[var(--sc-text-3)]">
-            <Search size={13} /> Search &amp; commands
-          </span>
-          <span className="sc-kbd">⌘K</span>
-        </button>
-      </div>
-
-      {/* Nav groups */}
-      <div className="sc-scroll flex-1 pb-[10px]">
-        {NAV.map((g) => (
-          <div key={g.group} className="sc-nav-section">
-            <div className="sc-nav-label">{g.group}</div>
-            {g.items.map((it) => {
-              const active = isActive(it, location.pathname);
-              const Icon = it.icon;
-              return (
-                <button
-                  key={it.id}
-                  type="button"
-                  disabled={it.disabled}
-                  aria-current={active ? "page" : undefined}
-                  onClick={() => {
-                    if (it.path) navigate(it.path);
-                  }}
-                  className={`sc-nav-item ${active ? "active" : ""}`}
-                  style={{
-                    width: "calc(100% - 16px)",
-                    border: 0,
-                    background: "transparent",
-                    font: "inherit",
-                    textAlign: "left",
-                    ...(it.disabled ? { opacity: 0.45, cursor: "not-allowed" } : undefined),
-                  }}
-                >
-                  <span
-                    className="grid w-[14px] place-items-center"
-                    style={{ color: active ? "var(--sc-accent-400)" : "var(--sc-text-3)" }}
-                  >
-                    <Icon size={14} />
-                  </span>
-                  <span>{it.label}</span>
-                </button>
-              );
-            })}
+      }
+      topContent={
+        <div className="px-2 pb-2">
+          <AstryxButton
+            label="Search and commands"
+            variant="secondary"
+            icon={<Search size={13} />}
+            endContent={<AstryxKbd keys="⌘K" />}
+            onClick={openPalette}
+            className="w-full justify-between"
+          />
+        </div>
+      }
+      footer={
+        <div className="px-2 pb-2">
+          <AstryxButton
+            label="Record"
+            variant="primary"
+            icon={<Circle size={9} fill="currentColor" />}
+            onClick={startRecord}
+            className="w-full justify-center"
+          />
+        </div>
+      }
+      footerIcons={
+        <div className="flex w-full items-center gap-2">
+          <div className="grid h-6 w-6 place-items-center rounded-full bg-[var(--color-accent)] text-[var(--color-on-accent)]">
+            SC
           </div>
-        ))}
-      </div>
-
-      {/* Record + user footer */}
-      <div className="p-[10px] border-t border-[var(--sc-border)]">
-        <button
-          type="button"
-          onClick={startRecord}
-          className="sc-btn primary w-full justify-center mb-[10px]"
-        >
-          <Circle size={9} fill="currentColor" /> Record
-        </button>
-        <div className="flex items-center gap-2">
-          <div className="sc-avatar">SC</div>
-          <div className="min-w-0">
-            <div className="text-[12px] font-medium truncate">Local user</div>
-            <div className="text-[10.5px] text-[var(--sc-text-4)]">Local workspace</div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-xs font-medium">Local user</div>
+            <div className="text-[var(--color-text-disabled)]" style={{ fontSize: 11 }}>
+              Local workspace
+            </div>
           </div>
-          <SettingsIcon
-            size={12}
-            className="ml-auto text-[var(--sc-text-4)] cursor-pointer"
+          <AstryxButton
+            label="Open settings"
+            icon={<SettingsIcon size={13} />}
+            isIconOnly
+            variant="ghost"
             onClick={() => navigate("/settings")}
           />
         </div>
-      </div>
-    </nav>
+      }
+    >
+      {NAV.map((group) => (
+        <SideNavSection key={group.group} title={group.group}>
+          {group.items.map((item) => {
+            const active = isActive(item, location.pathname);
+            const Icon = item.icon;
+            return (
+              <SideNavItem
+                key={item.id}
+                label={item.label}
+                icon={<Icon size={14} />}
+                isSelected={active}
+                isDisabled={item.disabled}
+                onClick={() => {
+                  if (item.path) navigate(item.path);
+                }}
+              />
+            );
+          })}
+        </SideNavSection>
+      ))}
+    </SideNav>
   );
 }

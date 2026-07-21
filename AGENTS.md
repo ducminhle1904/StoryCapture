@@ -64,8 +64,9 @@ video.
   the package-root barrel.
   `packages/shared-types/src/generated/effects.ts` is checked-in generated
   source, but is not currently exported through the package export map.
-- `packages/ui` ships shared tokens plus the `claude-design` namespace and
-  `Sc*` primitive families.
+- `packages/ui` owns the dark-only StoryCapture Gothic theme, generated
+  theme artifacts, local fonts, and product tokens. Generic components are
+  imported directly from `@astryxdesign/core/<Component>`.
 - `packages/config` owns the shared TypeScript base config.
 - `packages/glob-compat`, `packages/lodash-isequal-compat`, and
   `packages/rimraf-compat` are private CommonJS shims selected by
@@ -191,10 +192,9 @@ file explicitly says otherwise.
   `apps/desktop/electron/ipc/legacy/web.ts`, and
   `apps/desktop/src/stores/*web*`.
 - Shared UI/design system: read `docs/CONVENTIONS.md`,
-  `packages/ui/src/claude-design/README.md`,
-  `packages/ui/src/claude-design/tokens.css`,
-  `packages/ui/src/claude-design/primitives/`, and
-  `apps/desktop/src/components/ui/`.
+  `docs/specs/astryx-gothic-rollout.md`, `packages/ui/README.md`, and
+  `packages/ui/src/theme/`. Do not hand-edit
+  `packages/ui/src/theme/generated/`; run the package theme scripts.
 - CI, release, signing, env, cron, Prisma migrations, and generated files:
   read `docs/agent/operations.md` and `docs/CREDENTIALS.md`.
 

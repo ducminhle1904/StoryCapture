@@ -4,19 +4,13 @@
  * HW encoder list = probe + Software fallback.
  */
 
+import { Field } from "@astryxdesign/core/Field";
+import { NumberInput } from "@astryxdesign/core/NumberInput";
+import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
+import { Selector } from "@astryxdesign/core/Selector";
+import { Slider } from "@astryxdesign/core/Slider";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-
-import { NumberField } from "@/components/ui/number-field";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
 import { probeHwEncoders } from "@/ipc/encode";
 import {
   type ExportContainer,
@@ -89,24 +83,13 @@ function SubGroup({
 }) {
   return (
     <section
-      className={`grid gap-3 border-t border-[var(--color-border-subtle)] pt-4 mt-4 first:border-t-0 first:pt-0 first:mt-0 ${className ?? ""}`}
+      className={`grid gap-3 border-t border-[var(--color-border)] pt-4 mt-4 first:border-t-0 first:pt-0 first:mt-0 ${className ?? ""}`}
     >
-      <div className="text-[13px] font-medium uppercase tracking-wide text-[var(--color-fg-secondary)] mb-2">
+      <div className="text-[13px] font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-2">
         {label}
       </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-x-6 md:gap-y-4">{children}</div>
     </section>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="grid gap-2">
-      <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
-        {label}
-      </span>
-      {children}
-    </div>
   );
 }
 
@@ -154,186 +137,152 @@ export function AdvancedOutputOptions() {
   return (
     <div className="grid gap-4">
       <SubGroup label={copy.LABEL_GROUP_CONTAINER_CODEC}>
-        <Field label={copy.LABEL_CONTAINER}>
-          <Select
-            value={exportKnobs.container}
-            onValueChange={(v) => {
-              if (typeof v === "string") setExportKnob("container", v as ExportContainer);
-            }}
-          >
-            <SelectTrigger aria-label={copy.LABEL_CONTAINER}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="mp4">MP4</SelectItem>
-              <SelectItem value="webm" disabled>
-                WebM (not yet supported)
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label={copy.LABEL_CODEC}>
-          <Select value={exportKnobs.codec} onValueChange={() => {}}>
-            <SelectTrigger aria-label={copy.LABEL_CODEC}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="h264">H.264</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
+        <Selector
+          label={copy.LABEL_CONTAINER}
+          value={exportKnobs.container}
+          options={[
+            { value: "mp4", label: "MP4" },
+            { value: "webm", label: "WebM (not yet supported)", disabled: true },
+          ]}
+          onChange={(value) => setExportKnob("container", value as ExportContainer)}
+        />
+        <Selector
+          label={copy.LABEL_CODEC}
+          value={exportKnobs.codec}
+          options={[{ value: "h264", label: "H.264" }]}
+          onChange={() => {}}
+          isDisabled
+        />
       </SubGroup>
 
       <SubGroup label={copy.LABEL_GROUP_ENCODER_QUALITY}>
-        <Field label={copy.LABEL_HW_ENCODER}>
-          <Select
-            value={exportKnobs.hwEncoder}
-            onValueChange={(v) => {
-              if (typeof v === "string") onHwEncoderChange(v);
-            }}
-          >
-            <SelectTrigger aria-label={copy.LABEL_HW_ENCODER}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="auto">{UI_LABEL.auto}</SelectItem>
-              {displayedEncoders.map((e) => (
-                <SelectItem key={e} value={e}>
-                  {UI_LABEL[e]}
-                </SelectItem>
-              ))}
-              <SelectItem value={exportKnobs.hwEncoder === "libx264" ? "libx264" : "software"}>
-                {UI_LABEL.software}
-              </SelectItem>
-              {hwUnavailable ? (
-                <SelectItem value={exportKnobs.hwEncoder} disabled>
-                  {exportKnobs.hwEncoder} {copy.SUFFIX_HW_UNAVAILABLE}
-                </SelectItem>
-              ) : null}
-            </SelectContent>
-          </Select>
-        </Field>
+        <Selector
+          label={copy.LABEL_HW_ENCODER}
+          value={exportKnobs.hwEncoder}
+          options={[
+            { value: "auto", label: UI_LABEL.auto },
+            ...displayedEncoders.map((encoder) => ({ value: encoder, label: UI_LABEL[encoder] })),
+            {
+              value: exportKnobs.hwEncoder === "libx264" ? "libx264" : "software",
+              label: UI_LABEL.software,
+            },
+            ...(hwUnavailable
+              ? [
+                  {
+                    value: exportKnobs.hwEncoder,
+                    label: `${exportKnobs.hwEncoder} ${copy.SUFFIX_HW_UNAVAILABLE}`,
+                    disabled: true,
+                  },
+                ]
+              : []),
+          ]}
+          onChange={onHwEncoderChange}
+        />
         {hwUnavailable ? (
           <output
             aria-live="polite"
-            className="text-xs text-[var(--color-warning,var(--color-accent-primary))]"
+            data-testid="hw-encoder-warning"
+            className="text-xs text-[var(--color-warning,var(--color-accent))]"
           >
             {copy.WARN_HW_UNAVAILABLE(exportKnobs.hwEncoder)}
           </output>
         ) : null}
         {quality.qualityControl.kind === "auto-hide" ? (
-          <div className="text-xs text-[var(--color-fg-muted)]">{quality.qualityControl.note}</div>
+          <div className="text-xs text-[var(--color-text-secondary)]">
+            {quality.qualityControl.note}
+          </div>
         ) : (
           <>
             {quality.rateControlOptions.length > 0 ? (
-              <Field label={copy.LABEL_RATE_CONTROL}>
-                <RadioGroup
-                  value={exportKnobs.rateControl}
-                  onValueChange={(v) => {
-                    if (typeof v === "string") setExportKnob("rateControl", v as ExportRateControl);
-                  }}
-                  className="flex flex-wrap gap-4"
-                >
-                  {quality.rateControlOptions.map((opt) => (
-                    <span
-                      key={opt.value}
-                      className="flex items-center gap-2 text-xs text-[var(--color-fg-secondary)]"
-                    >
-                      <RadioGroupItem value={opt.value} disabled={opt.locked} />
-                      {opt.value.toUpperCase()}
-                    </span>
-                  ))}
-                </RadioGroup>
-              </Field>
+              <RadioList
+                label={copy.LABEL_RATE_CONTROL}
+                value={exportKnobs.rateControl}
+                onChange={(value) => setExportKnob("rateControl", value as ExportRateControl)}
+                orientation="horizontal"
+                size="sm"
+              >
+                {quality.rateControlOptions.map((opt) => (
+                  <RadioListItem
+                    key={opt.value}
+                    value={opt.value}
+                    label={opt.value.toUpperCase()}
+                    isDisabled={opt.locked}
+                  />
+                ))}
+              </RadioList>
             ) : null}
             {quality.qualityControl.kind === "slider-crf" ||
             quality.qualityControl.kind === "slider-cq" ? (
-              <Field label={copy.LABEL_QUALITY_SLIDER}>
-                <Slider
-                  min={quality.qualityControl.min}
-                  max={quality.qualityControl.max}
-                  value={qualityValue}
-                  onValueChange={(v) => {
-                    if (typeof v === "number") setExportKnob("qualityValue", v);
-                  }}
-                />
-              </Field>
+              <Slider
+                label={copy.LABEL_QUALITY_SLIDER}
+                min={quality.qualityControl.min}
+                max={quality.qualityControl.max}
+                value={qualityValue}
+                onChange={(value: number) => setExportKnob("qualityValue", value)}
+              />
             ) : quality.qualityControl.kind === "number-bitrate-mbps" ? (
-              <Field label={copy.LABEL_BITRATE_MBPS}>
-                <NumberField
-                  min={quality.qualityControl.min}
-                  max={quality.qualityControl.max}
-                  value={qualityValue}
-                  onChange={(n) => setExportKnob("qualityValue", typeof n === "number" ? n : null)}
-                />
-              </Field>
+              <NumberInput
+                label={copy.LABEL_BITRATE_MBPS}
+                min={quality.qualityControl.min}
+                max={quality.qualityControl.max}
+                value={qualityValue}
+                onChange={(value) => setExportKnob("qualityValue", value)}
+              />
             ) : null}
             {quality.presetOptions.length > 0 ? (
-              <Field label={copy.LABEL_PRESET}>
-                <Select
-                  value={exportKnobs.encoderPreset}
-                  onValueChange={(v) => {
-                    if (typeof v === "string")
-                      setExportKnob("encoderPreset", v as ExportEncoderPreset);
-                  }}
-                >
-                  <SelectTrigger aria-label={copy.LABEL_PRESET}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {quality.presetOptions.map((p) => (
-                      <SelectItem key={p} value={p}>
-                        {p}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
+              <Selector
+                label={copy.LABEL_PRESET}
+                value={exportKnobs.encoderPreset}
+                options={quality.presetOptions.map((preset) => ({
+                  value: preset,
+                  label: preset,
+                }))}
+                onChange={(value) => setExportKnob("encoderPreset", value as ExportEncoderPreset)}
+              />
             ) : null}
             {quality.note ? (
-              <div className="text-xs text-[var(--color-fg-muted)]">{quality.note}</div>
+              <div className="text-xs text-[var(--color-text-secondary)]">{quality.note}</div>
             ) : null}
           </>
         )}
       </SubGroup>
 
       <SubGroup label={copy.LABEL_GROUP_KEYFRAME_AUDIO} className="md:col-span-2">
-        <Field label={copy.LABEL_KEYFRAME}>
-          <NumberField
-            min={1}
-            max={10}
-            value={exportKnobs.keyframeSec}
-            onChange={(n) => setExportKnob("keyframeSec", typeof n === "number" ? n : 2)}
-          />
+        <NumberInput
+          label={copy.LABEL_KEYFRAME}
+          min={1}
+          max={10}
+          value={exportKnobs.keyframeSec}
+          onChange={(value) => setExportKnob("keyframeSec", value)}
+        />
+        <RadioList
+          label={copy.LABEL_DOWNSCALE}
+          value={exportKnobs.resamplingQuality}
+          onChange={(value) => setExportKnob("resamplingQuality", value as ExportResamplingQuality)}
+          orientation="horizontal"
+          size="sm"
+        >
+          {(["high", "balanced", "fast"] as const).map((opt) => (
+            <RadioListItem key={opt} value={opt} label={opt} />
+          ))}
+        </RadioList>
+        <Field label={copy.LABEL_AUDIO_CODEC} inputID="export-audio-codec">
+          <output id="export-audio-codec" className="text-xs text-[var(--color-text-secondary)]">
+            AAC-LC
+          </output>
         </Field>
-        <Field label={copy.LABEL_DOWNSCALE}>
-          <RadioGroup
-            value={exportKnobs.resamplingQuality}
-            onValueChange={(v) => {
-              if (typeof v === "string")
-                setExportKnob("resamplingQuality", v as ExportResamplingQuality);
-            }}
-            className="flex flex-wrap gap-4"
+        <Field label={copy.LABEL_AUDIO_BITRATE} inputID="export-audio-bitrate">
+          <output
+            id="export-audio-bitrate"
+            className="text-xs tabular-nums text-[var(--color-text-secondary)]"
           >
-            {(["high", "balanced", "fast"] as const).map((opt) => (
-              <span
-                key={opt}
-                className="flex items-center gap-2 text-xs text-[var(--color-fg-secondary)]"
-              >
-                <RadioGroupItem value={opt} />
-                {opt}
-              </span>
-            ))}
-          </RadioGroup>
+            192 kbps
+          </output>
         </Field>
-        <Field label={copy.LABEL_AUDIO_CODEC}>
-          <p className="text-xs text-[var(--color-fg-secondary)]">AAC-LC</p>
-        </Field>
-        <Field label={copy.LABEL_AUDIO_BITRATE}>
-          <p className="text-xs tabular-nums text-[var(--color-fg-secondary)]">192 kbps</p>
-        </Field>
-        <Field label={copy.LABEL_AUDIO_CHANNELS}>
-          <p className="text-xs text-[var(--color-fg-secondary)]">Stereo · 48 kHz</p>
+        <Field label={copy.LABEL_AUDIO_CHANNELS} inputID="export-audio-channels">
+          <output id="export-audio-channels" className="text-xs text-[var(--color-text-secondary)]">
+            Stereo · 48 kHz
+          </output>
         </Field>
       </SubGroup>
     </div>

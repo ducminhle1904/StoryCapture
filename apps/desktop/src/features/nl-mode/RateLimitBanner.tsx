@@ -2,8 +2,9 @@
  * Rate-limit banner with retry countdown.
  */
 
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { useEffect, useState } from "react";
 
 export interface RateLimitBannerProps {
   message: string;
@@ -40,28 +41,28 @@ export function RateLimitBanner({
   }, [retryAfterS]);
 
   return (
-    <div
-      role="alert"
-      className="rounded-md border border-[var(--color-warning,#E5A000)]/30 bg-[var(--color-warning,#E5A000)]/10 p-3 text-sm"
+    <Banner
+      status="warning"
+      title={message || "Provider đang giới hạn tốc độ."}
+      description={`Thử lại sau ${countdown}s hoặc chuyển sang fallback provider.`}
       data-testid="rate-limit-banner"
-    >
-      <p className="text-[var(--color-foreground,#E6E8EE)]">
-        {message || "Provider \u0111ang gi\u1edbi h\u1ea1n t\u1ed1c \u0111\u1ed9."}{" "}
-        {"Th\u1eed l\u1ea1i sau "}{countdown}{"s ho\u1eb7c chuy\u1ec3n sang fallback provider."}
-      </p>
-      <div className="mt-2 flex gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onRetry}
-          disabled={countdown > 0}
-        >
-          {"\u0110\u1ee3i v\u00e0 th\u1eed l\u1ea1i"}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onSwitchProvider}>
-          {"D\u00f9ng "}{fallbackProvider}
-        </Button>
-      </div>
-    </div>
+      endContent={
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onRetry}
+            isDisabled={countdown > 0}
+            label="Đợi và thử lại"
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onSwitchProvider}
+            label={`Dùng ${fallbackProvider}`}
+          />
+        </div>
+      }
+    />
   );
 }

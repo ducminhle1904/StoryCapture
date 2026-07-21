@@ -4,8 +4,8 @@
  * sessions (`tauri-plugin-store` wiring is pending).
  */
 
-import { Group, Panel, Separator } from "react-resizable-panels";
 import type { ReactNode } from "react";
+import { Group, Panel, Separator } from "react-resizable-panels";
 
 import { useEditorStore } from "@/state/editor";
 
@@ -28,27 +28,17 @@ export function SplitPane({ left, right, direction = "horizontal" }: SplitPanePr
       }}
       className="h-full w-full"
     >
-      <Panel
-        id="split-left"
-        defaultSize={`${splitRatio}%`}
-        minSize="20%"
-        className="h-full"
-      >
+      <Panel id="split-left" defaultSize={`${splitRatio}%`} minSize="20%" className="h-full">
         {left}
       </Panel>
       <Separator
         className={
           direction === "horizontal"
-            ? "w-1 bg-[var(--color-border-subtle)] hover:bg-[var(--color-accent-primary)] focus-visible:bg-[var(--color-accent-primary)] transition-colors"
-            : "h-1 bg-[var(--color-border-subtle)] hover:bg-[var(--color-accent-primary)] focus-visible:bg-[var(--color-accent-primary)] transition-colors"
+            ? "w-1 bg-[var(--color-border)] hover:bg-[var(--color-accent)] focus-visible:bg-[var(--color-accent)] transition-colors"
+            : "h-1 bg-[var(--color-border)] hover:bg-[var(--color-accent)] focus-visible:bg-[var(--color-accent)] transition-colors"
         }
       />
-      <Panel
-        id="split-right"
-        defaultSize={`${100 - splitRatio}%`}
-        minSize="20%"
-        className="h-full"
-      >
+      <Panel id="split-right" defaultSize={`${100 - splitRatio}%`} minSize="20%" className="h-full">
         {right}
       </Panel>
     </Group>

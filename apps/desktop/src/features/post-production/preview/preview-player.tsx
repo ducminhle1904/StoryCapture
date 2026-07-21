@@ -576,7 +576,7 @@ function stageBackgroundStyle(background: EditorBackgroundKind): CSSProperties {
   }
   return {
     background:
-      "radial-gradient(circle at 24% 18%, color-mix(in oklch, var(--sc-accent) 12%, transparent), transparent 34%), linear-gradient(135deg, color-mix(in oklch, var(--sc-surface) 96%, var(--sc-text) 4%), color-mix(in oklch, var(--sc-surface-2) 95%, var(--sc-text) 5%))",
+      "radial-gradient(circle at 24% 18%, color-mix(in oklch, var(--color-accent) 12%, transparent), transparent 34%), linear-gradient(135deg, color-mix(in oklch, var(--color-background-surface) 96%, var(--color-text-primary) 4%), color-mix(in oklch, var(--color-background-card) 95%, var(--color-text-primary) 5%))",
   };
 }
 
@@ -1884,14 +1884,14 @@ export function PreviewPlayer({
 
   return (
     <div
-      className="flex h-full w-full flex-col bg-[var(--sc-surface-2)]"
+      className="flex h-full w-full flex-col bg-[var(--color-background-card)]"
       data-story-id={storyId}
       data-preview-ready={displayReady ? "true" : "false"}
     >
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3">
         <div
           ref={stageRef}
-          className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-[var(--sc-r-xl)] border border-[color-mix(in_oklch,var(--sc-border)_72%,transparent)]"
+          className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-[var(--radius-container)] border border-[color-mix(in_oklch,var(--color-border)_72%,transparent)]"
           style={useCompositedCanvas ? undefined : stageStyle}
         >
           {useDomAmbientBackdrop && resolvedSrc ? (
@@ -1943,7 +1943,7 @@ export function PreviewPlayer({
           ) : null}
           {!resolvedSrc && !useCompositedCanvas ? (
             <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 flex -translate-y-1/2 justify-center">
-              <div className="grid h-16 w-16 place-items-center rounded-[var(--sc-r-xl)] border border-white/10 bg-zinc-950/42 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+              <div className="grid h-16 w-16 place-items-center rounded-[var(--radius-container)] border border-white/10 bg-zinc-950/42 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
                 <Film className="h-7 w-7 text-white/82" />
               </div>
             </div>
@@ -2130,7 +2130,7 @@ export function PreviewPlayer({
                       }
                       className={`pointer-events-auto absolute whitespace-pre-wrap transition-[box-shadow,outline-color,transform,opacity] ${
                         selected
-                          ? "rounded-md outline outline-2 outline-[var(--sc-focus-ring)]"
+                          ? "rounded-md outline outline-2 outline-[var(--color-accent-muted)]"
                           : "outline outline-1 outline-transparent hover:outline-white/32"
                       }`}
                       style={{
@@ -2216,7 +2216,7 @@ export function PreviewPlayer({
               </div>
             ) : null}
           </div>
-          <div className="absolute bottom-3 left-3 z-20 rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]/88 px-2.5 py-2 shadow-[var(--sc-sh-1)] backdrop-blur">
+          <div className="absolute bottom-3 left-3 z-20 rounded-[var(--radius-container)] border border-[var(--color-border)] bg-[var(--color-background-surface)]/88 px-2.5 py-2 shadow-[var(--shadow-low)] backdrop-blur">
             <TransportControls playing={playing} onTogglePlay={togglePlay} />
           </div>
         </div>
