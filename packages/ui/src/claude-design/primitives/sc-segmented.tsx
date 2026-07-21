@@ -1,16 +1,21 @@
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
-import { forwardRef, type ComponentPropsWithoutRef, type ElementRef, type ReactNode } from "react";
+import { type ComponentPropsWithoutRef, type ElementRef, forwardRef, type ReactNode } from "react";
 
 import { cn } from "../../lib/cn";
 
 export interface ScSegmentedOption {
   value: string;
   label: ReactNode;
+  disabled?: boolean;
+  title?: string;
 }
 
 export interface ScSegmentedProps
-  extends Omit<ComponentPropsWithoutRef<typeof ToggleGroup>, "value" | "defaultValue" | "onValueChange"> {
+  extends Omit<
+    ComponentPropsWithoutRef<typeof ToggleGroup>,
+    "value" | "defaultValue" | "onValueChange"
+  > {
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string) => void;
@@ -32,7 +37,13 @@ export const ScSegmented = forwardRef<ElementRef<typeof ToggleGroup>, ScSegmente
       {...rest}
     >
       {options.map((opt) => (
-        <Toggle key={opt.value} value={opt.value} className="sc-segmented-item">
+        <Toggle
+          key={opt.value}
+          value={opt.value}
+          disabled={opt.disabled}
+          title={opt.title}
+          className="sc-segmented-item"
+        >
           {opt.label}
         </Toggle>
       ))}

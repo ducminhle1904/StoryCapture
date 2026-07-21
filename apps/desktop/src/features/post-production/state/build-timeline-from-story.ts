@@ -2,7 +2,7 @@
  * Pure producer that turns a story + recording sidecars into initial timeline clips.
  */
 
-import type { ExportRecordingSourceV2 } from "@storycapture/shared-types/recording-v2";
+import type { ExportRecordingSource } from "@storycapture/shared-types/recording-v2";
 import {
   calloutText,
   DEFAULT_AUTO_ZOOM_DURATION_MS,
@@ -192,7 +192,7 @@ function sourceSize(input: BuildTimelineInput): VideoClip["sourceSize"] {
   return width && height ? { width, height } : undefined;
 }
 
-function recordingSourceMetadata(recording: RecordingInfo): ExportRecordingSourceV2 | undefined {
+function recordingSourceMetadata(recording: RecordingInfo): ExportRecordingSource | undefined {
   if (
     !recording.bundle_path ||
     !recording.master_path ||
@@ -207,8 +207,7 @@ function recordingSourceMetadata(recording: RecordingInfo): ExportRecordingSourc
   ) {
     return undefined;
   }
-  return {
-    version: 2,
+  const common = {
     bundle_path: recording.bundle_path,
     master_path: recording.master_path,
     proxy_path: recording.proxy_path,
@@ -220,6 +219,23 @@ function recordingSourceMetadata(recording: RecordingInfo): ExportRecordingSourc
     master_height: recording.height,
     quality_verdict: recording.quality_verdict,
   };
+  if (
+    recording.version === 3 &&
+    recording.frame_ledger_path &&
+    recording.guarantee_boundary === "electron_offscreen_delivery" &&
+    recording.source_scope_verified === true &&
+    recording.certification_profile
+  ) {
+    return {
+      version: 3,
+      ...common,
+      frame_ledger_path: recording.frame_ledger_path,
+      guarantee_boundary: recording.guarantee_boundary,
+      source_scope_verified: true,
+      certification_profile_id: recording.certification_profile.profile_id,
+    };
+  }
+  return { version: 2, ...common };
 }
 
 function hashPath(path: string): string {

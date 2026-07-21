@@ -1,0 +1,211 @@
+name: Recording V3 protected release certification
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_id:
+        description: Unique release manifest identifier
+        required: true
+        type: string
+      valid_until:
+        description: UTC ISO-8601 profile expiry
+        required: true
+        type: string
+
+concurrency:
+  group: recording-v3-protected-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  certify-sign-notarize:
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    environment: recording-v3-release
+    runs-on: [self-hosted, macOS, ARM64, storycapture-recording-v3, mac17-2]
+    timeout-minutes: 150
+    env:
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      CSC_NAME: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      RECORDING_V3_SIGNER_KEY_ID: ${{ secrets.RECORDING_V3_SIGNER_KEY_ID }}
+    steps:
+      - name: Checkout trusted release ref
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-toolchain
+
+      - name: Install dependencies
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: Require protected release credentials
+        shell: bash
+        env:
+          MANIFEST_PRIVATE_KEY: ${{ secrets.RECORDING_V3_MANIFEST_PRIVATE_KEY_PEM }}
+          MANIFEST_PUBLIC_KEY: ${{ secrets.RECORDING_V3_MANIFEST_PUBLIC_KEY_PEM }}
+          CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for value in APPLE_ID APPLE_APP_PASSWORD APPLE_TEAM_ID APPLE_SIGNING_IDENTITY RECORDING_V3_SIGNER_KEY_ID; do
+            test -n "${!value:-}" || { echo "missing protected release input: $value" >&2; exit 1; }
+          done
+          test -n "$MANIFEST_PRIVATE_KEY" || { echo "missing manifest private key" >&2; exit 1; }
+          test -n "$MANIFEST_PUBLIC_KEY" || { echo "missing manifest public key" >&2; exit 1; }
+          test -n "$CERTIFICATE_P12" || { echo "missing Apple certificate" >&2; exit 1; }
+          test -n "$CERTIFICATE_PASSWORD" || { echo "missing Apple certificate password" >&2; exit 1; }
+
+      - name: Import Developer ID certificate and manifest keys
+        shell: bash
+        env:
+          MANIFEST_PRIVATE_KEY: ${{ secrets.RECORDING_V3_MANIFEST_PRIVATE_KEY_PEM }}
+          MANIFEST_PUBLIC_KEY: ${{ secrets.RECORDING_V3_MANIFEST_PUBLIC_KEY_PEM }}
+          CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/recording-v3.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          security list-keychains -d user > "$RUNNER_TEMP/recording-v3-original-keychains.txt"
+          printf '%s' "$CERTIFICATE_P12" | /usr/bin/base64 -D > "$RUNNER_TEMP/developer-id.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$KEYCHAIN" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          original_keychains=()
+          while IFS= read -r keychain; do
+            keychain="${keychain#*\"}"
+            keychain="${keychain%\"*}"
+            if [ -n "$keychain" ]; then original_keychains+=("$keychain"); fi
+          done < "$RUNNER_TEMP/recording-v3-original-keychains.txt"
+          security list-keychains -d user -s "$KEYCHAIN" "${original_keychains[@]}"
+          printf '%s' "$MANIFEST_PRIVATE_KEY" > "$RUNNER_TEMP/recording-v3-private.pem"
+          printf '%s' "$MANIFEST_PUBLIC_KEY" > "$RUNNER_TEMP/recording-v3-public.pem"
+          chmod 600 "$RUNNER_TEMP/recording-v3-private.pem"
+
+      - name: Build packaged certification executable
+        shell: bash
+        run: >-
+          pnpm --dir apps/desktop run native:build &&
+          pnpm --dir apps/desktop run electron:build-main &&
+          pnpm --dir apps/desktop run renderer:build &&
+          pnpm --dir apps/desktop run electron:build:recording-v3-production-probe &&
+          pnpm --dir apps/desktop exec electron-builder --dir --publish never
+          --config.extraMetadata.main=dist-electron/recording-v3-production-probe.mjs
+
+      - name: Run protected sustained and fail-closed gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/apps/desktop/recording-v3-certification-artifacts/release"
+          pnpm --dir apps/desktop run recording:v3:certify:10m -- --fixture motion --pressure-mode cpu-disk --scenario lifecycle --artifact-dir "$ROOT/soak" --json-summary "$ROOT/soak/runner-summary.json"
+          pnpm --dir apps/desktop run recording:v3:certify:60s -- --fixture static --pressure-mode none --scenario steady --artifact-dir "$ROOT/static" --json-summary "$ROOT/static/runner-summary.json"
+          pnpm --dir apps/desktop run recording:v3:certify:60s -- --duration-seconds 2 --fixture motion --pressure-mode none --scenario target-loss --artifact-dir "$ROOT/target-loss" --json-summary "$ROOT/target-loss/runner-summary.json"
+          pnpm --dir apps/desktop run recording:v3:certify:60s -- --duration-seconds 2 --fixture motion --pressure-mode none --scenario gpu-loss --artifact-dir "$ROOT/gpu-loss" --json-summary "$ROOT/gpu-loss/runner-summary.json"
+          pnpm --dir apps/desktop exec vitest run src/features/recorder/recording-view-lifecycle.test.tsx electron/ipc/recording-v3-certification-manifest.test.ts electron/ipc/recording-v3-capability.test.ts
+
+      - name: Generate and sign the single certified profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/apps/desktop/recording-v3-certification-artifacts/release"
+          VALID_FROM="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+          node apps/desktop/scripts/recording-v3-certification-profile.mjs \
+            --gate-summary "$ROOT/soak/capture-summary.json" \
+            --gate-summary "$ROOT/static/capture-summary.json" \
+            --gate-summary "$ROOT/target-loss/capture-summary.json" \
+            --gate-summary "$ROOT/gpu-loss/capture-summary.json" \
+            --signer-key-id "$RECORDING_V3_SIGNER_KEY_ID" \
+            --manifest-id "${{ inputs.manifest_id }}" \
+            --valid-from "$VALID_FROM" \
+            --valid-until "${{ inputs.valid_until }}" \
+            --output "$ROOT/manifest-payload.json"
+          cp "$ROOT/soak/evidence.json" apps/desktop/recording-v3-certification/evidence.json
+          cp -p \
+            apps/desktop/release-electron/mac-arm64/StoryCapture.app/Contents/Resources/native/macos/storycapture_recording_v3.node \
+            "$ROOT/certified-storycapture_recording_v3.node"
+          cp -p \
+            apps/desktop/release-electron/mac-arm64/StoryCapture.app/Contents/Resources/app.asar.unpacked/node_modules/ffmpeg-static/ffmpeg \
+            "$ROOT/certified-ffmpeg"
+          pnpm --dir apps/desktop run recording:v3:manifest:sign -- \
+            --payload "$ROOT/manifest-payload.json" \
+            --private-key "$RUNNER_TEMP/recording-v3-private.pem" \
+            --output "$GITHUB_WORKSPACE/apps/desktop/recording-v3-certification/manifest.json"
+          node apps/desktop/scripts/recording-v3-certification-inject-signer.mjs \
+            --signer-key-id "$RECORDING_V3_SIGNER_KEY_ID" \
+            --public-key "$RUNNER_TEMP/recording-v3-public.pem" \
+            --output "$GITHUB_WORKSPACE/apps/desktop/electron/ipc/recording-v3-certification-signer-keys.generated.ts"
+
+      - name: Build, sign, notarize and staple release app
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/apps/desktop/recording-v3-certification-artifacts/release"
+          APP_PATH="apps/desktop/release-electron/mac-arm64/StoryCapture.app"
+          pnpm --dir apps/desktop run electron:build-main
+          pnpm --dir apps/desktop run renderer:build
+          pnpm --dir apps/desktop exec electron-builder --dir --publish never
+          cp -p \
+            "$ROOT/certified-storycapture_recording_v3.node" \
+            "$APP_PATH/Contents/Resources/native/macos/storycapture_recording_v3.node"
+          cp -p \
+            "$ROOT/certified-ffmpeg" \
+            "$APP_PATH/Contents/Resources/app.asar.unpacked/node_modules/ffmpeg-static/ffmpeg"
+          codesign --verify --strict --verbose=4 \
+            "$APP_PATH/Contents/Resources/native/macos/storycapture_recording_v3.node"
+          codesign --verify --strict --verbose=4 \
+            "$APP_PATH/Contents/Resources/app.asar.unpacked/node_modules/ffmpeg-static/ffmpeg"
+          bash scripts/notarize/notarize-mac.sh --app-path "$APP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$APP_PATH" \
+            apps/desktop/release-electron/StoryCapture-notarized-mac-arm64.zip
+
+      - name: Verify clean packaged release identity and certification
+        shell: bash
+        run: >-
+          pnpm --dir apps/desktop run recording:v3:release:verify --
+          --app-path "$GITHUB_WORKSPACE/apps/desktop/release-electron/mac-arm64/StoryCapture.app"
+          --expected-team-id "$APPLE_TEAM_ID"
+          --public-key "$RUNNER_TEMP/recording-v3-public.pem"
+          --runtime-summary "$GITHUB_WORKSPACE/apps/desktop/recording-v3-certification-artifacts/release/soak/capture-summary.json"
+
+      - name: Retain release evidence and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: recording-v3-release-${{ github.run_id }}
+          path: |
+            apps/desktop/recording-v3-certification-artifacts/release
+            apps/desktop/recording-v3-certification/manifest.json
+            apps/desktop/recording-v3-certification/evidence.json
+            apps/desktop/release-electron/*.zip
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Remove temporary release credentials
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/recording-v3-original-keychains.txt" ]; then
+            original_keychains=()
+            while IFS= read -r keychain; do
+              keychain="${keychain#*\"}"
+              keychain="${keychain%\"*}"
+              if [ -n "$keychain" ]; then original_keychains+=("$keychain"); fi
+            done < "$RUNNER_TEMP/recording-v3-original-keychains.txt"
+            if [ "${#original_keychains[@]}" -gt 0 ]; then
+              security list-keychains -d user -s "${original_keychains[@]}" || true
+            fi
+          fi
+          security delete-keychain "$RUNNER_TEMP/recording-v3.keychain-db" || true
+          rm -f \
+            "$RUNNER_TEMP/developer-id.p12" \
+            "$RUNNER_TEMP/recording-v3-original-keychains.txt" \
+            "$RUNNER_TEMP/recording-v3-private.pem" \
+            "$RUNNER_TEMP/recording-v3-public.pem"

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=960,height=540,initial-scale=1" />
+    <title>StoryCapture Recording V3 Certification Fixture</title>
+    <style>
+      html,
+      body {
+        width: 960px;
+        height: 540px;
+        margin: 0;
+        overflow: hidden;
+        background: #181c24;
+      }
+
+      canvas {
+        display: block;
+        width: 960px;
+        height: 540px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="fixture" width="1920" height="1080"></canvas>
+    <script>
+      (() => {
+        const canvas = document.getElementById("fixture");
+        const context = canvas.getContext("2d", { alpha: false });
+        const query = new URLSearchParams(location.search);
+        const fixtureMode = query.get("fixture") === "static" ? "static" : "motion";
+        const freezeOrdinal = query.get("freezeOrdinal") === "1";
+        const startOrdinal = Math.max(0, Number.parseInt(query.get("startOrdinal") || "0", 10));
+        let ordinal = startOrdinal;
+
+        const fill = (x, y, width, height, color) => {
+          context.fillStyle = color;
+          context.fillRect(x, y, width, height);
+        };
+
+        const drawBits = (value, x, y, bits, color) => {
+          for (let bit = 0; bit < bits; bit += 1) {
+            fill(x + bit * 26, y, 20, 40, (value & 2 ** bit) !== 0 ? color : "#050505");
+          }
+        };
+
+        const drawThinEdges = () => {
+          fill(704, 224, 400, 264, "#111318");
+          context.fillStyle = "#ffffff";
+          for (let x = 704; x < 1104; x += 8) context.fillRect(x, 224, 1, 264);
+          for (let y = 224; y < 488; y += 16) context.fillRect(704, y, 400, 1);
+          context.strokeStyle = "#7ee6ff";
+          context.lineWidth = 1;
+          context.strokeRect(713.5, 233.5, 381, 245);
+        };
+
+        const drawGeometryAnchors = () => {
+          fill(1184, 224, 688, 264, "#202631");
+          const anchors = [
+            [1200, 240],
+            [1816, 240],
+            [1200, 432],
+            [1816, 432],
+          ];
+          context.strokeStyle = "#ff20c0";
+          context.lineWidth = 2;
+          for (const [x, y] of anchors) {
+            context.strokeRect(x + 0.5, y + 0.5, 39, 39);
+            context.beginPath();
+            context.moveTo(x, y + 20.5);
+            context.lineTo(x + 40, y + 20.5);
+            context.moveTo(x + 20.5, y);
+            context.lineTo(x + 20.5, y + 40);
+            context.stroke();
+          }
+          context.strokeRect(1272.5, 272.5, 511, 143);
+        };
+
+        const drawColors = () => {
+          const colors = ["#ff0000", "#00ff00", "#0000ff", "#ffff00", "#00ffff", "#ff00ff"];
+          colors.forEach((color, index) => {
+            fill(48 + index * 128, 552, 128, 256, color);
+          });
+        };
+
+        const drawMotion = (frameOrdinal) => {
+          fill(896, 552, 976, 440, "#0d1118");
+          const phase = fixtureMode === "static" ? 0 : frameOrdinal;
+          for (let stripe = 0; stripe < 30; stripe += 1) {
+            const x = 896 + ((stripe * 73 + phase * 31) % 976);
+            fill(x, 552, 3, 440, stripe % 2 === 0 ? "#f4f7ff" : "#3465ff");
+          }
+          const boxX = 912 + ((phase * 17) % 816);
+          const boxY = 568 + ((phase * 11) % 280);
+          fill(boxX, boxY, 128, 128, "#30e0ff");
+          fill(boxX + 16, boxY + 16, 96, 96, "#ff20c0");
+          fill(boxX + 32, boxY + 32, 64, 64, "#101620");
+        };
+
+        const draw = () => {
+          const timestampUs = Math.round((ordinal * 1_000_000) / 60);
+          fill(0, 0, 1920, 1080, "#181c24");
+          context.fillStyle = "#eaf0ff";
+          context.font = "24px monospace";
+          context.textBaseline = "top";
+          context.fillText("STORYCAPTURE / RECORDING V3 / BROWSER CERTIFICATION", 48, 24);
+
+          fill(48, 80, 624, 48, "#07090d");
+          drawBits(ordinal, 48, 84, 24, "#ffffff");
+          fill(48, 144, 832, 48, "#07090d");
+          drawBits(timestampUs % 2 ** 32, 48, 148, 32, "#7ee6ff");
+          context.fillStyle = "#ffffff";
+          context.font = "12px monospace";
+          context.fillText(`ORDINAL ${ordinal.toString().padStart(8, "0")}`, 904, 88);
+          context.fillText(`TIMESTAMP_US ${timestampUs.toString().padStart(12, "0")}`, 904, 152);
+
+          const textCases = [
+            [12, 224, "12PX THIN EDGE Aa09"],
+            [16, 296, "16PX THIN EDGE Aa09"],
+            [24, 376, "24PX THIN EDGE Aa09"],
+          ];
+          for (const [size, y, label] of textCases) {
+            fill(48, y, size === 24 ? 560 : 420, size === 12 ? 56 : size === 16 ? 64 : 80, "#f8fafc");
+            context.fillStyle = "#10131a";
+            context.font = `400 ${size}px monospace`;
+            context.fillText(label, 56, y + 12);
+          }
+          drawThinEdges();
+          drawGeometryAnchors();
+          drawColors();
+          drawMotion(ordinal);
+
+          window.__storyCaptureRecordingV3Fixture = {
+            fixtureId: "storycapture-recording-v3-browser-certification",
+            fixtureVersion: "1.0.0",
+            mode: fixtureMode,
+            ordinal,
+            timestampUs,
+          };
+          if (!freezeOrdinal) {
+            ordinal += 1;
+            requestAnimationFrame(draw);
+          }
+        };
+
+        requestAnimationFrame(draw);
+      })();
+    </script>
+  </body>
+</html>

@@ -181,22 +181,23 @@ emits typed JSONL V2 events through `ipc/recording-observability.ts`, while
 `ipc/log-store.ts` owns redaction, rotation, and diagnostic-bundle inclusion.
 Logging is best-effort and cannot change the recording result it describes.
 
-Strict Recording V2 uses `packages/shared-types/src/recording-v2.ts` as its
-public contract. `recording-certification-catalog.ts` admits only an exact
-certified platform/hardware/backend tuple; the bundled catalog is currently
-empty, so Strict remains fail-closed. The browser lifecycle is implemented by
-`recording-strict-browser-lifecycle.ts` and
-`browser-capture-backend-v2.ts`. The shared data plane writes an FFV1/BGRA
-master, H.264 proxy, PCM sidecars, action sidecar, cadence/quality evidence,
-and a sequence ledger through `recording-master-pipeline.ts` and commits a
-validated bundle atomically through `recording-bundle.ts`.
+Strict Recording V2/V3 contracts live in
+`packages/shared-types/src/{recording-v2,recording-v3}.ts`.
+`recording-strict-browser-lifecycle.ts` is the compatibility facade: eligible
+V3 requests route to `recording-strict-browser-lifecycle-v3.ts`; V2 remains
+unchanged. V3 binds a signed exact-runtime profile in
+`recording-v3-runtime-preflight.ts`, sends only shared-texture metadata through
+`recording-v3-browser-backend.ts`, and owns scheduling/native leases through
+`recording-v3-engine.ts` plus the macOS addon under
+`apps/desktop/native/macos-recording-v3/`. V3 bundle publication is atomic and
+quality-failed output remains diagnostic-only. Source builds ship no trusted
+V3 signer key or signed manifest, so they remain fail-closed.
 
 The ScreenCaptureKit and Windows Graphics Capture adapters/helpers are present,
 but production Strict lifecycle registration for display/window targets is not
-complete. The browser adapter still copies each offscreen frame through
-`image.toBitmap()`, and the Windows adapter still requires a production Node
-named-ring consumer. These paths must not be added to the certification catalog
-until packaged live capture and release-soak gates pass.
+complete. V2 browser capture still uses the compatibility bitmap path, while
+V3 browser capture prohibits full-frame JavaScript copies. Display/window,
+audio, Windows, and nonmatching Mac profiles remain ineligible for V3.
 
 Plugin shims live under `ipc/plugin/*` and cover Tauri-compatible
 dialog/event/log/resource, fs, os/process, shell, store, updater, and
@@ -351,8 +352,9 @@ stores. Pure quality metrics live in
 `apps/desktop/electron/ipc/export-quality-gate.ts`; temporary evidence is not
 committed.
 
-There is no current GitHub release workflow. Release/signing scripts exist but
-are standalone unless a future workflow wires them in.
+General release/signing scripts remain standalone. Recording V3 alone has
+dedicated trusted nightly and protected release workflows under
+`.github/workflows/recording-v3-*.yml`.
 
 Benchmark and auxiliary scripts such as `scripts/benchmark/render-1min.sh`,
 `scripts/ci/check-av-drift.sh`, `scripts/ci/generate-synthetic-recording.sh`,
@@ -370,6 +372,8 @@ Relevant scripts:
 - `scripts/notarize/adhoc-sign.sh`
 - `scripts/release/sign-windows.ps1`
 - `scripts/release/verify-installer-size.sh`
+- `apps/desktop/scripts/recording-v3-certification-*.mjs`
+- `apps/desktop/scripts/recording-v3-release-verify.mjs`
 
 Local macOS package builds skip signing when no Developer ID certificate is
 installed. Production signing/notarization credentials are documented in

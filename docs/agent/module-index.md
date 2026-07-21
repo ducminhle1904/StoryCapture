@@ -125,6 +125,28 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/src/ipc/recording-failure.ts`, and
   `apps/desktop/src/ipc/recording-master.ts`.
 
+### Recording V3
+
+- Public contract: `packages/shared-types/src/recording-v3.ts`, exported as
+  `@storycapture/shared-types/recording-v3` and re-exported through the
+  runtime-safe `@storycapture/shared-types/recording-v2` compatibility subpath.
+- Facade and host lifecycle:
+  `apps/desktop/electron/ipc/recording-strict-browser-lifecycle.ts` and
+  `apps/desktop/electron/ipc/recording-strict-browser-lifecycle-v3.ts`.
+- Admission and exact runtime binding:
+  `recording-v3-runtime-preflight.ts`, `recording-v3-capability.ts`, and
+  `recording-v3-certification-manifest.ts`.
+- Zero-JS-frame data plane: `recording-v3-browser-backend.ts`,
+  `recording-v3-engine.ts`, `recording-v3-native-addon.ts`,
+  `recording-v3-bundle-writer.ts`, and
+  `apps/desktop/native/macos-recording-v3/`.
+- Certification fixtures/evidence: `apps/desktop/fixtures/recording-v3-certification/`,
+  `recording-v3-certification-{canonical-json,evidence,quality}.ts`, and
+  `apps/desktop/electron/recording-v3-production-probe/`.
+- Protected certification/release entrypoints live in
+  `apps/desktop/scripts/recording-v3-*.mjs` and
+  `.github/workflows/recording-v3-{nightly,release}.yml`.
+
 ## DSL, Capture, Render, Export
 
 - DSL vocabulary and CodeMirror: `packages/story-dsl/src/ast.ts`,
@@ -229,6 +251,8 @@ Use this for task routing after reading the short root guide.
 - Recording V2 policy, backend, evidence, bundle, result, and export-source
   contracts: `packages/shared-types/src/recording-v2.ts`, exported as
   `@storycapture/shared-types/recording-v2`.
+- Recording V3 contracts: `packages/shared-types/src/recording-v3.ts`, exported
+  as `@storycapture/shared-types/recording-v3`.
 - Public `WebAccountInfo` is defined by `packages/shared-types/src/ipc.ts` and
   re-exported from `packages/shared-types/src/index.ts`;
   `packages/shared-types/src/web-account.ts` is currently not exported.

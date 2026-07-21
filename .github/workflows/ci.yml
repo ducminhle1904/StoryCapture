@@ -35,6 +35,10 @@ jobs:
         shell: bash
         run: pnpm --dir apps/desktop exec vitest run
 
+      - name: Recording V3 native addon protocol smoke
+        shell: bash
+        run: pnpm --dir apps/desktop run native:build:recording-v3
+
       - name: Cursor synchronization Electron smoke
         shell: bash
         run: pnpm --dir apps/desktop run test:e2e:cursor-sync

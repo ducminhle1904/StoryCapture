@@ -160,6 +160,19 @@ explicit policies:
   Capture adapters/helpers. The native adapters are implemented but are not yet
   registered in the production Strict lifecycle; the current certification
   catalog is deliberately empty.
+- Strict V3 is a separate browser-only, video-only contract for exact
+  960x540 logical / 1920x1080 physical output at 60/1 with reconstructed cursor
+  sidecars. It uses Electron shared-texture metadata, a bounded native macOS
+  lease/FFV1 pipeline, signed exact-runtime profiles, and never copies full
+  frames through JavaScript. Display/window, audio, Windows, other Macs, and
+  mismatched runtime hashes fail admission.
+- V3 bundles contain a lossless master, optional verified proxy, cadence and
+  runtime-quality evidence, JSONL frame ledger, action/cursor sidecars, a
+  diagnostic manifest, and an exact certification-profile reference. A
+  `quality_failed` bundle is retained only for diagnostics and never published.
+- Source/dev builds intentionally have no trusted V3 signer key or signed
+  manifest/evidence. V3 becomes eligible only in a protected signed/notarized
+  package whose clean-launch preflight matches exactly one unexpired profile.
 - Strict writes a lossless FFV1/BGRA Matroska master, an H.264 editing proxy,
   PCM WAV audio sidecars, action timing, cadence/quality evidence, and an exact
   per-frame sequence ledger. Its bundle layout is

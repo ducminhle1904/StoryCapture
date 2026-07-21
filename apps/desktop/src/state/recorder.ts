@@ -1,7 +1,7 @@
 import type {
-  RecordingCadenceEvidenceV2,
-  RecordingPreflightV2Dto,
-  RecordingResultV2,
+  RecordingCadenceEvidence,
+  RecordingPreflightDto,
+  RecordingResult,
 } from "@storycapture/shared-types/recording-v2";
 import { create } from "zustand";
 import type { AudioPickerValue } from "@/ipc/audio";
@@ -89,11 +89,11 @@ export interface RecorderData {
   error: string | null;
   outputPath: string | null;
   elapsedMs: number;
-  preflight: RecordingPreflightV2Dto | null;
+  preflight: RecordingPreflightDto | null;
   readiness: "source_ready" | "first_frame_committed" | "pre_input_frame_committed" | null;
-  liveEvidence: RecordingCadenceEvidenceV2 | null;
+  liveEvidence: RecordingCadenceEvidence | null;
   verificationProgress: number | null;
-  qualityFailure: (RecordingResultV2 & { status: "quality_failed" }) | null;
+  qualityFailure: (RecordingResult & { status: "quality_failed" }) | null;
 
   captureTarget: CaptureTarget | null;
   availableTargets: CaptureTargets | null;
@@ -128,9 +128,9 @@ export interface RecorderActions {
   setError: (e: string | null) => void;
   setOutputPath: (p: string | null) => void;
   setElapsed: (ms: number) => void;
-  setPreflight: (value: RecordingPreflightV2Dto | null) => void;
+  setPreflight: (value: RecordingPreflightDto | null) => void;
   setReadiness: (value: RecorderData["readiness"]) => void;
-  setLiveEvidence: (value: RecordingCadenceEvidenceV2 | null) => void;
+  setLiveEvidence: (value: RecordingCadenceEvidence | null) => void;
   setVerificationProgress: (value: number | null) => void;
   setQualityFailure: (value: RecorderData["qualityFailure"]) => void;
   resetTake: () => void;

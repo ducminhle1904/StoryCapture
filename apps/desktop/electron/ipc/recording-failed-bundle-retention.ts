@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { readRecordingBundleV2 } from "@storycapture/shared-types/recording-v2";
+import { readRecordingBundle } from "@storycapture/shared-types/recording-v2";
 
 export const FAILED_RECORDING_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
 
@@ -22,7 +22,7 @@ export async function cleanupExpiredFailedRecordingBundles(
     const manifestPath = path.join(bundlePath, "manifest.json");
     const manifest = await fs
       .readFile(manifestPath, "utf8")
-      .then((text) => readRecordingBundleV2(JSON.parse(text) as unknown))
+      .then((text) => readRecordingBundle(JSON.parse(text) as unknown))
       .catch(() => null);
     if (!manifest || manifest.status !== "quality_failed") continue;
     const createdAtMs = Date.parse(manifest.created_at);

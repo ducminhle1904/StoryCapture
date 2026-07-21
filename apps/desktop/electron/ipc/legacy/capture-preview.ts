@@ -1861,7 +1861,8 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
     pad_color?: RecordingPadColor | null;
     quality_preset?: RecordingQualityPreset | null;
     scale_algo?: RecordingScaleAlgo | null;
-    contract_version?: 2;
+    contract_version?: 2 | 3;
+    intent?: "strict";
     delivery_policy?: "strict" | "best_effort";
     certified_tier?: StartRecordingArgs["certified_tier"];
     capture_contract?: StartRecordingArgs["capture_contract"];

@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "generatedAt": "2026-07-21T08:11:35.692Z",
+  "status": "passed",
+  "certifiedProfileAdded": false,
+  "environment": {
+    "hardwareModel": "Mac17,2",
+    "machine": "arm64",
+    "memoryBytes": 34359738368,
+    "cpuCount": 10,
+    "macosProductVersion": "26.5.2",
+    "macosBuildVersion": "25F84",
+    "electronVersion": "42.4.1",
+    "nodeVersion": "24.16.0",
+    "chromeVersion": "148.0.7778.265",
+    "napiVersion": "10",
+    "codeSigningIdentities": "0 valid identities found"
+  },
+  "contract": {
+    "frames": 600,
+    "width": 1920,
+    "height": 1080,
+    "fps": "60/1",
+    "maxServiceTimeP95Ms": 11.11,
+    "maxServiceTimeP99Ms": 16.67,
+    "maxReadyQueueDepth": 1,
+    "maxResidentGrowthBytes": 67108864
+  },
+  "binaries": {
+    "packagedAppPath": "/Users/locvotuan/git/StoryCapture/apps/desktop/release-electron/mac-arm64/StoryCapture.app",
+    "addonPath": "/Users/locvotuan/git/StoryCapture/apps/desktop/release-electron/mac-arm64/StoryCapture.app/Contents/Resources/native/macos/storycapture_shared_texture_probe.node",
+    "addonSha256": "b7ca6dee203f85043a0ce854d301c566d3a73e18e6de2734b08f8c1588a06dfa",
+    "addonSignature": {
+      "verified": true,
+      "kind": "adhoc",
+      "detail": "Executable=/Users/locvotuan/git/StoryCapture/apps/desktop/release-electron/mac-arm64/StoryCapture.app/Contents/Resources/native/macos/storycapture_shared_texture_probe.node\nIdentifier=storycapture_shared_texture_probe-555549441688987b42e33b27b04a08a3dcacd94d\nFormat=Mach-O thin (arm64)\nCodeDirectory v=20400 size=387 flags=0x2(adhoc) hashes=5+2 location=embedded\nSignature=adhoc\nInfo.plist=not bound\nTeamIdentifier=not set\nSealed Resources=none\nInternal requirements count=0 size=12"
+    },
+    "ffmpegPath": "/Users/locvotuan/git/StoryCapture/apps/desktop/release-electron/mac-arm64/StoryCapture.app/Contents/Resources/app.asar.unpacked/node_modules/ffmpeg-static/ffmpeg",
+    "ffmpegSha256": "a90e3db6a3fd35f6074b013f948b1aa45b31c6375489d39e572bea3f18336584",
+    "ffmpegPathWasPackaged": true,
+    "appSignature": {
+      "verified": true,
+      "kind": "adhoc",
+      "detail": "Executable=/Users/locvotuan/git/StoryCapture/apps/desktop/release-electron/mac-arm64/StoryCapture.app/Contents/MacOS/StoryCapture\nIdentifier=com.storycapture.desktop\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20400 size=305 flags=0x2(adhoc) hashes=3+3 location=embedded\nSignature=adhoc\nInfo.plist entries=32\nTeamIdentifier=not set\nSealed Resources version=2 rules=13 files=24\nInternal requirements count=0 size=12"
+    }
+  },
+  "evidence": {
+    "passed": true,
+    "failures": [],
+    "sourceFrameCountStart": 0,
+    "sourceFrameCountEnd": 599,
+    "sourceTimestampStartUs": 0,
+    "sourceTimestampEndUs": 9982934,
+    "markerOrdinalStart": 2,
+    "markerOrdinalEnd": 601,
+    "uniqueMarkerCount": 600,
+    "residentGrowthBytes": 5767168,
+    "jsFrameBytes": 0,
+    "electronTexturesReceived": 600,
+    "electronTexturesReleased": 600,
+    "codedSizeMatches": true,
+    "addonLoadedFromPackagedResources": true,
+    "stats": {
+      "handlesImported": 600,
+      "handlesReleased": 600,
+      "activeLeases": 0,
+      "peakActiveLeases": 1,
+      "nativeAcceptedFrames": 600,
+      "ffmpegEnqueuedFrames": 600,
+      "queueOverflows": 0,
+      "maxReadyQueueDepth": 1,
+      "lastFrameCount": 599,
+      "lastTimestampUs": 9982934,
+      "serviceTimeP95Ms": 0.8426791499999999,
+      "serviceTimeP99Ms": 0.9061149999999999,
+      "serviceTimeMaxMs": 1.105875,
+      "boundedPoolBytes": 16588800,
+      "baselineResidentBytes": 182583296,
+      "peakResidentBytes": 188350464,
+      "finalResidentBytes": 188350464,
+      "ffmpegLaunched": true,
+      "ffmpegExitCode": 0,
+      "failed": false,
+      "failureReason": ""
+    }
+  },
+  "failures": []
+}

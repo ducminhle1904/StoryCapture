@@ -6,6 +6,25 @@
  * same serialized shape.
  */
 
+import {
+  type ExportRecordingSourceV3,
+  type RECORDING_GUARANTEE_BOUNDARY_V3,
+  type RecordingBundleV3,
+  type RecordingCadenceEvidenceV3,
+  type RecordingCaptureContractV3,
+  type RecordingEventV3,
+  type RecordingInfoV3,
+  type RecordingPreflightV3Dto,
+  type RecordingPreflightV3Request,
+  type RecordingResultV3,
+  readExportRecordingSourceV3,
+  readRecordingBundleV3,
+  readRecordingInfoV3,
+  readRecordingResultV3,
+} from "@storycapture/shared-types/recording-v3";
+
+export * from "@storycapture/shared-types/recording-v3";
+
 export const RECORDING_CONTRACT_VERSION = 2 as const;
 export const RECORDING_BUNDLE_SCHEMA_VERSION = 2 as const;
 export const RECORDING_COMPOSITION_SOURCE_VERSION = 2 as const;
@@ -608,4 +627,248 @@ export function readExportRecordingSourceV2(value: unknown): ExportRecordingSour
     return null;
   if (value.quality_verdict !== "passed" && value.quality_verdict !== "degraded") return null;
   return value as unknown as ExportRecordingSourceV2;
+}
+
+export type RecordingResult = RecordingResultV2 | RecordingResultV3;
+export type RecordingInfo = RecordingInfoV2 | RecordingInfoV3;
+export type RecordingBundle = RecordingBundleV2 | RecordingBundleV3;
+export type ExportRecordingSource = ExportRecordingSourceV2 | ExportRecordingSourceV3;
+export type RecordingCadenceEvidence = RecordingCadenceEvidenceV2 | RecordingCadenceEvidenceV3;
+export type RecordingCaptureContract = RecordingCaptureContractV2 | RecordingCaptureContractV3;
+export type RecordingPreflightRequest = RecordingPreflightV2Request | RecordingPreflightV3Request;
+export type RecordingPreflightDto = RecordingPreflightV2Dto | RecordingPreflightV3Dto;
+export type RecordingEvent = RecordingEventV2 | RecordingEventV3;
+
+export interface NormalizedRecordingBundle {
+  source_version: 2 | 3;
+  status: "completed" | "quality_failed";
+  bundle_master_path: "master/video.mkv";
+  proxy_path: "proxy/video.mp4" | null;
+  cadence_evidence_path: string;
+  quality_evidence_path: string;
+  frame_ledger_path: string;
+  actions_path: string | null;
+  guarantee_boundary: typeof RECORDING_GUARANTEE_BOUNDARY_V3 | null;
+  source_scope_verified: boolean;
+  certification_profile_id: string | null;
+}
+
+export interface NormalizedExportRecordingSource {
+  source_version: 2 | 3;
+  bundle_path: string;
+  master_path: string;
+  proxy_path: string;
+  cadence_evidence_path: string;
+  quality_evidence_path: string;
+  frame_ledger_path: string | null;
+  exact_source_fps: RecordingRational;
+  source_frame_count: number;
+  master_width: number;
+  master_height: number;
+  quality_verdict: Extract<RecordingQualityVerdict, "passed" | "degraded">;
+  guarantee_boundary: typeof RECORDING_GUARANTEE_BOUNDARY_V3 | null;
+  source_scope_verified: boolean;
+  certification_profile_id: string | null;
+}
+
+function isRecordingCadenceEvidenceV2(value: unknown): value is RecordingCadenceEvidenceV2 {
+  if (!isRecord(value) || value.version !== RECORDING_CONTRACT_VERSION) return false;
+  if (!isExactStrictFrameRate(value.requested_fps)) return false;
+  if (value.source_fps !== null && !isRational(value.source_fps)) return false;
+  if (value.stream_time_base !== null && !isRational(value.stream_time_base)) return false;
+  const counts = [
+    value.active_duration_us,
+    value.expected_slots,
+    value.source_presentations,
+    value.submitted_frames,
+    value.encoder_acked_frames,
+    value.artifact_decoded_frames,
+    value.source_sequence_gaps,
+    value.stale_reuses,
+    value.skipped_slots,
+    value.dropped_frames,
+    value.deadline_misses,
+    value.ring_overflows,
+    value.backpressure_events,
+    value.pts_gaps,
+    value.pts_duplicates,
+  ];
+  if (!counts.every((count) => Number.isSafeInteger(count) && (count as number) >= 0)) return false;
+  if (typeof value.full_decode_succeeded !== "boolean") return false;
+  if (
+    value.verdict !== "passed" &&
+    value.verdict !== "degraded" &&
+    value.verdict !== "failed" &&
+    value.verdict !== "unknown"
+  ) {
+    return false;
+  }
+  return isFailureCodes(value.failure_codes);
+}
+
+function isRecordingQualityMetricV2(value: unknown): value is RecordingQualityMetricV2 {
+  return (
+    isRecord(value) &&
+    typeof value.measured === "number" &&
+    Number.isFinite(value.measured) &&
+    typeof value.threshold === "number" &&
+    Number.isFinite(value.threshold) &&
+    (value.comparator === "gte" || value.comparator === "lte") &&
+    typeof value.passed === "boolean"
+  );
+}
+
+function isRecordingQualityEvidenceV2(value: unknown): value is RecordingQualityEvidenceDto {
+  if (!isRecord(value) || value.version !== RECORDING_CONTRACT_VERSION) return false;
+  if (!Number.isSafeInteger(value.evaluated_frames) || (value.evaluated_frames as number) < 0) {
+    return false;
+  }
+  const metrics = [
+    value.full_frame_luma_ssim,
+    value.text_edge_roi_ssim,
+    value.p01_edge_contrast_retention,
+    value.edge_spread_increase_px,
+    value.overlay_geometry_delta_px,
+    value.color_channel_delta,
+  ];
+  if (!metrics.every((metric) => metric === null || isRecordingQualityMetricV2(metric)))
+    return false;
+  if (
+    value.lossless_master_hashes_match !== null &&
+    typeof value.lossless_master_hashes_match !== "boolean"
+  ) {
+    return false;
+  }
+  if (
+    value.verdict !== "passed" &&
+    value.verdict !== "degraded" &&
+    value.verdict !== "failed" &&
+    value.verdict !== "unknown"
+  ) {
+    return false;
+  }
+  return isFailureCodes(value.failure_codes);
+}
+
+export function readRecordingResultV2(value: unknown): RecordingResultV2 | null {
+  if (!isRecord(value) || value.version !== RECORDING_CONTRACT_VERSION) return null;
+  if (value.status !== "completed" && value.status !== "quality_failed") return null;
+  if (value.delivery_policy !== "strict" && value.delivery_policy !== "best_effort") return null;
+  if (value.certified_tier !== null && !isRecordingCertifiedTier(value.certified_tier)) return null;
+  if (typeof value.bundle_path !== "string" || value.bundle_path.length === 0) return null;
+  if (!isFiniteNonNegative(value.duration_ms) || !isFiniteNonNegative(value.bytes)) return null;
+  if (value.master_path !== null && typeof value.master_path !== "string") return null;
+  if (value.proxy_path !== null && typeof value.proxy_path !== "string") return null;
+  if (!isRecordingCadenceEvidenceV2(value.cadence_evidence)) return null;
+  if (!isRecordingQualityEvidenceV2(value.quality_evidence)) return null;
+  if (value.status === "completed") {
+    if (typeof value.output_path !== "string" || value.output_path.length === 0) return null;
+    if (value.diagnostic_bundle_path !== null) return null;
+  } else {
+    if (value.output_path !== null) return null;
+    if (
+      typeof value.diagnostic_bundle_path !== "string" ||
+      value.diagnostic_bundle_path.length === 0
+    ) {
+      return null;
+    }
+  }
+  return value as unknown as RecordingResultV2;
+}
+
+export function readRecordingResult(value: unknown): RecordingResult | null {
+  if (!isRecord(value)) return null;
+  if (value.version === 3) return readRecordingResultV3(value);
+  if (value.version === RECORDING_CONTRACT_VERSION) return readRecordingResultV2(value);
+  return null;
+}
+
+export function readRecordingInfo(value: unknown): RecordingInfo | null {
+  if (!isRecord(value)) return null;
+  if (value.version === 3) return readRecordingInfoV3(value);
+  if (value.version !== undefined && value.version !== RECORDING_CONTRACT_VERSION) return null;
+  return readRecordingInfoV2(value);
+}
+
+export function readRecordingBundle(value: unknown): RecordingBundle | null {
+  if (!isRecord(value)) return null;
+  if (value.schema_version === 3) return readRecordingBundleV3(value);
+  if (value.schema_version === RECORDING_BUNDLE_SCHEMA_VERSION) return readRecordingBundleV2(value);
+  return null;
+}
+
+export function readExportRecordingSource(value: unknown): ExportRecordingSource | null {
+  if (!isRecord(value)) return null;
+  if (value.version === 3) return readExportRecordingSourceV3(value);
+  if (value.version === RECORDING_COMPOSITION_SOURCE_VERSION) {
+    return readExportRecordingSourceV2(value);
+  }
+  return null;
+}
+
+export function normalizeRecordingBundle(value: unknown): NormalizedRecordingBundle | null {
+  const bundle = readRecordingBundle(value);
+  if (!bundle) return null;
+  if (bundle.schema_version === RECORDING_BUNDLE_SCHEMA_VERSION) {
+    return {
+      source_version: 2,
+      status: bundle.status,
+      bundle_master_path: bundle.master.relative_path,
+      proxy_path: bundle.proxy?.relative_path ?? null,
+      cadence_evidence_path: bundle.evidence.cadence_path,
+      quality_evidence_path: bundle.evidence.quality_path,
+      frame_ledger_path: bundle.sequence_ledger_path,
+      actions_path: bundle.sidecars.actions_path,
+      guarantee_boundary: null,
+      source_scope_verified: false,
+      certification_profile_id: null,
+    };
+  }
+  return {
+    source_version: 3,
+    status: bundle.status,
+    bundle_master_path: bundle.master.relative_path,
+    proxy_path: bundle.proxy?.relative_path ?? null,
+    cadence_evidence_path: bundle.evidence.cadence_path,
+    quality_evidence_path: bundle.evidence.runtime_quality_path,
+    frame_ledger_path: bundle.frame_ledger_path,
+    actions_path: bundle.sidecars.actions_path,
+    guarantee_boundary: bundle.capture_contract.guarantee_boundary,
+    source_scope_verified: true,
+    certification_profile_id: bundle.certification_profile?.profile_id ?? null,
+  };
+}
+
+export function normalizeExportRecordingSource(
+  value: unknown,
+): NormalizedExportRecordingSource | null {
+  const source = readExportRecordingSource(value);
+  if (!source) return null;
+  if (source.version === RECORDING_COMPOSITION_SOURCE_VERSION) {
+    return {
+      source_version: 2,
+      ...source,
+      frame_ledger_path: null,
+      guarantee_boundary: null,
+      source_scope_verified: false,
+      certification_profile_id: null,
+    };
+  }
+  return {
+    source_version: 3,
+    bundle_path: source.bundle_path,
+    master_path: source.master_path,
+    proxy_path: source.proxy_path,
+    cadence_evidence_path: source.cadence_evidence_path,
+    quality_evidence_path: source.quality_evidence_path,
+    frame_ledger_path: source.frame_ledger_path,
+    exact_source_fps: source.exact_source_fps,
+    source_frame_count: source.source_frame_count,
+    master_width: source.master_width,
+    master_height: source.master_height,
+    quality_verdict: source.quality_verdict,
+    guarantee_boundary: source.guarantee_boundary,
+    source_scope_verified: true,
+    certification_profile_id: source.certification_profile_id,
+  };
 }

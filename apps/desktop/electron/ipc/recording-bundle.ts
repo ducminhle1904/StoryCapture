@@ -4,6 +4,7 @@ import path from "node:path";
 import type {
   RecordingBundleArtifactV2,
   RecordingBundleV2,
+  RecordingBundleV3,
 } from "@storycapture/shared-types/recording-v2";
 import type { RecordingFrameLedgerEntry } from "./recording-frame-ring";
 
@@ -154,7 +155,7 @@ export class RecordingBundleWorkspace {
     await fs.mkdir(exportsDir, { recursive: true });
     await fs.mkdir(stagingPath, { recursive: false });
     await Promise.all(
-      ["master", "proxy", "audio", "evidence", "sidecars"].map((directory) =>
+      ["master", "proxy", "audio", "evidence", "sidecars", "diagnostics"].map((directory) =>
         fs.mkdir(path.join(stagingPath, directory)),
       ),
     );
@@ -175,7 +176,7 @@ export class RecordingBundleWorkspace {
     await fs.rename(temp, destination);
   }
 
-  async commit(manifest: RecordingBundleV2): Promise<string> {
+  async commit(manifest: RecordingBundleV2 | RecordingBundleV3): Promise<string> {
     if (this.committed) throw new Error("recording bundle workspace is already committed");
     await this.writeJson("manifest.json", manifest);
     await fs.rename(this.stagingPath, this.finalPath);

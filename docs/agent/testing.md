@@ -20,6 +20,16 @@
   unpacked package and verifies the platform helper signature plus the V2 hello
   protocol. It is separate from `test:e2e:export` and does not certify live
   display/window capture or a sustained release soak.
+- Recording V3 native addon protocol gate:
+  `pnpm --dir apps/desktop run native:build:recording-v3`.
+- Recording V3 packaged production proof:
+  `pnpm --dir apps/desktop run test:e2e:recording-v3-production-probe`.
+- Recording V3 sustained gates are
+  `pnpm --dir apps/desktop run test:e2e:recording-v3-60s` and
+  `pnpm --dir apps/desktop run test:e2e:recording-v3-soak`. The soak assumes
+  the protected workflow already packaged the certification executable; local
+  ad-hoc success does not replace Developer ID, notarization, or protected
+  manifest generation.
 - Cursor-sync Electron E2E: `pnpm --dir apps/desktop run test:e2e:cursor-sync`.
 - Smooth document/nested-container scroll Electron E2E:
   `pnpm --dir apps/desktop run test:e2e:scroll`.
@@ -105,6 +115,11 @@
 - Recording V2 contract/admission changes: focus the shared contract test,
   `capture-backend-v2-guard.test.ts`, and
   `recording-certification-catalog.test.ts`.
+- Recording V3 changes: focus
+  `recording-v3-{contract,capability,browser-backend,engine,native-addon,session-registry,bundle-writer}.test.*`,
+  `recording-v3-certification-{manifest,quality,scripts}.test.ts`, discovery,
+  and `recording-view-lifecycle.test.tsx`; then run desktop typecheck and the
+  packaged production proof when native/probe/package behavior changed.
 - Browser Strict/data-plane changes: focus browser backend/lifecycle,
   frame-ring, master pipeline/bundle, cadence, quality, discovery, retention,
   and recorder lifecycle/contract tests before the full desktop suite.
@@ -136,8 +151,9 @@
 - Cross-package contract changes: run focused package tests, consumer tests, and
   `pnpm typecheck`.
 - Electron runtime-value imports from workspace packages must also run the
-  Node-resolution smoke. For `@storycapture/shared-types/export-composition`,
-  run `pnpm --dir apps/desktop exec vitest run electron/shared-types-runtime-resolution.test.ts`;
+  Node-resolution and packaged-bundle smokes. For public
+  `@storycapture/shared-types` exports, run
+  `pnpm --dir apps/desktop exec vitest run electron/shared-types-runtime-resolution.test.ts electron/shared-types-bundle-resolution.test.ts`;
   when the consumer is in the post-production startup path, also run
   `pnpm --dir apps/desktop run test:e2e:media`. Typecheck alone does not prove
   Node ESM can load the package export.

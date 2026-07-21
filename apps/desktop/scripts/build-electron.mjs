@@ -1,7 +1,9 @@
-import { build } from "esbuild";
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
+
+import { bundleSharedTypesPlugin } from "./esbuild-shared-types-plugin.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -18,6 +20,7 @@ const shared = {
   logLevel: "info",
   packages: "external",
   external: ["electron"],
+  plugins: [bundleSharedTypesPlugin()],
 };
 
 await Promise.all([

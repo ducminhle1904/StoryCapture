@@ -1,0 +1,83 @@
+name: Recording V3 nightly certification
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: recording-v3-nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  checks: read
+
+jobs:
+  certify-60s:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, macOS, ARM64, storycapture-recording-v3, mac17-2]
+    timeout-minutes: 45
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-toolchain
+
+      - name: Install dependencies
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: Require successful normal CI for this trusted commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          conclusion="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/commits/${COMMIT_SHA}/check-runs" \
+            --jq '[.check_runs[] | select(.name == "build-test" and .app.slug == "github-actions")] | sort_by(.completed_at) | last | .conclusion // ""')"
+          test "$conclusion" = "success" || {
+            echo "normal CI build-test is not successful for ${COMMIT_SHA}" >&2
+            exit 1
+          }
+
+      - name: Recording V3 focused checks
+        shell: bash
+        run: >-
+          pnpm --dir apps/desktop exec vitest run
+          electron/ipc/recording-v3-engine.test.ts
+          electron/ipc/recording-v3-native-addon.test.ts
+          electron/ipc/recording-v3-certification-quality.test.ts
+          electron/ipc/recording-v3-certification-manifest.test.ts
+
+      - name: Build packaged certification executable
+        shell: bash
+        run: >-
+          pnpm --dir apps/desktop run native:build &&
+          pnpm --dir apps/desktop run electron:build-main &&
+          pnpm --dir apps/desktop run renderer:build &&
+          pnpm --dir apps/desktop run electron:build:recording-v3-production-probe &&
+          pnpm --dir apps/desktop exec electron-builder --dir --publish never
+          --config.extraMetadata.main=dist-electron/recording-v3-production-probe.mjs
+
+      - name: Run trusted 60-second motion gate
+        shell: bash
+        run: >-
+          pnpm --dir apps/desktop run recording:v3:certify:60s --
+          --fixture motion
+          --pressure-mode none
+          --scenario steady
+          --artifact-dir "${{ github.workspace }}/apps/desktop/recording-v3-certification-artifacts/nightly"
+          --json-summary "${{ github.workspace }}/apps/desktop/recording-v3-certification-artifacts/nightly/runner-summary.json"
+
+      - name: Retain certification evidence and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: recording-v3-nightly-${{ github.run_id }}
+          path: apps/desktop/recording-v3-certification-artifacts/nightly
+          if-no-files-found: error
+          retention-days: 30

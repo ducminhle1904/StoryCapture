@@ -57,11 +57,14 @@ video.
   and simulator behavior is desktop IPC/host code, not a shared parser package.
 - `packages/shared-types` publicly exports browser presets, web account types,
   the checked-in IPC compatibility surface, and the JSON-safe post-production
-  composition/preflight/job and Recording V2 contracts. Electron/Node runtime
-  consumers of recording values use
-  `@storycapture/shared-types/recording-v2`; consumers of
+  composition/preflight/job and Recording V2/V3 contracts. Electron/Node runtime
+  consumers use `@storycapture/shared-types/recording-v2` for V2 and
+  version-agnostic recording values, and `@storycapture/shared-types/recording-v3`
+  for V3-specific values; consumers of
   composition values use `@storycapture/shared-types/export-composition`, not
-  the package-root barrel.
+  the package-root barrel. Electron main/probe esbuild entries must use
+  `apps/desktop/scripts/esbuild-shared-types-plugin.mjs` so runtime values are
+  bundled instead of leaving TypeScript package exports inside `app.asar`.
   `packages/shared-types/src/generated/effects.ts` is checked-in generated
   source, but is not currently exported through the package export map.
 - `packages/ui` ships shared tokens plus the `claude-design` namespace and
@@ -160,18 +163,22 @@ file explicitly says otherwise.
   `apps/desktop/electron/ipc/legacy/story-runner.ts`,
   `apps/desktop/src/ipc/automation.ts`, and
   `apps/desktop/src/features/recorder/recording-view.tsx`.
-- Strict Recording V2: start with
-  `packages/shared-types/src/recording-v2.ts`, then read
+- Strict Recording V2/V3: start with
+  `packages/shared-types/src/{recording-v2,recording-v3}.ts`, then read
   `apps/desktop/electron/ipc/recording-certification-catalog.ts`,
   `apps/desktop/electron/ipc/capture-backend-v2-guard.ts`,
   `apps/desktop/electron/ipc/recording-strict-browser-lifecycle.ts`,
+  `apps/desktop/electron/ipc/recording-strict-browser-lifecycle-v3.ts`,
+  `apps/desktop/electron/ipc/recording-v3-{runtime-preflight,capability,browser-backend,engine,native-addon,bundle-writer}.ts`,
+  `apps/desktop/electron/ipc/recording-v3-certification-{manifest,evidence,quality}.ts`,
   `apps/desktop/electron/ipc/browser-capture-backend-v2.ts`,
   `apps/desktop/electron/ipc/recording-master-pipeline.ts`,
   `apps/desktop/electron/ipc/recording-bundle.ts`, and
   `apps/desktop/electron/ipc/recording-quality-verifier.ts`. Native adapters are
   `macos-screen-capture-backend.ts`, `windows-capture-backend.ts`, and
-  `apps/desktop/native/`; use `docs/agent/operations.md` for certification,
-  packaging, signing, and kill-switch rules.
+  `apps/desktop/native/`; the V3 macOS addon is under
+  `apps/desktop/native/macos-recording-v3/`. Use `docs/agent/operations.md` for
+  certification, packaging, signing, trusted-runner, and rollback rules.
 - Recording logs/diagnostics: read
   `apps/desktop/electron/ipc/recording-observability.ts`,
   `apps/desktop/electron/ipc/log-store.ts`, and
@@ -210,6 +217,13 @@ file explicitly says otherwise.
 - Packaged post-production export parity: `pnpm --dir apps/desktop run test:e2e:export`.
 - Packaged native capture helper gate:
   `pnpm --dir apps/desktop run test:e2e:recording-v2-helper`.
+- Recording V3 addon/probe gates:
+  `pnpm --dir apps/desktop run native:build:recording-v3` and
+  `pnpm --dir apps/desktop run test:e2e:recording-v3-production-probe`.
+- Recording V3 sustained gates:
+  `pnpm --dir apps/desktop run test:e2e:recording-v3-60s` and, only after the
+  packaged certification executable exists,
+  `pnpm --dir apps/desktop run test:e2e:recording-v3-soak`.
 - Web Prisma commands live in `apps/web/package.json`: `db:generate`,
   `db:migrate`, `db:push`, and `db:seed`.
 - CI is `.github/workflows/ci.yml` and runs typecheck, desktop/UI/web tests,
@@ -223,7 +237,10 @@ file explicitly says otherwise.
 - Never revive removed Tauri/Rust assumptions from historical planning docs.
 - Do not hand-edit generated output:
   `apps/web/src/generated/prisma/**` or
-  `packages/shared-types/src/generated/effects.ts`.
+  `packages/shared-types/src/generated/effects.ts`. Do not hand-edit
+  `apps/desktop/electron/ipc/recording-v3-certification-signer-keys.generated.ts`
+  or generated `apps/desktop/recording-v3-certification/{manifest,evidence}.json`;
+  the protected release workflow owns them.
 - Avoid generated/build/cache/artifact directories unless the task is
   specifically about them: `node_modules/`, `.turbo/`, `.next/`, `dist/`,
   `apps/desktop/dist-electron/`, `apps/desktop/.electron-dev/`,

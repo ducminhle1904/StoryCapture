@@ -5,11 +5,14 @@
 // host side in apps/desktop/electron/ipc.ts.
 
 import type {
-  RecordingCadenceEvidenceV2,
-  RecordingCaptureContractV2,
+  RecordingCadenceEvidence,
+  RecordingCaptureContract,
+  RecordingCertificationProfileReferenceV3,
   RecordingCertifiedTier,
   RecordingDeliveryPolicy,
-  RecordingResultV2,
+  RecordingGuaranteeBoundaryV3,
+  RecordingPreflightDto,
+  RecordingResult,
 } from "./recording-v2";
 
 export type * from "./recording-v2";
@@ -2056,10 +2059,10 @@ export type EncodeResultDto = {
 };
 export type RecordingCompletedResult =
   | EncodeResultDto
-  | (RecordingResultV2 & { status: "completed" });
+  | (RecordingResult & { status: "completed" });
 export type RecordingStopResult =
   | RecordingCompletedResult
-  | (RecordingResultV2 & { status: "quality_failed" });
+  | (RecordingResult & { status: "quality_failed" });
 export type EncoderOptionsDto = {
   container?: ContainerDto | null;
   codec?: CodecDto | null;
@@ -2434,14 +2437,14 @@ export type RecordingEvent =
    */
   | { type: "frames-dropped"; total: number; delta: number }
   | { type: "completed"; result: RecordingCompletedResult }
-  | { type: "preflight"; result: import("./recording-v2").RecordingPreflightV2Dto }
+  | { type: "preflight"; result: RecordingPreflightDto }
   | {
       type: "readiness";
       state: "source_ready" | "first_frame_committed" | "pre_input_frame_committed";
     }
-  | { type: "live-evidence"; evidence: RecordingCadenceEvidenceV2 }
+  | { type: "live-evidence"; evidence: RecordingCadenceEvidence }
   | { type: "verifying"; progress: number }
-  | { type: "quality-failed"; result: RecordingResultV2 & { status: "quality_failed" } }
+  | { type: "quality-failed"; result: RecordingResult & { status: "quality_failed" } }
   | { type: "failed"; message: string }
   /**
    * Mic/audio negotiation failed or the device vanished mid-session.
@@ -2471,7 +2474,7 @@ export type RecordingInfoDto = {
         status: "invalid";
         reason: "empty" | "not_file" | "missing" | "timeout" | "unsupported_or_corrupt";
       };
-  version?: 2;
+  version?: 2 | 3;
   master_path?: string | null;
   proxy_path?: string | null;
   cadence_evidence_path?: string | null;
@@ -2482,6 +2485,11 @@ export type RecordingInfoDto = {
   exact_source_fps?: import("./recording-v2").RecordingRational | null;
   source_frame_count?: number | null;
   certified_tier?: RecordingCertifiedTier | null;
+  certification_profile?: RecordingCertificationProfileReferenceV3 | null;
+  guarantee_boundary?: RecordingGuaranteeBoundaryV3 | null;
+  source_scope_verified?: boolean;
+  frame_ledger_path?: string | null;
+  cursor_path?: string | null;
   quality_verdict?: import("./recording-v2").RecordingQualityVerdict;
   bundle_path?: string | null;
 };
@@ -2661,10 +2669,11 @@ export type StartRecordingArgs = {
   height: number;
   fps: number;
   /** Missing on legacy callers and therefore interpreted as best-effort. */
-  contract_version?: 2;
+  contract_version?: 2 | 3;
+  intent?: "strict";
   delivery_policy?: RecordingDeliveryPolicy;
   certified_tier?: RecordingCertifiedTier | null;
-  capture_contract?: RecordingCaptureContractV2 | null;
+  capture_contract?: RecordingCaptureContract | null;
   /**
    * Optional mic device.
    */

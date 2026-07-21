@@ -21,7 +21,7 @@
  * the top level — there is no opaque `metadata` bag.
  */
 
-import type { ExportRecordingSourceV2 } from "@storycapture/shared-types/recording-v2";
+import type { ExportRecordingSource } from "@storycapture/shared-types/recording-v2";
 import type { StateCreator } from "zustand";
 import type { CursorClickEffectConfig } from "./cursor-click-effect";
 import type { SourceTimelineMap } from "./source-timeline-map";
@@ -112,8 +112,8 @@ export interface VideoClip extends ClipBase {
   trackId: "video";
   /** Absolute or `convertFileSrc`-resolvable path to the source recording. */
   sourcePath: string;
-  /** V2 bundle metadata: preview uses sourcePath/proxy; export decodes the master. */
-  recordingSource?: ExportRecordingSourceV2;
+  /** Versioned bundle metadata: preview uses sourcePath/proxy; export decodes the master. */
+  recordingSource?: ExportRecordingSource;
   sourceSize?: { width: number; height: number };
   /** Optional transition from this clip into the next video clip. */
   outgoingTransition?: TransitionSpec;

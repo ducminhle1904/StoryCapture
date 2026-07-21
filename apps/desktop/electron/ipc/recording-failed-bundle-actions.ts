@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { readRecordingBundleV2 } from "@storycapture/shared-types/recording-v2";
+import { readRecordingBundle } from "@storycapture/shared-types/recording-v2";
 import type { InvokeHandlers } from "./types";
 
 export async function deleteFailedRecordingBundle(
@@ -25,7 +25,7 @@ export async function deleteFailedRecordingBundle(
   }
   const manifest = await fs
     .readFile(path.join(resolvedBundle, "manifest.json"), "utf8")
-    .then((text) => readRecordingBundleV2(JSON.parse(text) as unknown));
+    .then((text) => readRecordingBundle(JSON.parse(text) as unknown));
   if (!manifest || manifest.status !== "quality_failed") {
     throw new Error("Only a validated quality-failed recording bundle can be deleted here.");
   }

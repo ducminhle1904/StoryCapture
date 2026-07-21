@@ -6,6 +6,7 @@ import type { StartRecordingArgs } from "@storycapture/shared-types";
 import type {
   RecordingPreflightV2Request,
   RecordingResultV2,
+  RecordingResultV3,
 } from "@storycapture/shared-types/recording-v2";
 import type { WebContents } from "electron";
 import {
@@ -22,6 +23,30 @@ import { channelIdFrom, closeChannel, sendChannel } from "./legacy/shared";
 import { findRecordingCertificationTier } from "./recording-certification-catalog";
 import { recordEngineLog } from "./recording-observability";
 import { RecordingPauseGate } from "./recording-pause-gate";
+import {
+  acknowledgeStrictBrowserRecordingV3,
+  isStrictRecordingV3Request,
+  pauseStrictBrowserRecordingV3,
+  probeStrictBrowserRecordingV3Capability,
+  queryStrictBrowserRecordingV3,
+  reattachStrictBrowserRecordingV3,
+  requireStrictBrowserRecordingV3Readiness,
+  resumeStrictBrowserRecordingV3,
+  type StrictBrowserSessionV3,
+  setStrictBrowserRecordingV3Actions,
+  startStrictBrowserRecordingV3,
+  stopStrictBrowserRecordingV3,
+  strictBrowserRecordingV3ClockMs,
+  strictBrowserRecordingV3Contents,
+  strictBrowserRecordingV3Session,
+} from "./recording-strict-browser-lifecycle-v3";
+
+export {
+  acknowledgeStrictBrowserRecordingV3,
+  probeStrictBrowserRecordingV3Capability,
+  queryStrictBrowserRecordingV3,
+  reattachStrictBrowserRecordingV3,
+};
 
 export interface StrictBrowserSession {
   id: string;
@@ -77,6 +102,9 @@ export async function startStrictBrowserRecording(
   sender: WebContents,
   url: string,
 ): Promise<{ id: string }> {
+  if (isStrictRecordingV3Request(args)) {
+    return startStrictBrowserRecordingV3(args, onEvent, sender, url);
+  }
   if (args.target.kind !== "author_preview") {
     throw new Error("Strict browser recording requires an authoritative author-preview target.");
   }
@@ -176,15 +204,21 @@ export async function startStrictBrowserRecording(
   return { id };
 }
 
-export function strictBrowserRecordingSession(id: string): StrictBrowserSession | null {
-  return sessions.get(id) ?? null;
+export function strictBrowserRecordingSession(
+  id: string,
+): StrictBrowserSession | StrictBrowserSessionV3 | null {
+  return strictBrowserRecordingV3Session(id) ?? sessions.get(id) ?? null;
 }
 
 export function strictBrowserRecordingContents(id: string): WebContents | null {
-  return sessions.get(id)?.backend.recordingContents() ?? null;
+  return (
+    strictBrowserRecordingV3Contents(id) ?? sessions.get(id)?.backend.recordingContents() ?? null
+  );
 }
 
 export function strictBrowserRecordingClockMs(id: string): number | null {
+  const v3Clock = strictBrowserRecordingV3ClockMs(id);
+  if (v3Clock != null) return v3Clock;
   const session = sessions.get(id);
   return session ? session.backend.recordingClockMs() : null;
 }
@@ -193,6 +227,10 @@ export async function requireStrictBrowserRecordingReadiness(
   id: string,
   state: BrowserRecordingReadinessState,
 ): Promise<void> {
+  if (strictBrowserRecordingV3Session(id)) {
+    await requireStrictBrowserRecordingV3Readiness(id, state);
+    return;
+  }
   const session = sessions.get(id);
   if (!session) throw new Error(`strict recording session ${id} not found`);
   await session.backend.waitForReadiness(state);
@@ -215,6 +253,7 @@ export async function setStrictBrowserRecordingAudio(raw: unknown): Promise<bool
 }
 
 export async function pauseStrictBrowserRecording(id: string): Promise<boolean> {
+  if (await pauseStrictBrowserRecordingV3(id)) return true;
   const session = sessions.get(id);
   if (!session) return false;
   await session.backend.pause();
@@ -223,6 +262,7 @@ export async function pauseStrictBrowserRecording(id: string): Promise<boolean> 
 }
 
 export async function resumeStrictBrowserRecording(id: string): Promise<boolean> {
+  if (await resumeStrictBrowserRecordingV3(id)) return true;
   const session = sessions.get(id);
   if (!session) return false;
   await session.backend.resume();
@@ -235,6 +275,7 @@ export function setStrictBrowserRecordingActions(
   events: readonly ActionTimelineEvent[],
   cursorMotionPreset?: ActionCursorTiming["motion_preset"],
 ): boolean {
+  if (setStrictBrowserRecordingV3Actions(id, events, cursorMotionPreset)) return true;
   const session = sessions.get(id);
   if (!session) return false;
   session.actionEvents = [...events];
@@ -242,7 +283,11 @@ export function setStrictBrowserRecordingActions(
   return true;
 }
 
-export async function stopStrictBrowserRecording(id: string): Promise<RecordingResultV2 | null> {
+export async function stopStrictBrowserRecording(
+  id: string,
+): Promise<RecordingResultV2 | RecordingResultV3 | null> {
+  const v3Result = await stopStrictBrowserRecordingV3(id);
+  if (v3Result) return v3Result;
   const session = sessions.get(id);
   if (!session) return null;
   if (!session.stopPromise) session.stopPromise = stopSession(session);

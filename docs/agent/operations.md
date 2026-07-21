@@ -11,6 +11,7 @@ migrations, generated files, or release tooling.
   installs with `pnpm install --frozen-lockfile`, then runs:
   - `pnpm typecheck`
   - `pnpm --dir apps/desktop exec vitest run`
+  - `pnpm --dir apps/desktop run native:build:recording-v3`
   - `pnpm --dir apps/desktop run test:e2e:cursor-sync`
   - `pnpm --dir apps/desktop run test:e2e:media`
   - `pnpm --dir packages/ui test`
@@ -39,11 +40,17 @@ migrations, generated files, or release tooling.
 - Electron packaging config is in `apps/desktop/package.json` under `build`.
 - Desktop build scripts:
   - `apps/desktop/scripts/build-electron.mjs`
+  - `apps/desktop/scripts/esbuild-shared-types-plugin.mjs`
   - `apps/desktop/scripts/start-dev-electron.mjs`
   - `apps/desktop/scripts/prepare-dev-electron-app.mjs`
   - `apps/desktop/scripts/build-native-capture.mjs`
   - `apps/desktop/scripts/verify-packaged-native-capture.mjs`
 - Electron package output is `apps/desktop/release-electron`.
+- Electron main/probe builds keep third-party packages external, but must use
+  `esbuild-shared-types-plugin.mjs` to bundle every public
+  `@storycapture/shared-types` runtime export. Otherwise packaged Node attempts
+  to load TypeScript from `app.asar` and fails before startup. Keep this rule
+  covered by `electron/shared-types-bundle-resolution.test.ts`.
 - Electron Builder packages the ScreenCaptureKit helper at
   `resources/native/macos/storycapture-screen-capture-helper` and the WGC helper
   at `resources/native/windows/${arch}/storycapture-wgc.exe`.
@@ -66,25 +73,49 @@ migrations, generated files, or release tooling.
   registry updates, and publishes a verified same-folder partial with an
   atomic no-replace hard link so it never overwrites a final file created after
   reservation.
-- Signing/notarization scripts are standalone, not wired into a current GitHub
-  release workflow:
+- General signing/notarization scripts include:
   - `scripts/notarize/notarize-mac.sh`
   - `scripts/notarize/adhoc-sign.sh`
   - `scripts/release/sign-windows.ps1`
 - For signing secrets and missing-secret behavior, read `docs/CREDENTIALS.md`
   first.
 
-### Recording V2 Release Controls
+Recording V3 has dedicated trusted automation:
+
+- `.github/workflows/recording-v3-nightly.yml` runs the sustained 60-second
+  gate only for trusted `main`, after the same commit's normal CI succeeds, on
+  a dedicated Mac17,2 self-hosted runner label set.
+- `.github/workflows/recording-v3-release.yml` is manual-only, accepts only
+  trusted main/release refs, and uses the protected `recording-v3-release`
+  GitHub Environment before credentials are exposed.
+- The release job runs sustained/static/lifecycle/fault-cleanup gates, creates
+  one exact profile, signs the manifest, injects only the public signer key,
+  then signs, notarizes, staples, clean-launches, and verifies the package.
+- The final package restores the exact signed addon and FFmpeg bytes exercised
+  by the certification executable before the outer app is signed/notarized.
+  Do not rebuild or independently re-sign those binaries after evidence is
+  generated; their hashes are part of the exact profile.
+
+### Strict Recording V2/V3 Release Controls
 
 - `BUNDLED_RECORDING_CERTIFICATION_TIERS` is intentionally empty. Strict is
   fail-closed until the exact platform/architecture/hardware/backend/target
   tuple completes packaged live capture and release-soak certification.
 - `STORYCAPTURE_DISABLE_RECORDING_TIER_IDS` is a comma-separated emergency
-  kill switch. It can disable a certified tier independently; it never relabels
-  a failed/degraded take as Strict.
-- There is no automated 60-second capture or ten-minute soak command in the
-  current repo. Do not promote a tier based only on unit/protocol/package smoke
-  tests.
+  kill switch. For V3 it matches the signed profile's `kill_switch_id`; the
+  signed manifest can also list `disabled_kill_switch_ids`. Neither path may
+  relabel a failed/degraded take as Strict.
+- V3 source checkouts deliberately ship an empty generated signer-key map and
+  no signed release manifest/evidence. Local/dev builds therefore remain
+  fail-closed even when the addon and packaged production proof pass.
+- Never hand-edit the V3 signer map, signed manifest, or certification evidence.
+  `recording-v3-certification-profile.mjs`,
+  `recording-v3-certification-sign-manifest.mjs`, and
+  `recording-v3-certification-inject-signer.mjs` are release-automation inputs.
+- Promote only after the protected 60-second/ten-minute gates, Developer ID
+  app/addon verification, hardened runtime, notarization/stapling, exact
+  manifest/profile match, evidence hash binding, and clean packaged preflight
+  all pass.
 - Failed Strict bundles remain inside `<project>/exports`, default to seven-day
   retention, and may be manually deleted only after validation as a contained
   `quality_failed` bundle.
@@ -136,11 +167,16 @@ migrations, generated files, or release tooling.
 - Do not hand-edit `apps/web/src/generated/prisma/**`.
 - Do not hand-edit `packages/shared-types/src/generated/effects.ts`; it is
   generated by `ts-rs`.
+- Do not hand-edit
+  `apps/desktop/electron/ipc/recording-v3-certification-signer-keys.generated.ts`
+  or generated `apps/desktop/recording-v3-certification/{manifest,evidence}.json`;
+  the protected Recording V3 release workflow owns them.
 - `packages/shared-types/src/generated/effects.ts` is not exported through
   `packages/shared-types/package.json`.
 - Treat `scripts/build-ffmpeg/build/` as helper-script build output unless the
   task is directly about FFmpeg dependency builds.
 - Treat `apps/desktop/native/macos-screen-capture/.build/`,
+  `apps/desktop/native/macos-recording-v3/.build/`,
   `apps/desktop/native/windows-capture/build/`,
   `apps/desktop/native/windows-capture/bin/`, and
   `apps/desktop/release-electron/` as generated/package output.

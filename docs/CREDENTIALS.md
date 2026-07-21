@@ -13,6 +13,8 @@ secrets.
 Used by:
 
 - `scripts/notarize/notarize-mac.sh`
+- `.github/workflows/recording-v3-release.yml` through the protected
+  `recording-v3-release` environment
 
 Required secrets:
 
@@ -24,6 +26,9 @@ Required secrets:
 | `APPLE_SIGNING_IDENTITY` | `APPLE_SIGNING_IDENTITY` | Developer ID Application identity |
 | `APPLE_CERTIFICATE_P12_BASE64` | n/a | Import signing cert on clean runners |
 | `APPLE_CERTIFICATE_PASSWORD` | n/a | Unlock exported `.p12` |
+| `RECORDING_V3_SIGNER_KEY_ID` | n/a | Public identifier embedded in the signed certification manifest |
+| `RECORDING_V3_MANIFEST_PRIVATE_KEY_PEM` | n/a | Ed25519 private signing key; protected workflow only |
+| `RECORDING_V3_MANIFEST_PUBLIC_KEY_PEM` | n/a | Ed25519 public key injected into the signed package |
 
 Notes:
 
@@ -53,8 +58,9 @@ Required secrets:
 | `WINDOWS_SIGNING_CERT_NAME` | `WINDOWS_SIGNING_CERT_NAME` | Trusted Signing cert/profile name |
 | `EV_CERT_AZURE_KV_NAME` | `EV_CERT_AZURE_KV_NAME` | EV cert name for fallback mode |
 
-There is no current GitHub release workflow. Signing scripts are standalone
-unless a future workflow wires them into CI/release.
+General Windows signing remains standalone. Recording V3 macOS certification
+uses only the manual protected release workflow; nightly and pull-request CI
+must never receive these secrets.
 
 The packaged WGC helper has its own local/package signing inputs:
 
@@ -132,8 +138,9 @@ only when `CRON_SECRET` is set; leaving it empty disables that protection.
 | Script / flow | Behavior when secret is missing |
 |---|---|
 | `scripts/notarize/notarize-mac.sh` | Prints skip message and exits 0 |
+| Recording V3 protected release workflow | Fails before key import, certification, signing, or publication |
 | Local Electron package build | Skips signing when no Developer ID certificate exists |
 | Web cron without `CRON_SECRET` | Bearer check is disabled; not acceptable for production |
 | Desktop provider key missing | Provider-specific AI/TTS features should fail gated or prompt for setup |
 
-Last updated: 2026-06-19
+Last updated: 2026-07-21

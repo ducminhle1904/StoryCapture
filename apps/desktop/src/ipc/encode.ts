@@ -4,6 +4,8 @@ import type {
   EncodeResultDto,
   RecordingCompletedResult,
   RecordingEvent,
+  RecordingHostSessionSnapshotV3,
+  RecordingPreflightV3Dto,
   RecordingSessionId,
   RecordingStopResult,
   StartRecordingArgs,
@@ -14,6 +16,8 @@ export type {
   EncodeResultDto,
   RecordingCompletedResult,
   RecordingEvent,
+  RecordingHostSessionSnapshotV3,
+  RecordingPreflightV3Dto,
   RecordingSessionId,
   RecordingStopResult,
   StartRecordingArgs,
@@ -37,6 +41,35 @@ export async function startRecording(
     args,
     onEvent: channel,
   });
+}
+
+export async function probeRecordingV3Capability(
+  args: StartRecordingArgs,
+): Promise<RecordingPreflightV3Dto> {
+  return invoke("recording_v3_capability", { args });
+}
+
+export async function probeRecordingV3Environment(): Promise<RecordingPreflightV3Dto> {
+  return invoke("recording_v3_environment");
+}
+
+export async function queryRecordingV3Sessions(
+  projectFolder: string,
+): Promise<RecordingHostSessionSnapshotV3[]> {
+  return invoke("recording_v3_query", { projectFolder });
+}
+
+export async function reattachRecordingV3(
+  id: string,
+  onEvent: (event: RecordingEvent) => void,
+): Promise<RecordingHostSessionSnapshotV3 | null> {
+  const channel = new Channel<RecordingEvent>();
+  channel.onmessage = onEvent;
+  return invoke("recording_v3_reattach", { id, onEvent: channel });
+}
+
+export async function acknowledgeRecordingV3(id: string): Promise<boolean> {
+  return invoke("recording_v3_ack", { id });
 }
 
 export async function stopRecording(

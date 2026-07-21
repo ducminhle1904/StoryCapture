@@ -1,7 +1,9 @@
 import type { OutputResolutionDto } from "@storycapture/shared-types";
+import { recordingV3FailureMessage } from "@storycapture/shared-types/recording-v2";
 import { ScSegmented, ScSlider, ScSwitch } from "@storycapture/ui";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { probeRecordingV3Environment } from "@/ipc/encode";
 import { useAppSettingsStore } from "@/state/app-settings";
 import { useOutputPrefsStore } from "@/state/output-prefs";
 import { SettingsCard, SettingsPanel, SettingsRow } from "../settings-row";
@@ -37,10 +39,39 @@ export function RenderCategory() {
   const hwOn = exportKnobs.hwEncoder === "auto";
   const savedParallelRenders = settings?.render.parallel_renders ?? 2;
   const [parallelDraft, setParallelDraft] = useState(savedParallelRenders);
+  const [strictEnvironmentReason, setStrictEnvironmentReason] = useState<string | null>(
+    "Checking the certified Recording V3 environment…",
+  );
 
   useEffect(() => {
     setParallelDraft(savedParallelRenders);
   }, [savedParallelRenders]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void probeRecordingV3Environment()
+      .then((preflight) => {
+        if (cancelled) return;
+        const environmentFailures = preflight.failure_codes.filter(
+          (code) => code !== "runtime_integrity_failed",
+        );
+        setStrictEnvironmentReason(
+          environmentFailures.length > 0
+            ? environmentFailures.map(recordingV3FailureMessage).join(" ")
+            : null,
+        );
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setStrictEnvironmentReason(
+            `Strict environment check failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const saveParallelRenders = async (parallel_renders: number) => {
     if (parallel_renders === savedParallelRenders) return;
@@ -61,7 +92,10 @@ export function RenderCategory() {
       <SettingsCard>
         <SettingsRow
           label="Recording policy"
-          hint="Strict publishes only verified 1080p60 takes; Standard completes with truthful degraded evidence."
+          hint={
+            strictEnvironmentReason ??
+            "Strict publishes only verified 1080p60 browser takes; Standard completes with truthful degraded evidence."
+          }
           control={
             <ScSegmented
               size="sm"
@@ -71,7 +105,12 @@ export function RenderCategory() {
               }
               options={[
                 { value: "best_effort", label: "Standard" },
-                { value: "strict", label: "Strict" },
+                {
+                  value: "strict",
+                  label: "Strict",
+                  disabled: strictEnvironmentReason !== null,
+                  title: strictEnvironmentReason ?? undefined,
+                },
               ]}
             />
           }

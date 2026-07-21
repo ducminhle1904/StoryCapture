@@ -7,6 +7,7 @@ import { registerIpcHandlers } from "./ipc";
 import { runExportCompositorArtifactSmoke } from "./ipc/export-compositor-smoke";
 import { initializeExportOutputLifecycle } from "./ipc/legacy/export-output-lifecycle";
 import { registerLocalAssetProtocol, registerLocalAssetScheme } from "./local-assets";
+import { runRecordingV3ReleaseSmoke } from "./recording-v3-release-smoke";
 import { isDevRuntime } from "./runtime";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -16,6 +17,9 @@ const shouldUseDevServer = isDevRuntime(app);
 const exportCompositorSmokeResultPath =
   app.commandLine.getSwitchValue("storycapture-export-compositor-smoke-result") ||
   process.env.STORYCAPTURE_EXPORT_COMPOSITOR_SMOKE_RESULT;
+const recordingV3ReleaseSmokeResultPath = app.commandLine.getSwitchValue(
+  "storycapture-recording-v3-release-smoke-result",
+);
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -93,6 +97,11 @@ registerIpcHandlers();
 
 void app.whenReady().then(async () => {
   registerLocalAssetProtocol();
+  if (recordingV3ReleaseSmokeResultPath) {
+    const succeeded = await runRecordingV3ReleaseSmoke(recordingV3ReleaseSmokeResultPath);
+    app.exit(succeeded ? 0 : 1);
+    return;
+  }
   await initializeExportOutputLifecycle(app.getPath("userData")).catch((error) => {
     console.warn("[export-render] orphan cleanup failed", error);
   });

@@ -18,12 +18,24 @@
     "electron:prepare-dev-app": "node scripts/prepare-dev-electron-app.mjs",
     "diagnose:recording": "node scripts/recording-diagnostics.mjs",
     "native:build": "node scripts/build-native-capture.mjs",
+    "native:build:shared-texture-probe": "node scripts/build-recording-v3-shared-texture-probe.mjs --native-only",
+    "native:build:recording-v3": "node scripts/build-recording-v3-native-addon.mjs",
     "native:verify:packaged": "node scripts/verify-packaged-native-capture.mjs",
+    "electron:build:shared-texture-probe": "node scripts/build-recording-v3-shared-texture-probe.mjs --entry-only",
+    "electron:build:recording-v3-production-probe": "node scripts/build-recording-v3-production-probe.mjs",
+    "recording:v3:certify:60s": "node scripts/recording-v3-certification-60s.mjs",
+    "recording:v3:certify:10m": "node scripts/recording-v3-certification-10m.mjs",
+    "recording:v3:manifest:sign": "node scripts/recording-v3-certification-sign-manifest.mjs",
+    "recording:v3:release:verify": "node scripts/recording-v3-release-verify.mjs",
     "test:e2e:cursor-sync": "pnpm electron:build-main && playwright test --config playwright.config.ts e2e/cursor-sync.spec.ts",
     "test:e2e:scroll": "pnpm electron:build-main && playwright test --config playwright.config.ts e2e/smooth-scroll.spec.ts",
     "test:e2e:media": "pnpm electron:build-main && playwright test --config playwright.config.ts e2e/media-playback.spec.ts",
     "test:e2e:export": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && node scripts/export-compositor-artifact-smoke.mjs",
     "test:e2e:recording-v2-helper": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && pnpm native:verify:packaged",
+    "test:e2e:recording-v3-shared-texture-probe": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && pnpm electron:build:shared-texture-probe && electron-builder --dir --publish never --config.extraMetadata.main=dist-electron/recording-v3-shared-texture-probe.mjs && node scripts/run-recording-v3-shared-texture-probe.mjs",
+    "test:e2e:recording-v3-production-probe": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && pnpm electron:build:recording-v3-production-probe && electron-builder --dir --publish never --config.extraMetadata.main=dist-electron/recording-v3-production-probe.mjs && node scripts/run-recording-v3-production-probe.mjs",
+    "test:e2e:recording-v3-60s": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && pnpm electron:build:recording-v3-production-probe && electron-builder --dir --publish never --config.extraMetadata.main=dist-electron/recording-v3-production-probe.mjs && pnpm recording:v3:certify:60s",
+    "test:e2e:recording-v3-soak": "pnpm recording:v3:certify:10m",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit"
   },
@@ -115,6 +127,14 @@
       {
         "from": "../web/node_modules/next/dist/compiled/@vercel/og/Geist-Regular.ttf",
         "to": "assets/fonts/Geist-Regular.ttf"
+      },
+      {
+        "from": "recording-v3-certification",
+        "to": "recording-v3-certification"
+      },
+      {
+        "from": "fixtures/recording-v3-certification",
+        "to": "recording-v3-certification-fixture"
       }
     ],
     "mac": {
@@ -124,6 +144,18 @@
         {
           "from": "native/macos-screen-capture/.build/release/storycapture-screen-capture-helper",
           "to": "native/macos/storycapture-screen-capture-helper"
+        },
+        {
+          "from": "native/macos-shared-texture-probe/.build/storycapture_shared_texture_probe.node",
+          "to": "native/macos/storycapture_shared_texture_probe.node"
+        },
+        {
+          "from": "native/macos-recording-v3/.build/storycapture_recording_v3.node",
+          "to": "native/macos/storycapture_recording_v3.node"
+        },
+        {
+          "from": "native/macos-shared-texture-probe/fixture.html",
+          "to": "native/macos/shared-texture-probe-fixture.html"
         }
       ],
       "extendInfo": {

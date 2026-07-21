@@ -21,6 +21,10 @@
     "./recording-v2": {
       "types": "./src/recording-v2.ts",
       "import": "./src/recording-v2.ts"
+    },
+    "./recording-v3": {
+      "types": "./src/recording-v3.ts",
+      "import": "./src/recording-v3.ts"
     }
   },
   "dependencies": {

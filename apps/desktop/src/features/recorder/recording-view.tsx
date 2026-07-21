@@ -1,3 +1,9 @@
+import type {
+  RecordingCaptureContractV3,
+  RecordingPreflightV3Dto,
+  StartRecordingArgs,
+} from "@storycapture/shared-types";
+import { recordingV3FailureMessage } from "@storycapture/shared-types/recording-v2";
 import { listen } from "@tauri-apps/api/event";
 import {
   AlertTriangle,
@@ -33,11 +39,15 @@ import {
   type ScreenCapturePermissionReport,
 } from "@/ipc/capture";
 import {
+  acknowledgeRecordingV3,
   pauseRecording,
+  probeRecordingV3Capability,
+  queryRecordingV3Sessions,
   type RecordingCompletedResult,
   type RecordingEvent,
   type RecordingSessionId,
   type RecordingStopResult,
+  reattachRecordingV3,
   resumeRecording,
   startRecording,
   stopRecording,
@@ -97,6 +107,34 @@ const initialPermissionReport: ScreenCapturePermissionReport = {
   sourceCount: 0,
   debugBypassAllowed: false,
 };
+
+function recordingV3CaptureContract(
+  logicalWidth: number,
+  logicalHeight: number,
+): RecordingCaptureContractV3 {
+  return {
+    version: 3,
+    guarantee_boundary: "electron_offscreen_delivery",
+    source_ordinal_kind: "electron_frame_count",
+    target_class: "browser",
+    exact_fps: { numerator: 60, denominator: 1 },
+    dimensions: {
+      logical_width: logicalWidth,
+      logical_height: logicalHeight,
+      capture_dpr: 2,
+      physical_width: logicalWidth * 2,
+      physical_height: logicalHeight * 2,
+      requested_output_width: 1920,
+      requested_output_height: 1080,
+    },
+    cursor_policy: "sidecar_reconstructed",
+    audio_roles: [],
+  };
+}
+
+function recordingV3FailureSummary(preflight: RecordingPreflightV3Dto): string {
+  return preflight.failure_codes.map(recordingV3FailureMessage).join(" ");
+}
 
 function formatTime(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -216,6 +254,7 @@ export function RecordingView({
   const [stageManagerWarning, setStageManagerWarning] = useState(false);
 
   const sessionRef = useRef<RecordingSessionId | null>(null);
+  const recordingContractVersionRef = useRef<2 | 3>(2);
   const completedSessionRef = useRef<string | null>(null);
   const previewLeaseRef = useRef<RecordingPreviewLease | null>(null);
   const previewSessionRef = useRef<string | null>(null);
@@ -228,6 +267,15 @@ export function RecordingView({
   const automationFailedOrdinalRef = useRef<number | null>(null);
   const handleRecordRef = useRef<(() => Promise<void>) | null>(null);
   const handleStopRef = useRef<((expectedSessionId?: string) => Promise<void>) | null>(null);
+  const v3ReattachHandlersRef = useRef<{
+    dispatch: (ownerSessionId: string, event: RecordingEvent) => void;
+    finalize: (ownerSessionId: string, result: RecordingCompletedResult) => void;
+    fail: (ownerSessionId: string, message: string) => void;
+    failQuality: (
+      ownerSessionId: string,
+      result: Extract<RecordingStopResult, { status: "quality_failed" }>,
+    ) => void;
+  } | null>(null);
   const videoOutputSectionRef = useRef<HTMLDivElement | null>(null);
   const isOutputBlocked = useIsRecordingBlocked();
 
@@ -273,6 +321,33 @@ export function RecordingView({
     }
     return dims;
   }, [selectedDisplayInfo, storyHasBrowser, storyViewport.height, storyViewport.width]);
+  const strictUnavailableReason = useMemo(() => {
+    if (recordingDeliveryPolicy !== "strict") return null;
+    if (permission !== "granted") return recordingV3FailureMessage("permission_denied");
+    if (!storyHasBrowser) return recordingV3FailureMessage("target_unsupported");
+    if (audioDeviceId) return recordingV3FailureMessage("unsupported_audio_role");
+    if (storyViewport.width !== 960 || storyViewport.height !== 540) {
+      return `${recordingV3FailureMessage("contract_mismatch")} Strict requires a 960×540 browser viewport.`;
+    }
+    if (preflight?.version === 3 && !preflight.strict_eligible) {
+      return recordingV3FailureSummary(preflight);
+    }
+    return null;
+  }, [
+    audioDeviceId,
+    permission,
+    preflight,
+    recordingDeliveryPolicy,
+    storyHasBrowser,
+    storyViewport.height,
+    storyViewport.width,
+  ]);
+
+  const strictCapabilityInputs = `${audioDeviceId ?? "none"}:${permission}:${recordingDeliveryPolicy}:${storyHasBrowser}:${storyViewport.width}x${storyViewport.height}`;
+  useEffect(() => {
+    void strictCapabilityInputs;
+    if (useRecorderStore.getState().status === "idle") setPreflight(null);
+  }, [setPreflight, strictCapabilityInputs]);
 
   const currentStepEntry = steps.length > 0 ? steps[Math.min(currentStep, steps.length - 1)] : null;
   const completedSteps = steps.filter((s) => s.status === "succeeded").length;
@@ -299,6 +374,16 @@ export function RecordingView({
     }
     if (stopInFlightRef.current === ownerSessionId) stopInFlightRef.current = null;
     if (previewSessionRef.current === ownerSessionId) releasePreviewLease();
+  };
+
+  const acknowledgeTerminalSession = (ownerSessionId: string) => {
+    if (recordingContractVersionRef.current !== 3) return;
+    void acknowledgeRecordingV3(ownerSessionId).catch((ackError) => {
+      frontendLog.warn("RecordingView", "Recording V3 terminal acknowledgement failed", {
+        error: ackError,
+        fields: { session_id: ownerSessionId },
+      });
+    });
   };
 
   // Detect Stage Manager once on mount (user can toggle it at any time
@@ -340,11 +425,12 @@ export function RecordingView({
         automationChannelRef.current.onmessage = null;
       }
       // (b) if a session is live server-side, fire-and-forget a stop so
-      //     the host drain doesn't leak a session. Capture the id before
-      //     nulling the ref so a re-mount can't double-free.
+      //     the host drain doesn't leak a session. V3 remains host-owned
+      //     so a remounted renderer can query and reattach to it.
       const sid = sessionRef.current;
+      const contractVersion = recordingContractVersionRef.current;
       sessionRef.current = null;
-      if (sid) {
+      if (sid && contractVersion !== 3) {
         void stopRecording(sid).catch((e) => {
           frontendLog.warn("RecordingView", "stopRecording on unmount failed", {
             error: e,
@@ -472,6 +558,7 @@ export function RecordingView({
     if (autoOpenPostProduction && projectId) {
       navigate(`/post-production/${projectId}`, { replace: true });
     }
+    acknowledgeTerminalSession(ownerSessionId);
   };
 
   const failRecording = (ownerSessionId: string, message: string) => {
@@ -485,6 +572,7 @@ export function RecordingView({
     setStatus("failed");
     setError(message);
     toast.error(`Recording failed: ${message}`);
+    acknowledgeTerminalSession(ownerSessionId);
   };
 
   const failQualityRecording = (
@@ -508,6 +596,7 @@ export function RecordingView({
     toast.error("Strict verification failed", {
       description: message || result.diagnostic_bundle_path || undefined,
     });
+    acknowledgeTerminalSession(ownerSessionId);
   };
 
   const dispatch = (ownerSessionId: string, event: RecordingEvent) => {
@@ -519,7 +608,11 @@ export function RecordingView({
       case "preflight":
         setPreflight(event.result);
         if (!event.result.strict_eligible) {
-          setError(`Strict preflight blocked: ${event.result.failure_codes.join(", ")}`);
+          setError(
+            event.result.version === 3
+              ? recordingV3FailureSummary(event.result)
+              : `Strict preflight blocked: ${event.result.failure_codes.join(", ")}`,
+          );
         }
         break;
       case "readiness":
@@ -553,6 +646,72 @@ export function RecordingView({
         break;
     }
   };
+  v3ReattachHandlersRef.current = {
+    dispatch,
+    fail: failRecording,
+    failQuality: failQualityRecording,
+    finalize: finalizeRecording,
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    void queryRecordingV3Sessions(projectFolder)
+      .then((snapshots) => {
+        if (cancelled || sessionRef.current || snapshots.length === 0) return;
+        const snapshot = snapshots[0];
+        const ownerSessionId = snapshot.id;
+        const session = { id: ownerSessionId } satisfies RecordingSessionId;
+        recordingContractVersionRef.current = 3;
+        sessionRef.current = session;
+        completedSessionRef.current = null;
+        startedAtRef.current = snapshot.started_at_ms;
+        pausedAtRef.current = snapshot.lifecycle === "paused" ? Date.now() : null;
+        lastHeartbeatRef.current = Date.now();
+        const recorder = useRecorderStore.getState();
+        recorder.setSession(ownerSessionId);
+        recorder.setPreflight(snapshot.preflight);
+        recorder.setElapsed(Math.max(0, Date.now() - snapshot.started_at_ms));
+        const handlers = v3ReattachHandlersRef.current;
+        if (!handlers) return;
+
+        if (snapshot.result?.status === "completed") {
+          handlers.finalize(ownerSessionId, snapshot.result);
+          return;
+        }
+        if (snapshot.result?.status === "quality_failed") {
+          handlers.failQuality(ownerSessionId, snapshot.result);
+          return;
+        }
+        if (snapshot.failure_message) {
+          handlers.fail(ownerSessionId, snapshot.failure_message);
+          return;
+        }
+
+        recorder.setStatus(
+          snapshot.lifecycle === "paused"
+            ? "paused"
+            : snapshot.lifecycle === "stopping"
+              ? "stopping"
+              : "recording",
+        );
+        void reattachRecordingV3(ownerSessionId, (event) =>
+          v3ReattachHandlersRef.current?.dispatch(ownerSessionId, event),
+        ).catch((reattachError) => {
+          if (!cancelled) {
+            v3ReattachHandlersRef.current?.fail(ownerSessionId, formatIpcError(reattachError));
+          }
+        });
+      })
+      .catch((queryError) => {
+        frontendLog.warn("RecordingView", "Recording V3 session query failed", {
+          error: queryError,
+          fields: { project_folder: projectFolder },
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectFolder]);
 
   const handleRecord = async () => {
     // Double-start guard. Synchronous status flip before any await so a
@@ -594,6 +753,18 @@ export function RecordingView({
         recordingDeliveryPolicy,
         recordingKnobs: prefs,
       } = useOutputPrefsStore.getState();
+      const strictV3 = recordingDeliveryPolicy === "strict";
+      if (strictV3 && !storyHasBrowser) {
+        throw new Error(recordingV3FailureMessage("target_unsupported"));
+      }
+      if (strictV3 && audioDeviceId) {
+        throw new Error(recordingV3FailureMessage("unsupported_audio_role"));
+      }
+      if (strictV3 && (storyViewport.width !== 960 || storyViewport.height !== 540)) {
+        throw new Error(
+          `${recordingV3FailureMessage("contract_mismatch")} Strict requires a 960×540 browser viewport.`,
+        );
+      }
       if (storyHasBrowser) {
         frontendLog.info("RecordingView", "browser recording viewport plan", {
           fields: {
@@ -630,7 +801,7 @@ export function RecordingView({
         const lease = await acquireRecordingPreview({
           appUrl,
           viewport: recordingViewport ?? storyViewport,
-          fps: prefs.fps,
+          fps: strictV3 ? 60 : prefs.fps,
           placement: recordingDisplay,
           reason: "recording-start",
         });
@@ -654,30 +825,38 @@ export function RecordingView({
       }
       let ownerSessionId: string | null = null;
       const pendingRecordingEvents: RecordingEvent[] = [];
-      const id = await startRecording(
-        {
-          project_folder: projectFolder,
-          target: recordingTarget,
-          width,
-          height,
-          fps: prefs.fps,
-          contract_version: 2,
-          delivery_policy: recordingDeliveryPolicy,
-          audio_device_id: audioDeviceId ?? undefined,
-          include_cursor: includeCursor,
-          output_resolution: recordingOutputResolutionForStart(prefs, activePreset),
-          fit_mode: prefs.fit,
-          pad_color: prefs.pad,
-          quality_preset: prefs.quality,
-          scale_algo: "lanczos",
-          frame_crop: frameCrop,
-        },
-        (event) => {
-          if (ownerSessionId) dispatch(ownerSessionId, event);
-          else pendingRecordingEvents.push(event);
-        },
-      );
+      const recordingArgs: StartRecordingArgs = {
+        project_folder: projectFolder,
+        target: recordingTarget,
+        width,
+        height,
+        fps: strictV3 ? 60 : prefs.fps,
+        contract_version: strictV3 ? 3 : 2,
+        intent: strictV3 ? "strict" : undefined,
+        delivery_policy: recordingDeliveryPolicy,
+        capture_contract: strictV3 ? recordingV3CaptureContract(width, height) : undefined,
+        audio_device_id: strictV3 ? undefined : (audioDeviceId ?? undefined),
+        include_cursor: strictV3 ? false : includeCursor,
+        output_resolution: recordingOutputResolutionForStart(prefs, activePreset),
+        fit_mode: prefs.fit,
+        pad_color: prefs.pad,
+        quality_preset: prefs.quality,
+        scale_algo: "lanczos",
+        frame_crop: frameCrop,
+      };
+      if (strictV3) {
+        const capability = await probeRecordingV3Capability(recordingArgs);
+        setPreflight(capability);
+        if (!capability.strict_eligible) {
+          throw new Error(recordingV3FailureSummary(capability));
+        }
+      }
+      const id = await startRecording(recordingArgs, (event) => {
+        if (ownerSessionId) dispatch(ownerSessionId, event);
+        else pendingRecordingEvents.push(event);
+      });
       ownerSessionId = sessionKey(id);
+      recordingContractVersionRef.current = strictV3 ? 3 : 2;
       sessionRef.current = id;
       completedSessionRef.current = null;
       previewSessionRef.current = ownerSessionId;
@@ -967,8 +1146,10 @@ export function RecordingView({
       return {
         label: "Start recording",
         onClick: () => void handleRecord(),
-        disabled: !canRecordDisplay || isOutputBlocked,
-        title: !canRecordDisplay ? "Resolve permissions and select a capture target" : undefined,
+        disabled: !canRecordDisplay || isOutputBlocked || strictUnavailableReason !== null,
+        title: !canRecordDisplay
+          ? "Resolve permissions and select a capture target"
+          : (strictUnavailableReason ?? undefined),
       };
     }
     if (status === "recording") {
@@ -1126,13 +1307,25 @@ export function RecordingView({
             </span>
             <span className="text-[var(--color-fg-secondary)]">
               {preflight.backend_id} {preflight.backend_version}
-              {preflight.certification ? ` · ${preflight.certification.id}` : " · uncertified"}
+              {preflight.version === 3
+                ? preflight.matched_profile
+                  ? ` · ${preflight.matched_profile.profile_id}`
+                  : " · uncertified"
+                : preflight.certification
+                  ? ` · ${preflight.certification.id}`
+                  : " · uncertified"}
             </span>
           </div>
           <span className="font-mono text-[11px] text-[var(--color-fg-secondary)]">
             {liveEvidence
-              ? `${liveEvidence.encoder_acked_frames}/${liveEvidence.expected_slots} committed`
-              : preflight.failure_codes.join(", ") || "60/1 · 1920×1080"}
+              ? `${
+                  liveEvidence.version === 3
+                    ? liveEvidence.native_commits
+                    : liveEvidence.encoder_acked_frames
+                }/${liveEvidence.expected_slots} committed`
+              : preflight.version === 3 && preflight.failure_codes.length > 0
+                ? recordingV3FailureSummary(preflight)
+                : preflight.failure_codes.join(", ") || "60/1 · 1920×1080"}
           </span>
         </div>
       ) : null}
@@ -1144,9 +1337,10 @@ export function RecordingView({
               Strict take was not published
             </div>
             <div className="truncate text-[var(--color-fg-secondary)]">
-              {qualityFailure.cadence_evidence.failure_codes
-                .concat(qualityFailure.quality_evidence.failure_codes)
-                .join(", ") || "Verification failed"}
+              {[
+                ...qualityFailure.cadence_evidence.failure_codes,
+                ...qualityFailure.quality_evidence.failure_codes,
+              ].join(", ") || "Verification failed"}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -1262,7 +1456,9 @@ export function RecordingView({
           {/* Primary action strip */}
           <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-3">
             <div className="text-[11px] text-[var(--color-fg-muted)]">
-              {status === "idle" && canRecord ? (
+              {status === "idle" && strictUnavailableReason ? (
+                <span className="text-[var(--color-danger)]">{strictUnavailableReason}</span>
+              ) : status === "idle" && canRecord ? (
                 <span>Ready · {steps.length} steps</span>
               ) : status === "idle" && !canRecord ? (
                 <span>Resolve permissions to record</span>
@@ -1353,6 +1549,12 @@ export function RecordingView({
               <SettingsRow k="Target" v={captureTarget ? "Selected" : "Choose target"} />
               <SettingsRow k="Audio" v={audioDeviceId ? "Enabled" : "Video only"} />
               <SettingsRow k="Output" v={isOutputBlocked ? "Needs attention" : "Ready"} />
+              {recordingDeliveryPolicy === "strict" ? (
+                <SettingsRow
+                  k="Strict"
+                  v={strictUnavailableReason ? "Blocked" : "Ready to probe"}
+                />
+              ) : null}
             </div>
           </section>
 

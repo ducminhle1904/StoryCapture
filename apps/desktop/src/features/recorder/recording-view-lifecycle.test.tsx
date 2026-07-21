@@ -1,3 +1,7 @@
+import type {
+  RecordingPreflightV3Dto,
+  RecordingResultV3,
+} from "@storycapture/shared-types/recording-v2";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -5,6 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   startRecording: vi.fn(),
   stopRecording: vi.fn(),
+  probeRecordingV3Capability: vi.fn(),
+  queryRecordingV3Sessions: vi.fn(),
+  reattachRecordingV3: vi.fn(),
+  acknowledgeRecordingV3: vi.fn(),
   launchAutomation: vi.fn(),
   listCaptureTargets: vi.fn(),
   getCaptureTarget: vi.fn(),
@@ -33,7 +41,11 @@ vi.mock("@/ipc/capture", () => ({
   relaunchApp: vi.fn(),
 }));
 vi.mock("@/ipc/encode", () => ({
+  acknowledgeRecordingV3: mocks.acknowledgeRecordingV3,
   pauseRecording: vi.fn(),
+  probeRecordingV3Capability: mocks.probeRecordingV3Capability,
+  queryRecordingV3Sessions: mocks.queryRecordingV3Sessions,
+  reattachRecordingV3: mocks.reattachRecordingV3,
   resumeRecording: vi.fn(),
   startRecording: mocks.startRecording,
   stopRecording: mocks.stopRecording,
@@ -106,6 +118,95 @@ const targets = {
   windows: [],
 };
 
+const v3Preflight = {
+  version: 3,
+  intent: "strict",
+  backend_id: "electron_offscreen_shared_texture_v3",
+  backend_version: "3.0.0",
+  addon_protocol_version: 3,
+  platform: "darwin",
+  arch: "arm64",
+  hardware_model: "Mac17,2",
+  hardware_chip: "Apple M5",
+  os_build: "25F84",
+  manifest_id: "manifest-1",
+  matched_profile: null,
+  source_rate: {
+    measured_fps: { numerator: 60, denominator: 1 },
+    source_presentations: 60,
+    sequence_gaps: 0,
+    stale_reuses: 0,
+    probe_duration_ms: 1_000,
+  },
+  storage: {
+    estimated_bytes_per_second: 1,
+    required_bytes_for_ten_minutes: 600,
+    available_bytes: 10_000,
+    reserve_bytes: 1_000,
+  },
+  native_probe_passed: true,
+  permissions_granted: true,
+  strict_eligible: true,
+  failure_codes: [],
+} satisfies RecordingPreflightV3Dto;
+
+const v3QualityFailure = {
+  version: 3,
+  status: "quality_failed",
+  delivery_policy: "strict",
+  guarantee_boundary: "electron_offscreen_delivery",
+  certification_profile: null,
+  bundle_path: "/tmp/demo/exports/v3-failed.sc-recording",
+  output_path: null,
+  diagnostic_bundle_path: "/tmp/demo/exports/v3-failed.sc-recording",
+  duration_ms: 1_000,
+  bytes: 1,
+  master_path: null,
+  proxy_path: null,
+  cadence_evidence: {
+    version: 3,
+    guarantee_boundary: "electron_offscreen_delivery",
+    source_ordinal_kind: "electron_frame_count",
+    requested_fps: { numerator: 60, denominator: 1 },
+    source_fps: { numerator: 60, denominator: 1 },
+    stream_time_base: { numerator: 1, denominator: 60 },
+    active_duration_us: 1_000_000,
+    expected_slots: 60,
+    source_presentations: 60,
+    delivery_frames: 60,
+    native_commits: 60,
+    encoded_frames: 60,
+    artifact_decoded_frames: 0,
+    source_ordinal_gaps: 0,
+    source_timestamp_regressions: 0,
+    delivery_duplicates: 0,
+    native_lease_overflows: 0,
+    native_backpressure_events: 0,
+    native_deadline_misses: 0,
+    artifact_pts_gaps: 0,
+    artifact_pts_duplicates: 0,
+    full_decode_succeeded: false,
+    verdict: "failed",
+    failure_codes: ["artifact_verification_failed"],
+  },
+  quality_evidence: {
+    version: 3,
+    measurement_scope: "runtime_integrity",
+    reference_identity: null,
+    evaluated_frames: 0,
+    full_frame_luma_ssim: null,
+    text_edge_roi_ssim: null,
+    p01_edge_contrast_retention: null,
+    edge_spread_increase_px: null,
+    overlay_geometry_delta_px: null,
+    color_channel_delta: null,
+    lossless_master_hashes_match: false,
+    certification_verdict: null,
+    verdict: "failed",
+    failure_codes: ["artifact_verification_failed"],
+  },
+} satisfies RecordingResultV3;
+
 beforeEach(() => {
   useRecorderStore.getState().reset();
   useRecorderStore.setState({
@@ -118,6 +219,10 @@ beforeEach(() => {
   mocks.stopRecording
     .mockReset()
     .mockResolvedValue({ output_path: "/tmp/stopped.mp4", duration_ms: 1 });
+  mocks.probeRecordingV3Capability.mockReset();
+  mocks.queryRecordingV3Sessions.mockReset().mockResolvedValue([]);
+  mocks.reattachRecordingV3.mockReset().mockResolvedValue(null);
+  mocks.acknowledgeRecordingV3.mockReset().mockResolvedValue(true);
   mocks.launchAutomation.mockReset().mockReturnValue(new Promise(() => {}));
   mocks.acquireRecordingPreview.mockReset();
   mocks.parseStory.mockReset().mockResolvedValue({ ast: { scenes: [] } });
@@ -377,6 +482,71 @@ describe("RecordingView take lifecycle", () => {
     await waitFor(() => expect(useRecorderStore.getState().status).toBe("quality_failed"));
     expect(mocks.publishCompletedRecording).not.toHaveBeenCalled();
     expect(screen.getByText("Strict take was not published")).toBeInTheDocument();
+  });
+
+  it("reattaches an active V3 host session after a renderer reload without stopping it", async () => {
+    mocks.queryRecordingV3Sessions.mockResolvedValue([
+      {
+        version: 3,
+        id: "take-v3-active",
+        project_folder: "/tmp/demo",
+        started_at_ms: Date.now() - 500,
+        lifecycle: "recording",
+        preflight: v3Preflight,
+        result: null,
+        failure_codes: [],
+        failure_message: null,
+        updated_at: new Date().toISOString(),
+      },
+    ]);
+
+    const view = render(
+      <MemoryRouter>
+        <RecordingView
+          projectId="project-1"
+          projectName="Demo"
+          projectFolder="/tmp/demo"
+          storySource={'meta { app: "https://example.com" viewport: 960x540 }'}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(useRecorderStore.getState().status).toBe("recording"));
+    expect(mocks.reattachRecordingV3).toHaveBeenCalledWith("take-v3-active", expect.any(Function));
+    view.unmount();
+    expect(mocks.stopRecording).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges a reattached V3 quality failure without publishing it", async () => {
+    mocks.queryRecordingV3Sessions.mockResolvedValue([
+      {
+        version: 3,
+        id: "take-v3-quality-failed",
+        project_folder: "/tmp/demo",
+        started_at_ms: Date.now() - 1_000,
+        lifecycle: "terminal_unacknowledged",
+        preflight: v3Preflight,
+        result: v3QualityFailure,
+        failure_codes: ["artifact_verification_failed"],
+        failure_message: null,
+        updated_at: new Date().toISOString(),
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <RecordingView
+          projectId="project-1"
+          projectName="Demo"
+          projectFolder="/tmp/demo"
+          storySource={'meta { app: "https://example.com" viewport: 960x540 }'}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(useRecorderStore.getState().status).toBe("quality_failed"));
+    expect(mocks.publishCompletedRecording).not.toHaveBeenCalled();
+    expect(mocks.acknowledgeRecordingV3).toHaveBeenCalledWith("take-v3-quality-failed");
   });
 
   it("finalizes from the returned automation outcome when channel events are missing", async () => {

@@ -23,7 +23,8 @@ through `CLAUDE.md`.
     `apps/desktop/electron/ipc/handlers.ts`,
     `apps/desktop/electron/ipc/*.ts`,
     `apps/desktop/electron/ipc/plugin/*.ts`.
-  - Native capture helpers: `apps/desktop/native/macos-screen-capture/` and
+  - Native capture helpers: `apps/desktop/native/macos-screen-capture/`,
+    `apps/desktop/native/macos-recording-v3/`, and
     `apps/desktop/native/windows-capture/`.
 - `apps/web`: Next.js web companion with App Router, tRPC, Prisma, auth, R2,
   analytics, templates, and desktop sync.
@@ -38,7 +39,7 @@ through `CLAUDE.md`.
 - `packages/story-dsl`: `.story` AST vocabulary and CodeMirror language support.
   Runtime parsing/simulation still lives in desktop IPC/host code.
 - `packages/shared-types`: browser presets, IPC compatibility types, Recording
-  V2 contracts, web account types, and checked-in generated effect types.
+  V2/V3 contracts, web account types, and checked-in generated effect types.
 - `packages/ui`: shared tokens, `claude-design` CSS, and `Sc*` primitives.
 - `packages/config`: shared TypeScript base config.
 - `packages/glob-compat`, `packages/lodash-isequal-compat`, and
@@ -63,6 +64,7 @@ through `CLAUDE.md`.
   `release-electron/`, `output/`, `tmp/`, `scripts/build-ffmpeg/build/`.
 - Native helper build output:
   `apps/desktop/native/macos-screen-capture/.build/`,
+  `apps/desktop/native/macos-recording-v3/.build/`,
   `apps/desktop/native/windows-capture/build/`, and
   `apps/desktop/native/windows-capture/bin/`.
 - Generated Prisma client: `apps/web/src/generated/prisma/**`.

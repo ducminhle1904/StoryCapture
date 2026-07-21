@@ -41,11 +41,19 @@
 - Desktop Electron build: `pnpm --dir apps/desktop run build`.
 - Desktop renderer build: `pnpm --dir apps/desktop renderer:build`.
 - Native capture helper build: `pnpm --dir apps/desktop native:build`.
+- Recording V3 native addon protocol build/probe:
+  `pnpm --dir apps/desktop run native:build:recording-v3`.
 - Verify helpers in an existing unpacked package:
   `pnpm --dir apps/desktop native:verify:packaged`.
 - Build an unpacked package and run the native helper signature/protocol gate:
   `pnpm --dir apps/desktop test:e2e:recording-v2-helper`.
 - Packaged recording/export parity: `pnpm --dir apps/desktop run test:e2e:export`.
+- Packaged Recording V3 production proof:
+  `pnpm --dir apps/desktop run test:e2e:recording-v3-production-probe`.
+- Packaged Recording V3 60-second certification:
+  `pnpm --dir apps/desktop run test:e2e:recording-v3-60s`.
+- Recording V3 protected soak, after the certification executable is already
+  packaged: `pnpm --dir apps/desktop run test:e2e:recording-v3-soak`.
 - Web build: `pnpm --dir apps/web build`.
 - Story DSL typecheck: `pnpm --dir packages/story-dsl typecheck`.
 
@@ -72,11 +80,15 @@
 ## CI Mapping
 
 - Primary workflow: `.github/workflows/ci.yml`.
+- Recording V3 trusted workflows:
+  `.github/workflows/recording-v3-nightly.yml` and
+  `.github/workflows/recording-v3-release.yml`.
 - Toolchain action: `.github/actions/setup-toolchain/action.yml`.
 - Read `.github/workflows/ci.yml` for current runner images. The macOS job runs:
   - `pnpm install --frozen-lockfile`
   - `pnpm typecheck`
   - `pnpm --dir apps/desktop exec vitest run`
+  - `pnpm --dir apps/desktop run native:build:recording-v3`
   - `pnpm --dir apps/desktop run test:e2e:cursor-sync`
   - `pnpm --dir apps/desktop run test:e2e:media`
   - `pnpm --dir packages/ui test`
@@ -86,6 +98,11 @@
 - `electron:build` and `test:e2e:export` build the platform native helper, but
   the current CI workflow does not run the complete
   `test:e2e:recording-v2-helper` verification gate.
+- The Recording V3 nightly workflow is trusted-main only and requires the same
+  commit's normal CI check to pass. The protected release workflow is
+  manual-only, restricted to trusted main/release refs and a protected GitHub
+  Environment; it is the only workflow allowed to consume certification and
+  Apple signing keys.
 - The Ubuntu `prisma-postgres-smoke` job bootstraps the current schema into a
   disposable PostgreSQL 17 service, then runs adapter CRUD and seed smokes.
 

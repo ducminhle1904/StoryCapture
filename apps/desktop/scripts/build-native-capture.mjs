@@ -19,6 +19,11 @@ function run(command, args) {
 
 if (process.platform === "darwin") {
   await run(process.execPath, ["native/macos-screen-capture/build-helper.mjs"]);
+  await run(process.execPath, [
+    "scripts/build-recording-v3-shared-texture-probe.mjs",
+    "--native-only",
+  ]);
+  await run(process.execPath, ["scripts/build-recording-v3-native-addon.mjs"]);
 } else if (process.platform === "win32") {
   const architecture = process.arch === "arm64" ? "arm64" : "x64";
   const args = [
