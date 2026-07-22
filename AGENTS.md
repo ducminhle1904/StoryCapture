@@ -165,6 +165,8 @@ file explicitly says otherwise.
   `apps/desktop/src/features/recorder/recording-view.tsx`.
 - Strict Recording V2/V3: start with
   `packages/shared-types/src/{recording-v2,recording-v3}.ts`, then read
+  `apps/desktop/src/features/recorder/recording-view.tsx` for renderer viewport
+  contract construction,
   `apps/desktop/electron/ipc/recording-certification-catalog.ts`,
   `apps/desktop/electron/ipc/capture-backend-v2-guard.ts`,
   `apps/desktop/electron/ipc/recording-strict-browser-lifecycle.ts`,
@@ -173,6 +175,7 @@ file explicitly says otherwise.
   `apps/desktop/electron/ipc/recording-v3-{runtime-preflight,capability,browser-backend,engine,native-addon,bundle-writer}.ts`,
   `apps/desktop/electron/ipc/recording-v3-certification-{manifest,evidence,quality}.ts`,
   `apps/desktop/electron/ipc/browser-capture-backend-v2.ts`,
+  `apps/desktop/electron/ipc/recording-master.ts`,
   `apps/desktop/electron/ipc/recording-master-pipeline.ts`,
   `apps/desktop/electron/ipc/recording-bundle.ts`, and
   `apps/desktop/electron/ipc/recording-quality-verifier.ts`. Native adapters are
@@ -249,8 +252,9 @@ file explicitly says otherwise.
 - Avoid generated/build/cache/artifact directories unless the task is
   specifically about them: `node_modules/`, `.turbo/`, `.next/`, `dist/`,
   `apps/desktop/dist-electron/`, `apps/desktop/.electron-dev/`,
-  `release-electron/`, `output/`, `tmp/`, `scripts/build-ffmpeg/build/`, and
-  generated Prisma output.
+  `release-electron/`, `output/`, `tmp/`, `scripts/build-ffmpeg/build/`,
+  `apps/desktop/recording-v3-certification-artifacts/`, and generated Prisma
+  output.
 - After code changes, update agent docs when the change affects future agent
   routing, workflows, commands, architecture, generated-file rules, or module
   ownership; keep `AGENTS.md` concise and put detail in `docs/agent/` or the

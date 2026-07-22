@@ -6,6 +6,7 @@ import {
   type RecordingBundleV3,
   type RecordingCadenceEvidenceV3,
   type RecordingCertifiedProfileV3,
+  type RecordingDimensionsV2,
   type RecordingFrameLedgerEntryV3,
   type RecordingQualityEvidenceV3,
   readExportRecordingSource,
@@ -24,6 +25,10 @@ import {
   recordingCertificationManifestValidAt,
   recordingCertifiedProfileEnabledAt,
 } from "@storycapture/shared-types/recording-v2";
+import {
+  recordingV3DimensionsForViewport,
+  validateRecordingV3Dimensions,
+} from "@storycapture/shared-types/recording-v3";
 import { describe, expect, it } from "vitest";
 
 const HASH = "a".repeat(64);
@@ -39,6 +44,17 @@ const DIMENSIONS = {
   requested_output_width: 1920,
   requested_output_height: 1080,
 } as const;
+
+function developmentDimensions(
+  width: number,
+  height: number,
+  overrides: Partial<RecordingDimensionsV2> = {},
+): RecordingDimensionsV2 {
+  return {
+    ...recordingV3DimensionsForViewport("development", { width, height }),
+    ...overrides,
+  };
+}
 
 function profile(
   overrides: Partial<RecordingCertifiedProfileV3> = {},
@@ -476,6 +492,8 @@ describe("Recording V3 contract", () => {
       diagnostic_bundle_path: null,
       duration_ms: 34,
       bytes: 100,
+      output_width: 1920,
+      output_height: 1080,
       master_path: "/bundle/master/video.mkv",
       proxy_path: "/bundle/proxy/video.mp4",
       cadence_evidence: cadence(),
@@ -494,9 +512,65 @@ describe("Recording V3 contract", () => {
       certification_profile: null,
     } as const;
     expect(readRecordingResult(developmentResult)).toEqual(developmentResult);
+    expect(readRecordingResult({ ...developmentResult, output_width: 0 })).toBeNull();
     expect(
       readRecordingResult({ ...developmentResult, recording_mode: "certified" }),
     ).toBeNull();
+  });
+
+  it("validates exact Strict and bounded Development dimensions", () => {
+    const requestFor = (intent: "strict" | "development", dimensions: RecordingDimensionsV2) => ({
+      version: 3 as const,
+      intent,
+      target_class: "browser" as const,
+      requested_fps: FPS,
+      dimensions,
+      cursor_policy: "sidecar_reconstructed" as const,
+      audio_roles: [],
+    });
+
+    expect(validateRecordingV3Dimensions("strict", DIMENSIONS)).toEqual({
+      valid: true,
+      detail: null,
+    });
+    expect(readRecordingPreflightV3Request(requestFor("strict", DIMENSIONS))).not.toBeNull();
+
+    for (const [width, height] of [
+      [960, 540],
+      [1280, 720],
+      [1280, 800],
+      [1440, 900],
+      [1920, 1080],
+    ]) {
+      const dimensions = developmentDimensions(width, height);
+      expect(validateRecordingV3Dimensions("development", dimensions)).toEqual({
+        valid: true,
+        detail: null,
+      });
+      expect(readRecordingPreflightV3Request(requestFor("development", dimensions))).not.toBeNull();
+    }
+
+    const invalidDevelopmentDimensions = [
+      developmentDimensions(1279, 720),
+      developmentDimensions(318, 240),
+      developmentDimensions(1922, 1080),
+      developmentDimensions(320, 238),
+      developmentDimensions(1920, 1082),
+      developmentDimensions(1280, 800, { capture_dpr: 2 }),
+      developmentDimensions(1280, 800, { physical_width: 1278 }),
+      developmentDimensions(1280, 800, { requested_output_height: 720 }),
+    ];
+    for (const dimensions of invalidDevelopmentDimensions) {
+      const validation = validateRecordingV3Dimensions("development", dimensions);
+      expect(validation.valid).toBe(false);
+      expect(validation.detail).toContain("received");
+      expect(readRecordingPreflightV3Request(requestFor("development", dimensions))).toBeNull();
+    }
+
+    expect(validateRecordingV3Dimensions("strict", developmentDimensions(1280, 720)).valid).toBe(
+      false,
+    );
+    expect(validateRecordingV3Dimensions("development", DIMENSIONS).valid).toBe(false);
   });
 
   it("uses intent-only preflight requests and rejects unknown future info versions", () => {
@@ -510,9 +584,16 @@ describe("Recording V3 contract", () => {
       audio_roles: ["microphone"],
     } as const;
     expect(readRecordingPreflightV3Request(request)).toEqual(request);
-    expect(readRecordingPreflightV3Request({ ...request, intent: "development" })).toEqual({
+    expect(
+      readRecordingPreflightV3Request({
+        ...request,
+        intent: "development",
+        dimensions: developmentDimensions(1280, 800),
+      }),
+    ).toEqual({
       ...request,
       intent: "development",
+      dimensions: developmentDimensions(1280, 800),
     });
     expect(readRecordingPreflightV3Request({ ...request, intent: "best_effort" })).toBeNull();
 

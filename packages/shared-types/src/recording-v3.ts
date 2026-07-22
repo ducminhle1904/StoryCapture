@@ -20,6 +20,23 @@ export const RECORDING_CERTIFICATION_SIGNATURE_ALGORITHM_V3 = "ed25519" as const
 export const RECORDING_GUARANTEE_BOUNDARY_V3 = "electron_offscreen_delivery" as const;
 export const RECORDING_SOURCE_ORDINAL_KIND_V3 = "electron_frame_count" as const;
 export const RECORDING_CURSOR_POLICY_V3 = "sidecar_reconstructed" as const;
+export const RECORDING_V3_STRICT_DIMENSIONS = {
+  logical_width: 960,
+  logical_height: 540,
+  capture_dpr: 2,
+  physical_width: 1920,
+  physical_height: 1080,
+  requested_output_width: 1920,
+  requested_output_height: 1080,
+} as const satisfies RecordingDimensionsV2;
+export const RECORDING_V3_DEVELOPMENT_DIMENSION_LIMITS = {
+  minimum_width: 320,
+  maximum_width: 1920,
+  minimum_height: 240,
+  maximum_height: 1080,
+  maximum_physical_pixels: 1920 * 1080,
+  capture_dpr: 1,
+} as const;
 
 export type RecordingGuaranteeBoundaryV3 = typeof RECORDING_GUARANTEE_BOUNDARY_V3;
 export type RecordingSourceOrdinalKindV3 = typeof RECORDING_SOURCE_ORDINAL_KIND_V3;
@@ -29,6 +46,11 @@ export type RecordingAudioRoleV3 = "microphone" | "system";
 export type RecordingV3Intent = "strict" | "development";
 export type RecordingV3DeliveryPolicy = "strict" | "development";
 export type RecordingV3Mode = "certified" | "uncertified_development";
+
+export interface RecordingV3DimensionValidation {
+  valid: boolean;
+  detail: string | null;
+}
 
 export type RecordingFailureCodeV3 =
   | "source_metadata_missing"
@@ -296,6 +318,8 @@ export interface RecordingResultV3Base {
   diagnostic_bundle_path: string | null;
   duration_ms: number;
   bytes: number;
+  output_width: number;
+  output_height: number;
   master_path: string | null;
   proxy_path: string | null;
   cadence_evidence: RecordingCadenceEvidenceV3;
@@ -612,6 +636,85 @@ function isDimensions(value: unknown): value is RecordingDimensionsV2 {
   );
 }
 
+function formatRecordingV3Dimensions(dimensions: RecordingDimensionsV2): string {
+  return `${dimensions.logical_width}×${dimensions.logical_height} @${dimensions.capture_dpr}x -> ${dimensions.requested_output_width}×${dimensions.requested_output_height}`;
+}
+
+export function recordingV3DimensionsForViewport(
+  intent: RecordingV3Intent,
+  viewport: { width: number; height: number },
+): RecordingDimensionsV2 {
+  const captureDpr =
+    intent === "strict" ? RECORDING_V3_STRICT_DIMENSIONS.capture_dpr : 1;
+  const physicalWidth = viewport.width * captureDpr;
+  const physicalHeight = viewport.height * captureDpr;
+  return {
+    logical_width: viewport.width,
+    logical_height: viewport.height,
+    capture_dpr: captureDpr,
+    physical_width: physicalWidth,
+    physical_height: physicalHeight,
+    requested_output_width: physicalWidth,
+    requested_output_height: physicalHeight,
+  };
+}
+
+export function validateRecordingV3Dimensions(
+  intent: RecordingV3Intent,
+  dimensions: RecordingDimensionsV2,
+): RecordingV3DimensionValidation {
+  const received = formatRecordingV3Dimensions(dimensions);
+  if (!isDimensions(dimensions)) {
+    return {
+      valid: false,
+      detail: `Recording V3 dimensions must be positive finite integers; received ${received}.`,
+    };
+  }
+
+  if (intent === "strict") {
+    const valid = Object.entries(RECORDING_V3_STRICT_DIMENSIONS).every(
+      ([key, value]) => dimensions[key as keyof RecordingDimensionsV2] === value,
+    );
+    return valid
+      ? { valid: true, detail: null }
+      : {
+          valid: false,
+          detail: `Strict Recording V3 requires ${formatRecordingV3Dimensions(RECORDING_V3_STRICT_DIMENSIONS)}; received ${received}.`,
+        };
+  }
+
+  const limits = RECORDING_V3_DEVELOPMENT_DIMENSION_LIMITS;
+  const logicalDimensionsAreEven =
+    dimensions.logical_width % 2 === 0 && dimensions.logical_height % 2 === 0;
+  const logicalDimensionsAreBounded =
+    dimensions.logical_width >= limits.minimum_width &&
+    dimensions.logical_width <= limits.maximum_width &&
+    dimensions.logical_height >= limits.minimum_height &&
+    dimensions.logical_height <= limits.maximum_height;
+  const dimensionsAreConsistent =
+    dimensions.capture_dpr === limits.capture_dpr &&
+    dimensions.physical_width === dimensions.logical_width &&
+    dimensions.physical_height === dimensions.logical_height &&
+    dimensions.requested_output_width === dimensions.physical_width &&
+    dimensions.requested_output_height === dimensions.physical_height;
+  const physicalPixelsAreBounded =
+    dimensions.physical_width * dimensions.physical_height <= limits.maximum_physical_pixels;
+
+  if (
+    logicalDimensionsAreEven &&
+    logicalDimensionsAreBounded &&
+    dimensionsAreConsistent &&
+    physicalPixelsAreBounded
+  ) {
+    return { valid: true, detail: null };
+  }
+
+  return {
+    valid: false,
+    detail: `Dev Recording V3 requires an even viewport from ${limits.minimum_width}×${limits.minimum_height} through ${limits.maximum_width}×${limits.maximum_height} at DPR ${limits.capture_dpr}, matching physical/output dimensions, and at most ${limits.maximum_physical_pixels} physical pixels; received ${received}.`,
+  };
+}
+
 function isMetric(value: unknown): value is RecordingQualityMetricV2 {
   return (
     isRecord(value) &&
@@ -837,6 +940,7 @@ export function readRecordingPreflightV3Request(
   )
     return null;
   if (!isExactStrictFrameRate(value.requested_fps) || !isDimensions(value.dimensions)) return null;
+  if (!validateRecordingV3Dimensions(value.intent, value.dimensions).valid) return null;
   if (value.cursor_policy !== RECORDING_CURSOR_POLICY_V3) return null;
   if (
     !Array.isArray(value.audio_roles) ||
@@ -1284,7 +1388,9 @@ export function readRecordingResultV3(value: unknown): RecordingResultV3 | null 
   if (
     !isNonEmptyString(value.bundle_path) ||
     !isFiniteNonNegative(value.duration_ms) ||
-    !isFiniteNonNegative(value.bytes)
+    !isFiniteNonNegative(value.bytes) ||
+    !isPositiveInteger(value.output_width) ||
+    !isPositiveInteger(value.output_height)
   )
     return null;
   if (value.master_path !== null && !isNonEmptyString(value.master_path)) return null;

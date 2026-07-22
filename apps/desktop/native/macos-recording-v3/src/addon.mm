@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <cstdint>
 #include <cstring>
@@ -35,6 +36,10 @@ constexpr char kProtocolHash[] =
 constexpr size_t kMaxQueuedLeases = 1;
 constexpr size_t kFramePoolSlots = 2;
 constexpr size_t kMaxCompletedReceipts = 8;
+constexpr uint32_t kMaximumWidth = 1920;
+constexpr uint32_t kMaximumHeight = 1080;
+constexpr size_t kMaximumPhysicalPixels = static_cast<size_t>(kMaximumWidth) * kMaximumHeight;
+constexpr size_t kBgraBytesPerPixel = 4;
 constexpr double kNativeDeadlineMs = 16.67;
 constexpr auto kLeaseAdmissionDeadline = std::chrono::microseconds(11'110);
 constexpr auto kPauseDrainDeadline = std::chrono::seconds(1);
@@ -86,6 +91,20 @@ bool WriteAll(int fd, const uint8_t* bytes, size_t length) {
   return true;
 }
 
+bool FrameByteCount(uint32_t width, uint32_t height, size_t* frame_bytes) {
+  if (frame_bytes == nullptr || width == 0 || height == 0 || width > kMaximumWidth ||
+      height > kMaximumHeight) {
+    return false;
+  }
+  const size_t physical_pixels = static_cast<size_t>(width) * static_cast<size_t>(height);
+  if (physical_pixels > kMaximumPhysicalPixels ||
+      physical_pixels > std::numeric_limits<size_t>::max() / kBgraBytesPerPixel) {
+    return false;
+  }
+  *frame_bytes = physical_pixels * kBgraBytesPerPixel;
+  return true;
+}
+
 std::string Sha256(const std::vector<uint8_t>& bytes) {
   unsigned char digest[CC_SHA256_DIGEST_LENGTH];
   CC_SHA256(bytes.data(), static_cast<CC_LONG>(bytes.size()), digest);
@@ -99,11 +118,10 @@ class RecordingSession {
  public:
   RecordingSession(uint32_t width,
                    uint32_t height,
+                   size_t frame_bytes,
                    std::string ffmpeg_path,
                    std::string output_path)
-      : width_(width),
-        height_(height),
-        frame_bytes_(static_cast<size_t>(width) * static_cast<size_t>(height) * 4) {
+      : width_(width), height_(height), frame_bytes_(frame_bytes) {
     slots_.resize(kFramePoolSlots);
     for (size_t index = 0; index < slots_.size(); ++index) {
       slots_[index].bytes.resize(frame_bytes_);
@@ -381,15 +399,18 @@ class RecordingSession {
 
       bool copied = false;
       bool locked_surface = false;
+      size_t surface_width = 0;
+      size_t surface_height = 0;
+      size_t bytes_per_row = 0;
       auto& slot = slots_[slot_index];
       const IOReturn lock_result = IOSurfaceLock(lease.surface, kIOSurfaceLockReadOnly, nullptr);
       if (lock_result == kIOReturnSuccess) {
         locked_surface = true;
-        const size_t surface_width = IOSurfaceGetWidth(lease.surface);
-        const size_t surface_height = IOSurfaceGetHeight(lease.surface);
-        const size_t bytes_per_row = IOSurfaceGetBytesPerRow(lease.surface);
+        surface_width = IOSurfaceGetWidth(lease.surface);
+        surface_height = IOSurfaceGetHeight(lease.surface);
+        bytes_per_row = IOSurfaceGetBytesPerRow(lease.surface);
         const auto* base = static_cast<const uint8_t*>(IOSurfaceGetBaseAddress(lease.surface));
-        const size_t packed_row_bytes = static_cast<size_t>(width_) * 4;
+        const size_t packed_row_bytes = static_cast<size_t>(width_) * kBgraBytesPerPixel;
         if (surface_width == width_ && surface_height == height_ && bytes_per_row >= packed_row_bytes &&
             base != nullptr) {
           for (uint32_t row = 0; row < height_; ++row) {
@@ -412,7 +433,11 @@ class RecordingSession {
       --active_leases_;
       if (!copied) {
         free_slots_.push_back(slot_index);
-        SetFailureLocked("native_texture_lost", "IOSurface readback did not match 1920x1080 BGRA");
+        std::ostringstream reason;
+        reason << "IOSurface readback expected " << width_ << "x" << height_
+               << " BGRA; received " << surface_width << "x" << surface_height
+               << " with " << bytes_per_row << " bytes per row";
+        SetFailureLocked("native_texture_lost", reason.str());
         ReleaseQueuedLeasesLocked();
         readback_finished_ = true;
         condition_.notify_all();
@@ -860,14 +885,22 @@ napi_value Start(napi_env env, napi_callback_info info) {
   std::string ffmpeg_path;
   std::string output_path;
   if (!NamedNumber(env, args[0], "width", &width) || !NamedNumber(env, args[0], "height", &height) ||
-      width != 1920 || height != 1080) {
-    return ThrowTypeError(env, "Recording V3 requires exact 1920x1080 dimensions");
+      !std::isfinite(width) || !std::isfinite(height) || width != std::floor(width) ||
+      height != std::floor(height) || width <= 0 || height <= 0 || width > kMaximumWidth ||
+      height > kMaximumHeight) {
+    return ThrowTypeError(env, "Recording V3 dimensions must be positive integers within 1920x1080");
+  }
+  const auto session_width = static_cast<uint32_t>(width);
+  const auto session_height = static_cast<uint32_t>(height);
+  size_t frame_bytes = 0;
+  if (!FrameByteCount(session_width, session_height, &frame_bytes)) {
+    return ThrowTypeError(env, "Recording V3 dimensions exceed the 2073600 pixel boundary");
   }
   if (!NamedString(env, args[0], "ffmpegPath", &ffmpeg_path) || ffmpeg_path.empty() ||
       !NamedString(env, args[0], "outputPath", &output_path) || output_path.empty()) {
     return ThrowTypeError(env, "ffmpegPath and outputPath are required");
   }
-  auto* session = new RecordingSession(static_cast<uint32_t>(width), static_cast<uint32_t>(height),
+  auto* session = new RecordingSession(session_width, session_height, frame_bytes,
                                        std::move(ffmpeg_path), std::move(output_path));
   if (!session->started()) {
     napi_value result = ThrowSessionError(env, session);

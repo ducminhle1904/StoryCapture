@@ -7,6 +7,7 @@ import {
   RecordingV3NativeSession,
   recordingV3NativeAddonPath,
   recordingV3NativeAddonPathForRuntime,
+  recordingV3NativeDimensionsSupported,
 } from "./recording-v3-native-addon";
 
 const hash = "a".repeat(64);
@@ -141,6 +142,47 @@ describe("Recording V3 native addon wrapper", () => {
     expect(session.abort().receipts).toHaveLength(1);
     expect(stop).toHaveBeenCalledOnce();
     expect(abort).not.toHaveBeenCalled();
+  });
+
+  it("admits bounded session dimensions and rejects unsafe native starts", () => {
+    expect(recordingV3NativeDimensionsSupported(1280, 800)).toBe(true);
+    expect(recordingV3NativeDimensionsSupported(1920, 1080)).toBe(true);
+    expect(recordingV3NativeDimensionsSupported(0, 800)).toBe(false);
+    expect(recordingV3NativeDimensionsSupported(1280.5, 800)).toBe(false);
+    expect(recordingV3NativeDimensionsSupported(1922, 1080)).toBe(false);
+    expect(recordingV3NativeDimensionsSupported(1920, 1082)).toBe(false);
+
+    const start = vi.fn(() => ({
+      submit: () => ({ nativeLeaseOrdinal: 0 }),
+      pause: stats,
+      resume: stats,
+      closeEpoch: stats,
+      drainReceipts: () => [],
+      stop: () => ({ stats: stats(), receipts: [] }),
+      abort: () => ({ stats: stats(), receipts: [] }),
+      getStats: stats,
+    }));
+    const bridge = new RecordingV3NativeBridge({
+      protocolVersion: 3,
+      protocolHash: "f444d47f4f6d2cc71b709dc4677593e5047b8a61e34c76d7190fead3cf899c42",
+      probe: () => ({
+        protocolVersion: 3,
+        protocolHash: "f444d47f4f6d2cc71b709dc4677593e5047b8a61e34c76d7190fead3cf899c42",
+        ioSurface: true,
+        nativeFfv1: true,
+        maxQueuedLeases: 1,
+        maxCompletedReceipts: 8,
+      }),
+      start,
+    } as never);
+    bridge.start({ width: 1280, height: 800, ffmpegPath: "/ffmpeg", outputPath: "/out" });
+    expect(start).toHaveBeenCalledWith(
+      expect.objectContaining({ width: 1280, height: 800 }),
+    );
+    expect(() =>
+      bridge.start({ width: 1922, height: 1080, ffmpegPath: "/ffmpeg", outputPath: "/out" }),
+    ).toThrowError(expect.objectContaining({ code: "contract_mismatch" }));
+    expect(start).toHaveBeenCalledOnce();
   });
 
   it("maps unknown native exceptions to addon crash", () => {

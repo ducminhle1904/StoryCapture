@@ -4,7 +4,13 @@ import type {
   RecordingPreflightV3Dto,
   StartRecordingArgs,
 } from "@storycapture/shared-types";
-import { recordingV3FailureMessage } from "@storycapture/shared-types/recording-v2";
+import {
+  RECORDING_V3_STRICT_DIMENSIONS,
+  type RecordingV3Intent,
+  recordingV3DimensionsForViewport,
+  recordingV3FailureMessage,
+  validateRecordingV3Dimensions,
+} from "@storycapture/shared-types/recording-v3";
 import { listen } from "@tauri-apps/api/event";
 import {
   AlertTriangle,
@@ -110,27 +116,27 @@ const initialPermissionReport: ScreenCapturePermissionReport = {
 };
 
 function recordingV3CaptureContract(
-  logicalWidth: number,
-  logicalHeight: number,
+  intent: RecordingV3Intent,
+  viewport: { width: number; height: number },
 ): RecordingCaptureContractV3 {
+  const dimensions =
+    intent === "strict"
+      ? { ...RECORDING_V3_STRICT_DIMENSIONS }
+      : recordingV3DimensionsForViewport(intent, viewport);
   return {
     version: 3,
     guarantee_boundary: "electron_offscreen_delivery",
     source_ordinal_kind: "electron_frame_count",
     target_class: "browser",
     exact_fps: { numerator: 60, denominator: 1 },
-    dimensions: {
-      logical_width: logicalWidth,
-      logical_height: logicalHeight,
-      capture_dpr: 2,
-      physical_width: logicalWidth * 2,
-      physical_height: logicalHeight * 2,
-      requested_output_width: 1920,
-      requested_output_height: 1080,
-    },
+    dimensions,
     cursor_policy: "sidecar_reconstructed",
     audio_roles: [],
   };
+}
+
+function formatRecordingV3Dimensions(dimensions: RecordingCaptureContractV3["dimensions"]): string {
+  return `${dimensions.logical_width}x${dimensions.logical_height} @${dimensions.capture_dpr}x -> ${dimensions.requested_output_width}x${dimensions.requested_output_height}`;
 }
 
 function recordingV3FailureSummary(preflight: RecordingPreflightV3Dto): string {
@@ -316,6 +322,19 @@ export function RecordingView({
   const storyHasBrowser = storyRecordingInfo.hasBrowser;
   const storyViewport = storyRecordingInfo.viewport;
   const storyInitialUrl = storyRecordingInfo.initialUrl;
+  const recordingV3DimensionPolicy = useMemo(() => {
+    const intent: RecordingV3Intent | null = recordingV3DevelopmentMode
+      ? "development"
+      : recordingDeliveryPolicy === "strict"
+        ? "strict"
+        : null;
+    if (!intent) return null;
+    const dimensions = recordingV3DimensionsForViewport(intent, storyViewport);
+    return {
+      dimensions,
+      validation: validateRecordingV3Dimensions(intent, dimensions),
+    };
+  }, [recordingDeliveryPolicy, recordingV3DevelopmentMode, storyViewport]);
   const selectedCaptureDims = useMemo(() => {
     const dims = storyHasBrowser
       ? { w: storyViewport.width, h: storyViewport.height }
@@ -338,8 +357,11 @@ export function RecordingView({
     if (permission !== "granted") return recordingV3FailureMessage("permission_denied");
     if (!storyHasBrowser) return recordingV3FailureMessage("target_unsupported");
     if (audioDeviceId) return recordingV3FailureMessage("unsupported_audio_role");
-    if (storyViewport.width !== 960 || storyViewport.height !== 540) {
-      return `${recordingV3FailureMessage("contract_mismatch")} Recording V3 requires a 960×540 browser viewport.`;
+    if (recordingV3DimensionPolicy && !recordingV3DimensionPolicy.validation.valid) {
+      return (
+        recordingV3DimensionPolicy.validation.detail ??
+        recordingV3FailureMessage("contract_mismatch")
+      );
     }
     if (
       preflight?.version === 3 &&
@@ -353,10 +375,9 @@ export function RecordingView({
     permission,
     preflight,
     recordingDeliveryPolicy,
+    recordingV3DimensionPolicy,
     recordingV3DevelopmentMode,
     storyHasBrowser,
-    storyViewport.height,
-    storyViewport.width,
   ]);
 
   const strictCapabilityInputs = `${audioDeviceId ?? "none"}:${permission}:${recordingDeliveryPolicy}:${recordingV3DevelopmentMode}:${storyHasBrowser}:${storyViewport.width}x${storyViewport.height}`;
@@ -559,8 +580,8 @@ export function RecordingView({
         ...("version" in result && result.version === 3
           ? {
               version: 3 as const,
-              width: 1920,
-              height: 1080,
+              width: result.output_width,
+              height: result.output_height,
               bundle_path: result.bundle_path,
               master_path: result.master_path,
               proxy_path: result.proxy_path,
@@ -795,17 +816,32 @@ export function RecordingView({
       } = useOutputPrefsStore.getState();
       const strictV3 = recordingDeliveryPolicy === "strict";
       const developmentV3 = recordingV3DevelopmentMode;
-      const recordingV3 = strictV3 || developmentV3;
+      const recordingIntent: RecordingV3Intent | null = developmentV3
+        ? "development"
+        : strictV3
+          ? "strict"
+          : null;
+      const recordingV3 = recordingIntent !== null;
       if (recordingV3 && !storyHasBrowser) {
         throw new Error(recordingV3FailureMessage("target_unsupported"));
       }
       if (recordingV3 && audioDeviceId) {
         throw new Error(recordingV3FailureMessage("unsupported_audio_role"));
       }
-      if (recordingV3 && (storyViewport.width !== 960 || storyViewport.height !== 540)) {
-        throw new Error(
-          `${recordingV3FailureMessage("contract_mismatch")} Recording V3 requires a 960×540 browser viewport.`,
+      if (recordingIntent) {
+        const requestedDimensions = recordingV3DimensionsForViewport(
+          recordingIntent,
+          storyViewport,
         );
+        const dimensionValidation = validateRecordingV3Dimensions(
+          recordingIntent,
+          requestedDimensions,
+        );
+        if (!dimensionValidation.valid) {
+          throw new Error(
+            dimensionValidation.detail ?? recordingV3FailureMessage("contract_mismatch"),
+          );
+        }
       }
       if (storyHasBrowser) {
         frontendLog.info("RecordingView", "browser recording viewport plan", {
@@ -874,9 +910,11 @@ export function RecordingView({
         height,
         fps: recordingV3 ? 60 : prefs.fps,
         contract_version: recordingV3 ? 3 : 2,
-        intent: developmentV3 ? "development" : strictV3 ? "strict" : undefined,
+        intent: recordingIntent ?? undefined,
         delivery_policy: developmentV3 ? "development" : recordingDeliveryPolicy,
-        capture_contract: recordingV3 ? recordingV3CaptureContract(width, height) : undefined,
+        capture_contract: recordingIntent
+          ? recordingV3CaptureContract(recordingIntent, storyViewport)
+          : undefined,
         audio_device_id: recordingV3 ? undefined : (audioDeviceId ?? undefined),
         include_cursor: recordingV3 ? false : includeCursor,
         output_resolution: recordingOutputResolutionForStart(prefs, activePreset),
@@ -1373,7 +1411,10 @@ export function RecordingView({
                 }/${liveEvidence.expected_slots} committed`
               : preflight.version === 3 && preflight.failure_codes.length > 0
                 ? recordingV3FailureSummary(preflight)
-                : preflight.failure_codes.join(", ") || "60/1 · 1920×1080"}
+                : preflight.failure_codes.join(", ") ||
+                  (preflight.version === 3 && recordingV3DimensionPolicy
+                    ? `60/1 · ${recordingV3DimensionPolicy.dimensions.requested_output_width}×${recordingV3DimensionPolicy.dimensions.requested_output_height}`
+                    : "60/1 · 1920×1080")}
           </span>
         </div>
       ) : null}
@@ -1608,10 +1649,18 @@ export function RecordingView({
               <SettingsRow k="Audio" v={audioDeviceId ? "Enabled" : "Video only"} />
               <SettingsRow k="Output" v={isOutputBlocked ? "Needs attention" : "Ready"} />
               {recordingDeliveryPolicy === "strict" || recordingV3DevelopmentMode ? (
-                <SettingsRow
-                  k={recordingV3DevelopmentMode ? "Dev V3" : "Strict"}
-                  v={strictUnavailableReason ? "Blocked" : "Ready to probe"}
-                />
+                <>
+                  <SettingsRow
+                    k={recordingV3DevelopmentMode ? "Dev V3" : "Strict"}
+                    v={strictUnavailableReason ? "Blocked" : "Ready to probe"}
+                  />
+                  {recordingV3DimensionPolicy ? (
+                    <SettingsRow
+                      k="Dimensions"
+                      v={formatRecordingV3Dimensions(recordingV3DimensionPolicy.dimensions)}
+                    />
+                  ) : null}
+                </>
               ) : null}
             </div>
           </section>
@@ -1664,7 +1713,14 @@ export function RecordingView({
 
               <SettingsGroup label="Quality" icon={<SettingsIcon size={13} />}>
                 <dl className="space-y-1 text-xs">
-                  <SettingsRow k="Resolution" v="1920×1080" />
+                  <SettingsRow
+                    k="Resolution"
+                    v={
+                      recordingV3DimensionPolicy
+                        ? `${recordingV3DimensionPolicy.dimensions.requested_output_width}×${recordingV3DimensionPolicy.dimensions.requested_output_height}`
+                        : "1920×1080"
+                    }
+                  />
                   <SettingsRow k="Frame rate" v="60 fps" />
                   <SettingsRow k="Codec" v="H.264" />
                 </dl>

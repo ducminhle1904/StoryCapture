@@ -130,6 +130,8 @@ Use this for task routing after reading the short root guide.
 - Public contract: `packages/shared-types/src/recording-v3.ts`, exported as
   `@storycapture/shared-types/recording-v3` and re-exported through the
   runtime-safe `@storycapture/shared-types/recording-v2` compatibility subpath.
+- Renderer capture-contract construction from `.story` viewports:
+  `apps/desktop/src/features/recorder/recording-view.tsx`.
 - Facade and host lifecycle:
   `apps/desktop/electron/ipc/recording-strict-browser-lifecycle.ts` and
   `apps/desktop/electron/ipc/recording-strict-browser-lifecycle-v3.ts`.
@@ -141,6 +143,8 @@ Use this for task routing after reading the short root guide.
   `recording-v3-engine.ts`, `recording-v3-native-addon.ts`,
   `recording-v3-bundle-writer.ts`, and
   `apps/desktop/native/macos-recording-v3/`.
+- Decoded master identity/dimension verification and proxy creation:
+  `apps/desktop/electron/ipc/recording-master.ts`.
 - Certification fixtures/evidence: `apps/desktop/fixtures/recording-v3-certification/`,
   `recording-v3-certification-{canonical-json,evidence,quality}.ts`, and
   `apps/desktop/electron/recording-v3-production-probe/`.
@@ -150,7 +154,8 @@ Use this for task routing after reading the short root guide.
 - Development-flow launch/E2E entrypoints are
   `apps/desktop/scripts/dev-recording-v3.mjs`,
   `apps/desktop/scripts/run-recording-v3-development-flow.mjs`, and
-  `apps/desktop/electron/recording-v3-development-flow-smoke.ts`.
+  `apps/desktop/electron/recording-v3-development-flow-smoke.ts`; its responsive
+  wide fixture is `apps/desktop/fixtures/recording-v3-development-wide/`.
 - Development export/upload provenance is owned by
   `apps/desktop/electron/ipc/recording-v3-export-provenance.ts` and the host
   upload boundary in `apps/desktop/electron/ipc/legacy/web.ts`.

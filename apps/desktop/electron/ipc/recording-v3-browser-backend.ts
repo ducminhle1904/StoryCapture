@@ -1,4 +1,7 @@
-import type { RecordingFailureCodeV3 } from "@storycapture/shared-types/recording-v2";
+import {
+  type RecordingFailureCodeV3,
+  RECORDING_V3_STRICT_DIMENSIONS,
+} from "@storycapture/shared-types/recording-v3";
 
 export const RECORDING_V3_BROWSER_BACKEND_ID = "electron_offscreen_shared_texture_v3" as const;
 export const RECORDING_V3_BROWSER_BACKEND_VERSION = "3.0.0" as const;
@@ -26,6 +29,34 @@ export interface RecordingV3BrowserFrameSink {
   fail(code: RecordingFailureCodeV3, message: string): never;
 }
 
+type RecordingV3TextureMetadata = Pick<
+  ElectronOffscreenSharedTextureV3["textureInfo"],
+  "widgetType" | "codedSize" | "pixelFormat"
+>;
+
+export function recordingV3TextureMetadataFailure(
+  info: RecordingV3TextureMetadata,
+  expectedCodedSize: { width: number; height: number },
+): { code: "source_metadata_invalid"; message: string } | null {
+  if (info.widgetType !== "frame") {
+    return {
+      code: "source_metadata_invalid",
+      message: "Electron texture was not a frame widget",
+    };
+  }
+  if (
+    info.pixelFormat !== "bgra" ||
+    info.codedSize.width !== expectedCodedSize.width ||
+    info.codedSize.height !== expectedCodedSize.height
+  ) {
+    return {
+      code: "source_metadata_invalid",
+      message: `Electron texture expected ${expectedCodedSize.width}x${expectedCodedSize.height} BGRA; received ${info.codedSize.width}x${info.codedSize.height}/${info.pixelFormat}`,
+    };
+  }
+  return null;
+}
+
 export class BrowserCaptureBackendV3 {
   readonly backendId = RECORDING_V3_BROWSER_BACKEND_ID;
   readonly backendVersion = RECORDING_V3_BROWSER_BACKEND_VERSION;
@@ -34,7 +65,13 @@ export class BrowserCaptureBackendV3 {
   private releasedTextures = 0;
   private receivedTextures = 0;
 
-  constructor(private readonly sink: RecordingV3BrowserFrameSink) {}
+  constructor(
+    private readonly sink: RecordingV3BrowserFrameSink,
+    private readonly expectedCodedSize: { width: number; height: number } = {
+      width: RECORDING_V3_STRICT_DIMENSIONS.physical_width,
+      height: RECORDING_V3_STRICT_DIMENSIONS.physical_height,
+    },
+  ) {}
 
   get textureCounts(): { received: number; released: number } {
     return { received: this.receivedTextures, released: this.releasedTextures };
@@ -44,19 +81,8 @@ export class BrowserCaptureBackendV3 {
     this.receivedTextures += 1;
     try {
       const info = texture.textureInfo;
-      if (info.widgetType !== "frame") {
-        this.sink.fail("source_metadata_invalid", "Electron texture was not a frame widget");
-      }
-      if (
-        info.pixelFormat !== "bgra" ||
-        info.codedSize.width !== 1920 ||
-        info.codedSize.height !== 1080
-      ) {
-        this.sink.fail(
-          "source_metadata_invalid",
-          `Electron texture violated 1920x1080 BGRA: ${info.codedSize.width}x${info.codedSize.height}/${info.pixelFormat}`,
-        );
-      }
+      const metadataFailure = recordingV3TextureMetadataFailure(info, this.expectedCodedSize);
+      if (metadataFailure) this.sink.fail(metadataFailure.code, metadataFailure.message);
       if (!Buffer.isBuffer(info.handle.ioSurface) || info.handle.ioSurface.byteLength === 0) {
         this.sink.fail("native_texture_lost", "Electron texture omitted the IOSurface handle");
       }

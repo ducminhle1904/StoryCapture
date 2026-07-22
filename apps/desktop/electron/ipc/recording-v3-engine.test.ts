@@ -1,4 +1,4 @@
-import { readRecordingFrameLedgerV3 } from "@storycapture/shared-types/recording-v2";
+import { readRecordingFrameLedgerV3 } from "@storycapture/shared-types/recording-v3";
 import { describe, expect, it, vi } from "vitest";
 import {
   RecordingV3Engine,
@@ -376,8 +376,8 @@ describe("RecordingV3Engine", () => {
       engineResult,
       masterPath: "/master.mkv",
       proxyPath: "/proxy.mp4",
-      width: 1920,
-      height: 1080,
+      width: 1280,
+      height: 800,
     });
 
     expect(artifact.ledger.map((entry) => entry.delivery_ordinal)).toEqual([1, 2]);

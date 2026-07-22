@@ -2,7 +2,10 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import type { App } from "electron";
 import { isPackagedRuntime } from "../runtime";
-import type { RecordingFailureCodeV3 } from "@storycapture/shared-types/recording-v2";
+import {
+  type RecordingFailureCodeV3,
+  RECORDING_V3_DEVELOPMENT_DIMENSION_LIMITS,
+} from "@storycapture/shared-types/recording-v3";
 
 export const RECORDING_V3_NATIVE_PROTOCOL_VERSION = 3 as const;
 export const RECORDING_V3_NATIVE_PROTOCOL_HASH =
@@ -74,6 +77,19 @@ export interface RecordingV3NativeStats {
 export interface RecordingV3NativeTerminalResult {
   stats: RecordingV3NativeStats;
   receipts: RecordingV3NativeReceipt[];
+}
+
+export function recordingV3NativeDimensionsSupported(width: number, height: number): boolean {
+  const limits = RECORDING_V3_DEVELOPMENT_DIMENSION_LIMITS;
+  return (
+    Number.isSafeInteger(width) &&
+    Number.isSafeInteger(height) &&
+    width > 0 &&
+    height > 0 &&
+    width <= limits.maximum_width &&
+    height <= limits.maximum_height &&
+    width * height <= limits.maximum_physical_pixels
+  );
 }
 
 interface RawRecordingV3NativeSession {
@@ -373,12 +389,18 @@ export class RecordingV3NativeBridge {
   }
 
   start(input: {
-    width: 1920;
-    height: 1080;
+    width: number;
+    height: number;
     ffmpegPath: string;
     outputPath: string;
   }): RecordingV3NativeSession {
     this.probe();
+    if (!recordingV3NativeDimensionsSupported(input.width, input.height)) {
+      throw new RecordingV3NativeError(
+        "contract_mismatch",
+        `Recording V3 native dimensions must be positive integers within ${RECORDING_V3_DEVELOPMENT_DIMENSION_LIMITS.maximum_width}x${RECORDING_V3_DEVELOPMENT_DIMENSION_LIMITS.maximum_height} and ${RECORDING_V3_DEVELOPMENT_DIMENSION_LIMITS.maximum_physical_pixels} pixels; received ${input.width}x${input.height}`,
+      );
+    }
     return new RecordingV3NativeSession(nativeCall(() => this.addon.start(input)));
   }
 }

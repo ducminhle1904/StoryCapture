@@ -3,14 +3,17 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type {
-  RecordingFailureCodeV3,
   RecordingPlatform,
-  RecordingPreflightV3Dto,
-  RecordingPreflightV3Request,
   RecordingSourceRateProbeV2,
   RecordingStorageEstimateV2,
-  RecordingV3DevelopmentEnvironmentDto,
 } from "@storycapture/shared-types/recording-v2";
+import type {
+  RecordingFailureCodeV3,
+  RecordingPreflightV3Dto,
+  RecordingPreflightV3Request,
+  RecordingV3DevelopmentEnvironmentDto,
+} from "@storycapture/shared-types/recording-v3";
+import { RECORDING_V3_STRICT_DIMENSIONS } from "@storycapture/shared-types/recording-v3";
 import { app, BrowserWindow } from "electron";
 import { isPackagedRuntime } from "../runtime";
 import { ffmpegExecutablePath } from "./export-binaries";
@@ -20,6 +23,7 @@ import {
   evaluateRecordingV3Capability,
   type RecordingV3CapabilityFacts,
 } from "./recording-v3-capability";
+import { recordingV3TextureMetadataFailure } from "./recording-v3-browser-backend";
 import {
   BUNDLED_RECORDING_CERTIFICATION_SIGNER_KEYS_V3,
   type RecordingCertificationRuntimeIdentityV3,
@@ -76,11 +80,34 @@ async function ffmpegVersion(binary: string): Promise<string> {
   return output.split("\n", 1)[0]?.trim() ?? "";
 }
 
-export async function probeBrowserSourceRateV3(
+interface RecordingV3SourceProbeResult {
+  sourceRate: RecordingSourceRateProbeV2;
+  failureCodes: RecordingFailureCodeV3[];
+}
+
+export function recordingV3SourceMetadataFailure(
+  request: RecordingPreflightV3Request,
+  textureInfo: {
+    widgetType: string;
+    codedSize: { width: number; height: number };
+    pixelFormat: string;
+  },
+): RecordingFailureCodeV3 | null {
+  return (
+    recordingV3TextureMetadataFailure(textureInfo, {
+      width: request.dimensions.physical_width,
+      height: request.dimensions.physical_height,
+    })?.code ?? null
+  );
+}
+
+async function probeBrowserSourceV3(
   request: RecordingPreflightV3Request,
   url: string,
-): Promise<RecordingSourceRateProbeV2> {
-  if (!url || url === "about:blank") return unavailableSourceRate();
+): Promise<RecordingV3SourceProbeResult> {
+  if (!url || url === "about:blank") {
+    return { sourceRate: unavailableSourceRate(), failureCodes: ["source_metadata_missing"] };
+  }
   const window = new BrowserWindow({
     show: false,
     paintWhenInitiallyHidden: true,
@@ -103,6 +130,8 @@ export async function probeBrowserSourceRateV3(
   let accepting = false;
   let sequenceGaps = 0;
   let staleReuses = 0;
+  let metadataFailure: RecordingFailureCodeV3 | null = null;
+  let receivedTexture = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
   try {
     window.webContents.setFrameRate(60);
@@ -118,7 +147,13 @@ export async function probeBrowserSourceRateV3(
           .texture;
         if (!texture) return;
         try {
-          if (!accepting || texture.textureInfo.widgetType !== "frame") return;
+          if (!accepting) return;
+          receivedTexture = true;
+          metadataFailure = recordingV3SourceMetadataFailure(request, texture.textureInfo);
+          if (metadataFailure) {
+            finish();
+            return;
+          }
           const frameCount = texture.textureInfo.metadata.frameCount;
           const timestampUs = texture.textureInfo.timestamp;
           if (!Number.isSafeInteger(frameCount) || !Number.isSafeInteger(timestampUs)) return;
@@ -150,10 +185,13 @@ export async function probeBrowserSourceRateV3(
     });
   } catch {
     return {
-      ...unavailableSourceRate(),
-      source_presentations: samples.length,
-      sequence_gaps: sequenceGaps,
-      stale_reuses: staleReuses,
+      sourceRate: {
+        ...unavailableSourceRate(),
+        source_presentations: samples.length,
+        sequence_gaps: sequenceGaps,
+        stale_reuses: staleReuses,
+      },
+      failureCodes: [metadataFailure ?? (receivedTexture ? "source_metadata_invalid" : "source_metadata_missing")],
     };
   } finally {
     if (timer) clearTimeout(timer);
@@ -165,13 +203,25 @@ export async function probeBrowserSourceRateV3(
   const measuredFps = elapsedUs > 0 ? ((samples.length - 1) * 1_000_000) / elapsedUs : 0;
   const exact60 = Math.abs(measuredFps - 60) / 60 <= 0.02;
   return {
-    measured_fps:
-      exact60 && sequenceGaps === 0 && staleReuses === 0 ? { numerator: 60, denominator: 1 } : null,
-    source_presentations: samples.length,
-    sequence_gaps: sequenceGaps,
-    stale_reuses: staleReuses,
-    probe_duration_ms: elapsedUs / 1_000,
+    sourceRate: {
+      measured_fps:
+        !metadataFailure && exact60 && sequenceGaps === 0 && staleReuses === 0
+          ? { numerator: 60, denominator: 1 }
+          : null,
+      source_presentations: samples.length,
+      sequence_gaps: sequenceGaps,
+      stale_reuses: staleReuses,
+      probe_duration_ms: elapsedUs / 1_000,
+    },
+    failureCodes: metadataFailure ? [metadataFailure] : [],
   };
+}
+
+export async function probeBrowserSourceRateV3(
+  request: RecordingPreflightV3Request,
+  url: string,
+): Promise<RecordingSourceRateProbeV2> {
+  return (await probeBrowserSourceV3(request, url)).sourceRate;
 }
 
 interface CommonRecordingV3RuntimeFacts
@@ -187,6 +237,8 @@ interface CommonRecordingV3RuntimeFacts
 async function probeCommonRecordingV3Runtime(input: {
   projectFolder: string;
   certificationRequired: boolean;
+  outputWidth: number;
+  outputHeight: number;
 }): Promise<CommonRecordingV3RuntimeFacts> {
   const failureCodes: RecordingFailureCodeV3[] = [];
   const fail = (code: RecordingFailureCodeV3) => {
@@ -225,8 +277,8 @@ async function probeCommonRecordingV3Runtime(input: {
         .then(() => exportsDir)
         .catch(() => input.projectFolder);
       const result = await recordingStoragePreflight(probeDir, {
-        width: 1920,
-        height: 1080,
+        width: input.outputWidth,
+        height: input.outputHeight,
         fps: 60,
       });
       storage = {
@@ -323,8 +375,8 @@ async function resolveStrictRecordingV3Certification(
       chromium_version: process.versions.chrome ?? "unknown",
       ffmpeg_version: version,
       ffmpeg_sha256: ffmpegSha256,
-      output_width: 1920,
-      output_height: 1080,
+      output_width: RECORDING_V3_STRICT_DIMENSIONS.requested_output_width,
+      output_height: RECORDING_V3_STRICT_DIMENSIONS.requested_output_height,
       exact_fps: { numerator: 60, denominator: 1 },
       cursor_policy: "sidecar_reconstructed",
       audio_roles: [],
@@ -383,6 +435,8 @@ export async function probeRecordingV3DevelopmentEnvironment(): Promise<Recordin
   const common = await probeCommonRecordingV3Runtime({
     projectFolder: app.getPath("userData"),
     certificationRequired: false,
+    outputWidth: RECORDING_V3_STRICT_DIMENSIONS.requested_output_width,
+    outputHeight: RECORDING_V3_STRICT_DIMENSIONS.requested_output_height,
   });
   return evaluateRecordingV3DevelopmentEnvironment({
     developmentEnabled: true,
@@ -423,15 +477,17 @@ export async function probeRecordingV3RuntimeCapability(input: {
   const common = await probeCommonRecordingV3Runtime({
     projectFolder: input.projectFolder,
     certificationRequired,
+    outputWidth: input.request.dimensions.requested_output_width,
+    outputHeight: input.request.dimensions.requested_output_height,
   });
   const certification = certificationRequired
     ? await resolveStrictRecordingV3Certification(common, input.nowMs)
     : { manifestId: null, matchedProfile: null, failureCodes: [] as RecordingFailureCodeV3[] };
 
-  const sourceRate =
+  const sourceProbe =
     input.request.intent === "development" || certification.matchedProfile
-      ? await probeBrowserSourceRateV3(input.request, input.url)
-      : unavailableSourceRate();
+      ? await probeBrowserSourceV3(input.request, input.url)
+      : { sourceRate: unavailableSourceRate(), failureCodes: [] as RecordingFailureCodeV3[] };
   return evaluateRecordingV3Capability(input.request, {
     platform: common.platform,
     arch: common.arch,
@@ -441,11 +497,15 @@ export async function probeRecordingV3RuntimeCapability(input: {
     addonProtocolVersion: common.addonProtocolVersion,
     manifestId: certification.manifestId,
     matchedProfile: certification.matchedProfile,
-    sourceRate,
+    sourceRate: sourceProbe.sourceRate,
     storage: common.storage,
     storageEligible: common.storageEligible,
     nativeProbePassed: common.nativeProbePassed,
     permissionsGranted: common.permissionsGranted,
-    failureCodes: [...common.failureCodes, ...certification.failureCodes],
+    failureCodes: [
+      ...common.failureCodes,
+      ...certification.failureCodes,
+      ...sourceProbe.failureCodes,
+    ],
   });
 }

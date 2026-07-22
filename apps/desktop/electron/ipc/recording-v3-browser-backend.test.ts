@@ -47,6 +47,28 @@ describe("BrowserCaptureBackendV3", () => {
     expect(backend.jsFrameBytes).toBe(0);
   });
 
+  it("accepts the session coded size and reports expected and received dimensions", () => {
+    const submitSourceFrame = vi.fn();
+    const backend = new BrowserCaptureBackendV3(
+      {
+        submitSourceFrame,
+        fail: (code, message) => {
+          throw new Error(`${code}:${message}`);
+        },
+      },
+      { width: 1280, height: 800 },
+    );
+    const valid = texture({ codedSize: { width: 1280, height: 800 } });
+    backend.submitTexture(valid.value);
+    expect(submitSourceFrame).toHaveBeenCalledOnce();
+
+    const invalid = texture({ codedSize: { width: 1280, height: 720 } });
+    expect(() => backend.submitTexture(invalid.value)).toThrow(
+      "expected 1280x800 BGRA; received 1280x720/bgra",
+    );
+    expect(invalid.release).toHaveBeenCalledOnce();
+  });
+
   it.each([
     [{ metadata: {} }, "source_metadata_missing"],
     [{ timestamp: -1 }, "source_metadata_invalid"],

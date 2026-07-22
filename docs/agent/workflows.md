@@ -50,8 +50,9 @@
 - Uncertified local Recording V3 lifecycle proof:
   `pnpm --dir apps/desktop run test:e2e:recording-v3-development-flow`. It
   builds the addon from source, launches the guarded dev app against a
-  deterministic browser fixture, and verifies capture, bundle discovery,
-  local export provenance, and upload rejection.
+  responsive wide browser fixture, and verifies source viewport/dimension
+  fidelity, capture, bundle discovery, local export provenance, and upload
+  rejection.
 - Verify helpers in an existing unpacked package:
   `pnpm --dir apps/desktop native:verify:packaged`.
 - Build an unpacked package and run the native helper signature/protocol gate:

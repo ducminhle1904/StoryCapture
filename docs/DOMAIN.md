@@ -162,17 +162,22 @@ explicit policies:
   catalog is deliberately empty.
 - Strict V3 is a separate browser-only, video-only contract for exact
   960x540 logical / 1920x1080 physical output at 60/1 with reconstructed cursor
-  sidecars. It uses Electron shared-texture metadata, a bounded native macOS
-  lease/FFV1 pipeline, signed exact-runtime profiles, and never copies full
-  frames through JavaScript. Display/window, audio, Windows, other Macs, and
-  mismatched runtime hashes fail admission.
-- V3 bundles contain a lossless master, optional verified proxy, cadence and
+  sidecars. Uncertified Development V3 instead derives validated DPR-1
+  physical/output dimensions from the even `.story` viewport under the limits
+  owned by `packages/shared-types/src/recording-v3.ts`; this flexibility never
+  changes the certified Strict profile. V3 uses Electron shared-texture
+  metadata, a bounded native macOS lease/FFV1 pipeline, signed exact-runtime
+  profiles, and never copies full frames through JavaScript. Display/window,
+  audio, Windows, other Macs, and mismatched runtime hashes fail admission.
+- Strict V3 bundles contain a lossless master, optional verified proxy, cadence and
   runtime-quality evidence, JSONL frame ledger, action/cursor sidecars, a
   diagnostic manifest, and an exact certification-profile reference. A
   `quality_failed` bundle is retained only for diagnostics and never published.
 - Source/dev builds intentionally have no trusted V3 signer key or signed
-  manifest/evidence. V3 becomes eligible only in a protected signed/notarized
-  package whose clean-launch preflight matches exactly one unexpired profile.
+  manifest/evidence. Strict V3 becomes eligible only in a protected
+  signed/notarized package whose clean-launch preflight matches exactly one
+  unexpired profile. Uncertified Development bundles instead keep their
+  certification profile `null`.
 - Strict writes a lossless FFV1/BGRA Matroska master, an H.264 editing proxy,
   PCM WAV audio sidecars, action timing, cadence/quality evidence, and an exact
   per-frame sequence ledger. Its bundle layout is

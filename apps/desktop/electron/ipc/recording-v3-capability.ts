@@ -1,12 +1,15 @@
 import type {
-  RecordingCertifiedProfileV3,
-  RecordingFailureCodeV3,
   RecordingPlatform,
-  RecordingPreflightV3Dto,
-  RecordingPreflightV3Request,
   RecordingSourceRateProbeV2,
   RecordingStorageEstimateV2,
 } from "@storycapture/shared-types/recording-v2";
+import type {
+  RecordingCertifiedProfileV3,
+  RecordingFailureCodeV3,
+  RecordingPreflightV3Dto,
+  RecordingPreflightV3Request,
+} from "@storycapture/shared-types/recording-v3";
+import { validateRecordingV3Dimensions } from "@storycapture/shared-types/recording-v3";
 import {
   RECORDING_V3_BROWSER_BACKEND_ID,
   RECORDING_V3_BROWSER_BACKEND_VERSION,
@@ -29,19 +32,6 @@ export interface RecordingV3CapabilityFacts {
   failureCodes?: readonly RecordingFailureCodeV3[];
 }
 
-function exactDimensions(request: RecordingPreflightV3Request): boolean {
-  const dimensions = request.dimensions;
-  return (
-    dimensions.logical_width === 960 &&
-    dimensions.logical_height === 540 &&
-    dimensions.capture_dpr === 2 &&
-    dimensions.physical_width === 1920 &&
-    dimensions.physical_height === 1080 &&
-    dimensions.requested_output_width === 1920 &&
-    dimensions.requested_output_height === 1080
-  );
-}
-
 export function evaluateRecordingV3Capability(
   request: RecordingPreflightV3Request,
   facts: RecordingV3CapabilityFacts,
@@ -57,7 +47,7 @@ export function evaluateRecordingV3Capability(
     request.requested_fps.numerator !== 60 ||
     request.requested_fps.denominator !== 1 ||
     request.cursor_policy !== "sidecar_reconstructed" ||
-    !exactDimensions(request)
+    !validateRecordingV3Dimensions(request.intent, request.dimensions).valid
   ) {
     fail("contract_mismatch");
   }

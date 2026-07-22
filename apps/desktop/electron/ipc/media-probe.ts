@@ -51,6 +51,13 @@ export type RecordingProbeResult =
       reason: "empty" | "not_file" | "missing" | "timeout" | "unsupported_or_corrupt";
     };
 
+export type RecordingDimensionProbeResult =
+  | { status: "valid"; width: number; height: number }
+  | {
+      status: "invalid";
+      reason: "empty" | "not_file" | "missing" | "timeout" | "unsupported_or_corrupt";
+    };
+
 interface FfprobeStreamJson {
   codec_name?: string;
   profile?: string;
@@ -205,6 +212,20 @@ export function parseFfprobeJsonOutput(
   };
 }
 
+export function parseFfprobeDimensionsOutput(
+  stdout: string,
+): Extract<RecordingDimensionProbeResult, { status: "valid" }> | null {
+  let parsed: FfprobeOutputJson;
+  try {
+    parsed = JSON.parse(stdout) as FfprobeOutputJson;
+  } catch {
+    return null;
+  }
+  const width = finiteNumber(parsed.streams?.[0]?.width);
+  const height = finiteNumber(parsed.streams?.[0]?.height);
+  return width && height ? { status: "valid", width, height } : null;
+}
+
 async function runProcess(
   binary: string,
   args: string[],
@@ -317,6 +338,53 @@ export async function probeRecording(
   if (decode.timedOut) return { status: "invalid", reason: "timeout" };
   return (
     parseFfprobeJsonOutput(probe.stdout, decode.code === 0) ?? {
+      status: "invalid",
+      reason: "unsupported_or_corrupt",
+    }
+  );
+}
+
+export async function probeRecordingDimensions(
+  filePath: string,
+  options: { timeoutMs?: number } = {},
+): Promise<RecordingDimensionProbeResult> {
+  let stat: Stats;
+  try {
+    stat = await fs.stat(filePath);
+  } catch {
+    return { status: "invalid", reason: "missing" };
+  }
+  if (!stat.isFile()) return { status: "invalid", reason: "not_file" };
+  if (stat.size === 0) return { status: "invalid", reason: "empty" };
+
+  let ffprobeBinary: string;
+  try {
+    ffprobeBinary = ffprobeExecutablePath();
+  } catch {
+    return { status: "invalid", reason: "unsupported_or_corrupt" };
+  }
+  const probe = await runProcess(
+    ffprobeBinary,
+    [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=width,height",
+      "-of",
+      "json",
+      filePath,
+    ],
+    options.timeoutMs ?? PROBE_TIMEOUT_MS,
+    true,
+  );
+  if (probe.timedOut) return { status: "invalid", reason: "timeout" };
+  if (probe.code !== 0 || probe.outputExceeded) {
+    return { status: "invalid", reason: "unsupported_or_corrupt" };
+  }
+  return (
+    parseFfprobeDimensionsOutput(probe.stdout) ?? {
       status: "invalid",
       reason: "unsupported_or_corrupt",
     }

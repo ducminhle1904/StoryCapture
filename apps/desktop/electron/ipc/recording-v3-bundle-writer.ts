@@ -13,7 +13,8 @@ import type {
   RecordingQualityEvidenceV3,
   RecordingResultV3,
   RecordingV3Qualification,
-} from "@storycapture/shared-types/recording-v2";
+} from "@storycapture/shared-types/recording-v3";
+import { validateRecordingV3Dimensions } from "@storycapture/shared-types/recording-v3";
 import type { RecordingActions } from "./action-timeline";
 import { RecordingBundleWorkspace, recordingBundleArtifact } from "./recording-bundle";
 import { type RecordingV3EngineResult, verifyRecordingV3Artifact } from "./recording-v3-engine";
@@ -23,8 +24,8 @@ export interface RecordingV3BundleWriterOptions {
   name: string;
   captureContract: RecordingCaptureContractV3;
   qualification: RecordingV3Qualification;
-  width: 1920;
-  height: 1080;
+  width: number;
+  height: number;
   ffmpegBinary?: string;
   verifyArtifact?: typeof verifyRecordingV3Artifact;
 }
@@ -155,6 +156,17 @@ export class RecordingV3BundleWriter {
   }
 
   static async create(options: RecordingV3BundleWriterOptions): Promise<RecordingV3BundleWriter> {
+    const intent = options.qualification.mode === "certified" ? "strict" : "development";
+    const validation = validateRecordingV3Dimensions(intent, options.captureContract.dimensions);
+    if (!validation.valid) throw new Error(validation.detail ?? "Recording V3 dimensions are invalid");
+    if (
+      options.width !== options.captureContract.dimensions.requested_output_width ||
+      options.height !== options.captureContract.dimensions.requested_output_height
+    ) {
+      throw new Error(
+        `Recording V3 bundle dimensions ${options.width}x${options.height} do not match requested output ${options.captureContract.dimensions.requested_output_width}x${options.captureContract.dimensions.requested_output_height}`,
+      );
+    }
     const workspace = await RecordingBundleWorkspace.create(options.exportsDir, options.name);
     return new RecordingV3BundleWriter(options, workspace);
   }
@@ -287,6 +299,8 @@ export class RecordingV3BundleWriter {
         diagnostic_bundle_path: bundlePath,
         duration_ms: durationMs,
         bytes,
+        output_width: this.options.width,
+        output_height: this.options.height,
         master_path: finalMasterPath,
         proxy_path: null,
         cadence_evidence: input.cadenceEvidence,
@@ -303,6 +317,8 @@ export class RecordingV3BundleWriter {
       diagnostic_bundle_path: null,
       duration_ms: durationMs,
       bytes,
+      output_width: this.options.width,
+      output_height: this.options.height,
       master_path: finalMasterPath,
       proxy_path: finalProxyPath,
       cadence_evidence: input.cadenceEvidence,

@@ -8,9 +8,11 @@ import {
   type RecordingPreflightV3Request,
   type RecordingResultV3,
   type RecordingV3Qualification,
+  RECORDING_V3_STRICT_DIMENSIONS,
   readRecordingCaptureContractV3,
   recordingV3FailureMessage,
-} from "@storycapture/shared-types/recording-v2";
+  validateRecordingV3Dimensions,
+} from "@storycapture/shared-types/recording-v3";
 import { app, BrowserWindow, type WebContents } from "electron";
 import {
   type ActionCursorTiming,
@@ -38,11 +40,6 @@ import {
   RecordingV3HostSessionRegistry,
 } from "./recording-v3-session-registry";
 import { RecordingV3TransitionQueue } from "./recording-v3-transition-queue";
-
-const WIDTH = 1920 as const;
-const HEIGHT = 1080 as const;
-const LOGICAL_WIDTH = 960;
-const LOGICAL_HEIGHT = 540;
 
 export interface StrictBrowserSessionV3 extends RecordingV3CoordinatorSession {
   request: RecordingPreflightV3Request;
@@ -90,15 +87,7 @@ export function recordingV3Request(args: StartRecordingArgs): RecordingPreflight
     intent: args.intent === "development" ? "development" : "strict",
     target_class: args.target.kind === "author_preview" ? "browser" : "display",
     requested_fps: { numerator: 60, denominator: 1 },
-    dimensions: captureContract?.dimensions ?? {
-      logical_width: LOGICAL_WIDTH,
-      logical_height: LOGICAL_HEIGHT,
-      capture_dpr: 2,
-      physical_width: WIDTH,
-      physical_height: HEIGHT,
-      requested_output_width: WIDTH,
-      requested_output_height: HEIGHT,
-    },
+    dimensions: captureContract?.dimensions ?? RECORDING_V3_STRICT_DIMENSIONS,
     cursor_policy: "sidecar_reconstructed",
     audio_roles: args.audio_device_id ? ["microphone"] : [],
   };
@@ -262,6 +251,8 @@ export async function startBrowserRecordingV3(
   }
 
   const eventChannelId = channelIdFrom(onEvent);
+  const request = recordingV3Request(args);
+  const dimensionValidation = validateRecordingV3Dimensions(request.intent, request.dimensions);
   const preflight = await probeStrictBrowserRecordingV3Capability(args, url);
   sendChannel(sender, eventChannelId, { type: "preflight", result: preflight });
   const eligible = development ? preflight.development_eligible : preflight.strict_eligible;
@@ -279,7 +270,10 @@ export async function startBrowserRecordingV3(
   if (!eligible || !qualification) {
     closeChannel(sender, eventChannelId);
     const code = preflight.failure_codes[0] ?? (development ? "contract_mismatch" : "profile_mismatch");
-    throw new Error(`${recordingV3FailureMessage(code)} (${preflight.failure_codes.join(", ")})`);
+    const detail = code === "contract_mismatch" ? dimensionValidation.detail : null;
+    throw new Error(
+      `${recordingV3FailureMessage(code)}${detail ? ` ${detail}` : ""} (${preflight.failure_codes.join(", ")})`,
+    );
   }
 
   const id = randomUUID();
@@ -296,13 +290,13 @@ export async function startBrowserRecordingV3(
       source_ordinal_kind: "electron_frame_count",
       target_class: "browser",
       exact_fps: { numerator: 60, denominator: 1 },
-      dimensions: recordingV3Request(args).dimensions,
+      dimensions: request.dimensions,
       cursor_policy: "sidecar_reconstructed",
       audio_roles: [],
     },
     qualification,
-    width: WIDTH,
-    height: HEIGHT,
+    width: request.dimensions.requested_output_width,
+    height: request.dimensions.requested_output_height,
   });
 
   let window: BrowserWindow | null = null;
@@ -315,25 +309,27 @@ export async function startBrowserRecordingV3(
     });
     const bridge = new RecordingV3NativeBridge(loadRecordingV3NativeAddon(addonPath));
     const native = bridge.start({
-      width: WIDTH,
-      height: HEIGHT,
+      width: request.dimensions.physical_width,
+      height: request.dimensions.physical_height,
       ffmpegPath: ffmpegExecutablePath(),
       outputPath: bundleWriter.masterPath,
     });
     const engine = new RecordingV3Engine(native);
-    const backend = new BrowserCaptureBackendV3(engine);
-    const request = recordingV3Request(args);
+    const backend = new BrowserCaptureBackendV3(engine, {
+      width: request.dimensions.physical_width,
+      height: request.dimensions.physical_height,
+    });
     window = new BrowserWindow({
       show: false,
       paintWhenInitiallyHidden: true,
-      width: LOGICAL_WIDTH,
-      height: LOGICAL_HEIGHT,
+      width: request.dimensions.logical_width,
+      height: request.dimensions.logical_height,
       webPreferences: {
         partition: `storycapture-recording-v3-${id}`,
         offscreen: {
           useSharedTexture: true,
           sharedTexturePixelFormat: "argb",
-          deviceScaleFactor: 2,
+          deviceScaleFactor: request.dimensions.capture_dpr,
         },
         nodeIntegration: false,
         contextIsolation: true,
@@ -666,10 +662,10 @@ async function stopSession(session: StrictBrowserSessionV3): Promise<RecordingRe
         ? recordingActionsFromSession(
             {
               outputPath: "master/video.mkv",
-              width: WIDTH,
-              height: HEIGHT,
-              outputWidth: WIDTH,
-              outputHeight: HEIGHT,
+              width: session.request.dimensions.physical_width,
+              height: session.request.dimensions.physical_height,
+              outputWidth: session.request.dimensions.requested_output_width,
+              outputHeight: session.request.dimensions.requested_output_height,
               fps: 60,
               frameSeq: engineResult.expectedSlots,
               target: { kind: "author_preview" },

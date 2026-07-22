@@ -3,8 +3,8 @@ import type {
   RecordingFailureCodeV3,
   RecordingFrameLedgerEntryV3,
   RecordingQualityEvidenceV3,
-} from "@storycapture/shared-types/recording-v2";
-import { readRecordingFrameLedgerV3 } from "@storycapture/shared-types/recording-v2";
+} from "@storycapture/shared-types/recording-v3";
+import { readRecordingFrameLedgerV3 } from "@storycapture/shared-types/recording-v3";
 import { verifyMasterAndCreateProxy } from "./recording-master";
 import type {
   RecordingV3BrowserFrame,
@@ -359,8 +359,8 @@ export async function verifyRecordingV3Artifact(input: {
   engineResult: RecordingV3EngineResult;
   masterPath: string;
   proxyPath: string;
-  width: 1920;
-  height: 1080;
+  width: number;
+  height: number;
   ffmpegBinary?: string;
 }): Promise<RecordingV3VerifiedArtifact> {
   const legacyLedger = input.engineResult.receipts.map((receipt, index) => ({

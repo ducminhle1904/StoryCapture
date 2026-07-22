@@ -130,6 +130,8 @@ Recording V3 has dedicated trusted automation:
 - `dev:recording-v3` bypasses only certification manifest/profile matching. It
   retains platform, addon, FFmpeg, storage, source-rate, cadence, ledger,
   decode, and artifact verification gates and never sets `strict_eligible`.
+- Development viewport flexibility does not relax the exact signed Strict
+  dimension profile or make a Development bundle `strict_eligible`.
 - Development bundles and derived local exports remain labelled
   `uncertified_development`/`-uncertified-dev`. Packaged apps may read, preview,
   edit, and export them locally, but may not create or upload them.
@@ -190,6 +192,10 @@ Recording V3 has dedicated trusted automation:
   `apps/desktop/electron/ipc/recording-v3-certification-signer-keys.generated.ts`
   or generated `apps/desktop/recording-v3-certification/{manifest,evidence}.json`;
   the protected Recording V3 release workflow owns them.
+- Treat `apps/desktop/recording-v3-certification-artifacts/` as disposable local
+  runner output. Refresh
+  `apps/desktop/native/macos-recording-v3/reports/production-600-frame-proof.json`
+  only by rerunning the packaged production probe; do not hand-edit it.
 - `packages/shared-types/src/generated/effects.ts` is not exported through
   `packages/shared-types/package.json`.
 - Treat `scripts/build-ffmpeg/build/` as helper-script build output unless the

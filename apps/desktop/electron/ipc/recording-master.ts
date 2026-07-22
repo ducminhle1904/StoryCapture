@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Writable } from "node:stream";
 import { ffmpegExecutablePath } from "./export-binaries";
+import { probeRecordingDimensions } from "./media-probe";
 import type { RecordingFrameLedgerEntry } from "./recording-frame-ring";
 
 export interface RecordingMasterCapabilities {
@@ -427,4 +428,13 @@ export async function verifyMasterAndCreateProxy(input: {
       resolve();
     });
   });
+  const probe = await probeRecordingDimensions(input.masterPath);
+  if (probe.status !== "valid") {
+    throw new Error(`decoded master probe was ${probe.reason}`);
+  }
+  if (probe.width !== input.width || probe.height !== input.height) {
+    throw new Error(
+      `decoded master dimensions ${probe.width}x${probe.height} do not match requested ${input.width}x${input.height}`,
+    );
+  }
 }

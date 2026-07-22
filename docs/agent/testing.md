@@ -24,9 +24,10 @@
   `pnpm --dir apps/desktop run native:build:recording-v3`.
 - Recording V3 uncertified-development E2E:
   `pnpm --dir apps/desktop run test:e2e:recording-v3-development-flow`. Run it
-  after changes to the dev gate, preflight, V3 lifecycle, bundle discovery,
-  export provenance, or upload guard. The command performs a fresh native
-  addon build and requires macOS ARM64 plus screen-capture permission.
+  after changes to viewport/dimension contracts, the dev gate, preflight, V3
+  lifecycle, bundle discovery, export provenance, or upload guard. The command
+  performs a fresh native addon build and requires macOS ARM64 plus
+  screen-capture permission.
 - Recording V3 packaged production proof:
   `pnpm --dir apps/desktop run test:e2e:recording-v3-production-probe`.
 - Recording V3 sustained gates are
@@ -122,6 +123,7 @@
   `recording-certification-catalog.test.ts`.
 - Recording V3 changes: focus
   `recording-v3-{contract,capability,browser-backend,engine,native-addon,session-registry,bundle-writer}.test.*`,
+  `recording-v3-runtime-preflight.test.ts`, `recording-master*.test.ts`,
   `recording-v3-certification-{manifest,quality,scripts}.test.ts`, discovery,
   and `recording-view-lifecycle.test.tsx`; then run desktop typecheck and the
   packaged production proof when native/probe/package behavior changed.

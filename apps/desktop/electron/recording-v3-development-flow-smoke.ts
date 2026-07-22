@@ -7,9 +7,11 @@ import {
   readRecordingInfo,
   readRecordingBundle,
 } from "@storycapture/shared-types/recording-v2";
-import { app, BrowserWindow } from "electron";
+import { recordingV3DimensionsForViewport } from "@storycapture/shared-types/recording-v3";
+import { app, BrowserWindow, type WebContents } from "electron";
 
 import { discoverProjectRecordings } from "./ipc/recording-discovery";
+import { probeRecording } from "./ipc/media-probe";
 import { recordingV3NativeAddonPathForRuntime } from "./ipc/recording-v3-native-addon";
 import {
   assertRecordingV3UploadAllowed,
@@ -23,13 +25,31 @@ import {
   probeBrowserRecordingV3Capability,
   recordingV3SessionNativeStats,
   resumeStrictBrowserRecordingV3,
+  setStrictBrowserRecordingV3Actions,
   startBrowserRecordingV3,
   stopStrictBrowserRecordingV3,
+  strictBrowserRecordingV3ClockMs,
+  strictBrowserRecordingV3Contents,
 } from "./ipc/recording-strict-browser-lifecycle-v3";
 import { exportRun } from "./ipc/legacy/export-render";
 import { initializeExportOutputLifecycle } from "./ipc/legacy/export-output-lifecycle";
 import { renderSessions } from "./ipc/legacy/shared";
 import { isDevRuntime } from "./runtime";
+
+const DEVELOPMENT_VIEWPORT = { width: 1280, height: 800 } as const;
+const EXPORT_VIEWPORT = { width: 1920, height: 1080 } as const;
+const DEVELOPMENT_DIMENSIONS = recordingV3DimensionsForViewport(
+  "development",
+  DEVELOPMENT_VIEWPORT,
+);
+
+interface ResponsiveTargetState {
+  innerWidth: number;
+  innerHeight: number;
+  visible: boolean;
+  clicked: boolean;
+  rect: { x: number; y: number; width: number; height: number };
+}
 
 function captureContract() {
   return {
@@ -38,15 +58,7 @@ function captureContract() {
     source_ordinal_kind: "electron_frame_count" as const,
     target_class: "browser" as const,
     exact_fps: { numerator: 60, denominator: 1 },
-    dimensions: {
-      logical_width: 960,
-      logical_height: 540,
-      capture_dpr: 2,
-      physical_width: 1920,
-      physical_height: 1080,
-      requested_output_width: 1920,
-      requested_output_height: 1080,
-    },
+    dimensions: { ...DEVELOPMENT_DIMENSIONS },
     cursor_policy: "sidecar_reconstructed" as const,
     audio_roles: [] as [],
   };
@@ -56,8 +68,8 @@ function startArgs(projectFolder: string): StartRecordingArgs {
   return {
     project_folder: projectFolder,
     target: { kind: "author_preview", stream_id: "recording-v3-development-flow" },
-    width: 960,
-    height: 540,
+    width: DEVELOPMENT_VIEWPORT.width,
+    height: DEVELOPMENT_VIEWPORT.height,
     fps: 60,
     contract_version: 3,
     intent: "development",
@@ -66,6 +78,58 @@ function startArgs(projectFolder: string): StartRecordingArgs {
     include_cursor: false,
     first_frame_timeout_ms: 10_000n,
   };
+}
+
+async function responsiveTargetState(contents: WebContents): Promise<ResponsiveTargetState> {
+  return (await contents.executeJavaScript(`(() => {
+    const target = document.getElementById("desktop-target");
+    const rect = target?.getBoundingClientRect();
+    const style = target ? getComputedStyle(target) : null;
+    return {
+      innerWidth,
+      innerHeight,
+      visible: Boolean(target && rect && rect.width > 0 && rect.height > 0 && style?.display !== "none" && style?.visibility !== "hidden"),
+      clicked: Boolean(window.__storyCaptureDevelopmentWideFixture?.clicked),
+      rect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : { x: 0, y: 0, width: 0, height: 0 },
+    };
+  })()`)) as ResponsiveTargetState;
+}
+
+async function inspectNarrowResponsiveTarget(url: string): Promise<ResponsiveTargetState> {
+  const window = new BrowserWindow({
+    show: false,
+    useContentSize: true,
+    width: 960,
+    height: 540,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      backgroundThrottling: false,
+    },
+  });
+  try {
+    await window.loadURL(url);
+    return await responsiveTargetState(window.webContents);
+  } finally {
+    if (!window.isDestroyed()) window.destroy();
+  }
+}
+
+async function clickResponsiveTarget(contents: WebContents): Promise<ResponsiveTargetState> {
+  const before = await responsiveTargetState(contents);
+  const x = Math.round(before.rect.x + before.rect.width / 2);
+  const y = Math.round(before.rect.y + before.rect.height / 2);
+  contents.sendInputEvent({ type: "mouseMove", x, y });
+  contents.sendInputEvent({ type: "mouseDown", x, y, button: "left", clickCount: 1 });
+  contents.sendInputEvent({ type: "mouseUp", x, y, button: "left", clickCount: 1 });
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const state = await responsiveTargetState(contents);
+    if (state.clicked) return state;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Responsive Recording V3 target did not receive the click within 2 seconds");
 }
 
 async function writeResultAtomic(filePath: string, value: unknown): Promise<void> {
@@ -93,9 +157,8 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
   const runtimeStateRoot = path.join(temporaryRoot, "runtime-state");
   const outputFolder = path.join(projectFolder, "local-exports");
   const fixtureUrl = pathToFileURL(
-    path.join(app.getAppPath(), "fixtures", "recording-v3-certification", "index.html"),
+    path.join(app.getAppPath(), "fixtures", "recording-v3-development-wide", "index.html"),
   );
-  fixtureUrl.searchParams.set("fixture", "motion");
   const senderWindow = new BrowserWindow({ show: false });
   let sessionId: string | null = null;
   let phase = "initialization";
@@ -107,6 +170,11 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
     await initializeExportOutputLifecycle(runtimeStateRoot);
     initializeRecordingV3ExportProvenance(runtimeStateRoot);
     const args = startArgs(projectFolder);
+    phase = "responsive_breakpoint";
+    const narrowTarget = await inspectNarrowResponsiveTarget(fixtureUrl.href);
+    if (narrowTarget.innerWidth !== 960 || narrowTarget.visible) {
+      throw new Error("development fixture target was not hidden at the 960px breakpoint");
+    }
     phase = "source_preflight";
     const preflight = await probeBrowserRecordingV3Capability(args, fixtureUrl.href);
     if (
@@ -114,7 +182,9 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
       preflight.strict_eligible ||
       preflight.recording_mode !== "uncertified_development" ||
       preflight.matched_profile !== null ||
-      preflight.manifest_id !== null
+      preflight.manifest_id !== null ||
+      preflight.source_rate.measured_fps?.numerator !== 60 ||
+      preflight.source_rate.measured_fps.denominator !== 1
     ) {
       throw new Error(`development preflight failed: ${preflight.failure_codes.join(", ")}`);
     }
@@ -127,6 +197,54 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
       fixtureUrl.href,
     );
     sessionId = started.id;
+    const recordingContents = strictBrowserRecordingV3Contents(sessionId);
+    if (!recordingContents) throw new Error("development recording contents were unavailable");
+    const wideTargetBefore = await responsiveTargetState(recordingContents);
+    if (
+      wideTargetBefore.innerWidth !== DEVELOPMENT_VIEWPORT.width ||
+      wideTargetBefore.innerHeight !== DEVELOPMENT_VIEWPORT.height ||
+      !wideTargetBefore.visible ||
+      wideTargetBefore.clicked
+    ) {
+      throw new Error("development recording did not expose the desktop-only target");
+    }
+    const actionTimeMs = Math.max(0, strictBrowserRecordingV3ClockMs(sessionId) ?? 0);
+    const wideTargetAfter = await clickResponsiveTarget(recordingContents);
+    if (!wideTargetAfter.clicked) {
+      throw new Error("development recording could not click the desktop-only target");
+    }
+    const center = {
+      x: wideTargetBefore.rect.x + wideTargetBefore.rect.width / 2,
+      y: wideTargetBefore.rect.y + wideTargetBefore.rect.height / 2,
+    };
+    if (
+      !setStrictBrowserRecordingV3Actions(sessionId, [
+        {
+          step_id: "desktop-only-action",
+          ordinal: 1,
+          verb: "click",
+          t_start_ms: Math.max(0, actionTimeMs - 100),
+          t_action_ms: actionTimeMs,
+          t_end_ms: actionTimeMs + 100,
+          target: {
+            kind: "element",
+            label: "Desktop-only action",
+            center,
+            bounds: {
+              x: wideTargetBefore.rect.x,
+              y: wideTargetBefore.rect.y,
+              w: wideTargetBefore.rect.width,
+              h: wideTargetBefore.rect.height,
+            },
+          },
+          secondary_target: null,
+          pointer: { button: "left", effect: "click" },
+          input_delivery: "browser_injected",
+        },
+      ])
+    ) {
+      throw new Error("development recording could not persist the responsive action");
+    }
     phase = "recording_steady";
     await new Promise((resolve) => setTimeout(resolve, 1_200));
     phase = "recording_pause";
@@ -163,9 +281,38 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
       manifest.status !== "completed" ||
       manifest.recording_mode !== "uncertified_development" ||
       manifest.certification_profile !== null ||
-      !manifest.proxy
+      !manifest.proxy ||
+      manifest.capture_contract.dimensions.logical_width !== DEVELOPMENT_VIEWPORT.width ||
+      manifest.capture_contract.dimensions.logical_height !== DEVELOPMENT_VIEWPORT.height ||
+      manifest.capture_contract.dimensions.capture_dpr !== 1 ||
+      manifest.capture_contract.dimensions.physical_width !== DEVELOPMENT_VIEWPORT.width ||
+      manifest.capture_contract.dimensions.physical_height !== DEVELOPMENT_VIEWPORT.height ||
+      manifest.capture_contract.dimensions.requested_output_width !== DEVELOPMENT_VIEWPORT.width ||
+      manifest.capture_contract.dimensions.requested_output_height !== DEVELOPMENT_VIEWPORT.height ||
+      manifest.sidecars.actions_path !== "sidecars/actions.json" ||
+      manifest.sidecars.cursor_path !== "sidecars/cursor.json" ||
+      result.cadence_evidence.native_commits <= 0 ||
+      result.cadence_evidence.native_commits !==
+        result.cadence_evidence.artifact_decoded_frames
     ) {
       throw new Error("development bundle manifest failed validation");
+    }
+    if (!result.master_path || !result.proxy_path) {
+      throw new Error("development recording result omitted master or proxy paths");
+    }
+    const [masterProbe, proxyProbe] = await Promise.all([
+      probeRecording(result.master_path, { verifiedFullDecode: true }),
+      probeRecording(result.proxy_path, { verifiedFullDecode: true }),
+    ]);
+    if (
+      masterProbe.status !== "valid" ||
+      masterProbe.width !== DEVELOPMENT_VIEWPORT.width ||
+      masterProbe.height !== DEVELOPMENT_VIEWPORT.height ||
+      proxyProbe.status !== "valid" ||
+      proxyProbe.width !== DEVELOPMENT_VIEWPORT.width ||
+      proxyProbe.height !== DEVELOPMENT_VIEWPORT.height
+    ) {
+      throw new Error("development master or proxy dimensions were invalid");
     }
 
     phase = "discovery";
@@ -189,8 +336,8 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
       !recording.frame_ledger_path ||
       !recording.exact_source_fps ||
       !recording.source_frame_count ||
-      !recording.width ||
-      !recording.height
+      recording.width !== DEVELOPMENT_VIEWPORT.width ||
+      recording.height !== DEVELOPMENT_VIEWPORT.height
     ) {
       throw new Error("packaged-compatible discovery lost development provenance");
     }
@@ -219,8 +366,8 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
     const durationMs = Math.max(1_000, recording.duration_ms ?? 1_000);
     const graph = {
       schema_version: 5,
-      output_width: 1920,
-      output_height: 1080,
+      output_width: EXPORT_VIEWPORT.width,
+      output_height: EXPORT_VIEWPORT.height,
       output_fps: 60,
       duration_ms: durationMs,
       video: [
@@ -247,8 +394,8 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
         {
           format: "mp4",
           resolution: "1080p",
-          output_width: 1920,
-          output_height: 1080,
+          output_width: EXPORT_VIEWPORT.width,
+          output_height: EXPORT_VIEWPORT.height,
           fps: 60,
           quality: "high",
         },
@@ -270,6 +417,14 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
     const suffixCount = (path.basename(outputPath).match(/-uncertified-dev/g) ?? []).length;
     if (suffixCount !== 1 || !(await fs.stat(outputPath)).isFile()) {
       throw new Error("development export filename or artifact was invalid");
+    }
+    const exportProbe = await probeRecording(outputPath, { verifiedFullDecode: true });
+    if (
+      exportProbe.status !== "valid" ||
+      exportProbe.width !== EXPORT_VIEWPORT.width ||
+      exportProbe.height !== EXPORT_VIEWPORT.height
+    ) {
+      throw new Error("development export dimensions were invalid");
     }
 
     phase = "upload_guard_reopen";
@@ -301,11 +456,19 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
       addon_path: addonPath,
       preflight,
       result,
+      dimensions: DEVELOPMENT_DIMENSIONS,
+      export_dimensions: EXPORT_VIEWPORT,
+      narrow_target: narrowTarget,
+      wide_target_before: wideTargetBefore,
+      wide_target_after: wideTargetAfter,
+      master_probe: masterProbe,
+      proxy_probe: proxyProbe,
       manifest_recording_mode: manifest.recording_mode,
       discovered_recording_mode: recording.recording_mode,
       preview_path: recording.proxy_path,
       export_path: outputPath,
       export_recording_mode: exportSession.job.recording_mode,
+      export_probe: exportProbe,
       persisted_upload_mode: persistedMode,
       upload_rejected: uploadRejected,
     });

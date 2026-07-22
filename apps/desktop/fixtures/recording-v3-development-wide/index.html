@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>StoryCapture Recording V3 Wide Development Fixture</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #10151d;
+        color: #f2f6ff;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+
+      #motion {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      #desktop-target {
+        position: fixed;
+        right: 72px;
+        bottom: 64px;
+        display: none;
+        width: 240px;
+        height: 72px;
+        border: 2px solid #d9f99d;
+        border-radius: 12px;
+        background: #365314;
+        color: #f7fee7;
+        font: 700 18px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+
+      @media (min-width: 1100px) {
+        #desktop-target {
+          display: block;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="motion"></canvas>
+    <button id="desktop-target" type="button">Desktop-only action</button>
+    <script>
+      (() => {
+        const canvas = document.getElementById("motion");
+        const context = canvas.getContext("2d", { alpha: false });
+        const target = document.getElementById("desktop-target");
+        const state = {
+          clicked: false,
+          ordinal: 0,
+        };
+
+        const resize = () => {
+          canvas.width = window.innerWidth;
+          canvas.height = window.innerHeight;
+        };
+        window.addEventListener("resize", resize);
+        resize();
+
+        target.addEventListener("click", () => {
+          state.clicked = true;
+          target.textContent = "Desktop action clicked";
+        });
+
+        const draw = () => {
+          const { width, height } = canvas;
+          const x = 48 + (state.ordinal % Math.max(1, width - 144));
+          context.fillStyle = "#10151d";
+          context.fillRect(0, 0, width, height);
+          context.fillStyle = "#e2e8f0";
+          context.font = "24px ui-monospace, SFMono-Regular, Menlo, monospace";
+          context.fillText("RECORDING V3 / WIDE DEVELOPMENT VIEWPORT", 48, 54);
+          context.fillStyle = "#38bdf8";
+          context.fillRect(x, 112, 96, 20);
+          context.fillStyle = state.clicked ? "#84cc16" : "#f59e0b";
+          context.fillRect(48, height - 96, Math.max(32, (state.ordinal * 7) % (width - 96)), 16);
+          state.ordinal += 1;
+          requestAnimationFrame(draw);
+        };
+
+        window.__storyCaptureDevelopmentWideFixture = state;
+        requestAnimationFrame(draw);
+      })();
+    </script>
+  </body>
+</html>

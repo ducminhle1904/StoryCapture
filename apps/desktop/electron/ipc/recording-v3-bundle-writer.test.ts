@@ -4,10 +4,11 @@ import path from "node:path";
 import {
   type RecordingCaptureContractV3,
   type RecordingCertifiedProfileV3,
+  recordingV3DimensionsForViewport,
   readRecordingBundleV3,
   readRecordingDiagnosticFrameLedgerEntryV3,
-} from "@storycapture/shared-types/recording-v2";
-import { afterEach, describe, expect, it } from "vitest";
+} from "@storycapture/shared-types/recording-v3";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   RecordingV3BundleWriter,
   type RecordingV3BundleWriterOptions,
@@ -123,13 +124,17 @@ async function createWriter(
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-v3-bundle-"));
   temporaryRoots.push(root);
+  const dimensions =
+    qualification.mode === "uncertified_development"
+      ? recordingV3DimensionsForViewport("development", { width: 1280, height: 800 })
+      : captureContract.dimensions;
   const writer = await RecordingV3BundleWriter.create({
     exportsDir: root,
     name,
-    captureContract,
+    captureContract: { ...captureContract, dimensions },
     qualification,
-    width: 1920,
-    height: 1080,
+    width: dimensions.requested_output_width,
+    height: dimensions.requested_output_height,
     verifyArtifact,
   });
   await fs.writeFile(writer.masterPath, "lossless-master");
@@ -259,6 +264,45 @@ describe("RecordingV3BundleWriter", () => {
       .readFile(path.join(result.bundle_path, "evidence/frame-ledger.jsonl"), "utf8")
       .then((text) => readRecordingDiagnosticFrameLedgerEntryV3(JSON.parse(text.trim())));
     expect(diagnosticLedger?.decoded_ordinal).toBeNull();
+  });
+
+  it("preserves wide Development dimensions through verification and quality-failed retention", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-v3-bundle-"));
+    temporaryRoots.push(root);
+    const dimensions = recordingV3DimensionsForViewport("development", {
+      width: 1280,
+      height: 800,
+    });
+    const verifyArtifact = vi.fn(async () => {
+      throw new Error("development artifact mismatch");
+    });
+    const writer = await RecordingV3BundleWriter.create({
+      exportsDir: root,
+      name: "development",
+      captureContract: { ...captureContract, dimensions },
+      qualification: { mode: "uncertified_development" },
+      width: 1280,
+      height: 800,
+      verifyArtifact,
+    });
+    await fs.writeFile(writer.masterPath, "lossless-master");
+    const result = await writer.finalize({ engineResult, actions: null });
+
+    expect(verifyArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({ width: 1280, height: 800 }),
+    );
+    expect(result).toMatchObject({
+      status: "quality_failed",
+      delivery_policy: "development",
+      recording_mode: "uncertified_development",
+      certification_profile: null,
+      output_width: 1280,
+      output_height: 800,
+    });
+    const manifest = await fs
+      .readFile(path.join(result.bundle_path, "manifest.json"), "utf8")
+      .then((text) => readRecordingBundleV3(JSON.parse(text)));
+    expect(manifest?.capture_contract.dimensions).toEqual(dimensions);
   });
 
   it("commits an uncertified development bundle without synthesizing a profile", async () => {

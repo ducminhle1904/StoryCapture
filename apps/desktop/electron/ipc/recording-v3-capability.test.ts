@@ -2,7 +2,8 @@ import type {
   RecordingCertifiedProfileV3,
   RecordingFailureCodeV3,
   RecordingPreflightV3Request,
-} from "@storycapture/shared-types/recording-v2";
+} from "@storycapture/shared-types/recording-v3";
+import { recordingV3DimensionsForViewport } from "@storycapture/shared-types/recording-v3";
 import { describe, expect, it } from "vitest";
 import {
   evaluateRecordingV3Capability,
@@ -154,6 +155,10 @@ describe("evaluateRecordingV3Capability", () => {
     const developmentRequest: RecordingPreflightV3Request = {
       ...request,
       intent: "development",
+      dimensions: recordingV3DimensionsForViewport("development", {
+        width: 1280,
+        height: 800,
+      }),
     };
     const developmentFacts: RecordingV3CapabilityFacts = {
       ...facts,
@@ -178,6 +183,33 @@ describe("evaluateRecordingV3Capability", () => {
     ).toMatchObject({
       development_eligible: false,
       failure_codes: ["runtime_integrity_failed"],
+    });
+
+    for (const [width, height] of [
+      [1280, 720],
+      [1280, 800],
+      [1440, 900],
+      [1920, 1080],
+    ]) {
+      const candidate = {
+        ...developmentRequest,
+        dimensions: recordingV3DimensionsForViewport("development", { width, height }),
+      };
+      expect(evaluateRecordingV3Capability(candidate, developmentFacts)).toMatchObject({
+        strict_eligible: false,
+        development_eligible: true,
+        failure_codes: [],
+      });
+    }
+
+    const strictWideRequest: RecordingPreflightV3Request = {
+      ...request,
+      dimensions: recordingV3DimensionsForViewport("strict", { width: 1280, height: 720 }),
+    };
+    expect(evaluateRecordingV3Capability(strictWideRequest, facts)).toMatchObject({
+      strict_eligible: false,
+      development_eligible: false,
+      failure_codes: ["contract_mismatch"],
     });
   });
 });

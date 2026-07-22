@@ -6,7 +6,12 @@ import { promisify } from "node:util";
 import ffmpegPath from "ffmpeg-static";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { parseFfmpegProbeOutput, parseFfprobeJsonOutput, probeRecording } from "./media-probe";
+import {
+  parseFfmpegProbeOutput,
+  parseFfprobeDimensionsOutput,
+  parseFfprobeJsonOutput,
+  probeRecording,
+} from "./media-probe";
 import { discoverProjectRecordings } from "./recording-discovery";
 
 const tempDirs: string[] = [];
@@ -94,6 +99,15 @@ describe("recording media probe", () => {
         }),
       ],
     });
+  });
+
+  it("parses dimensions from a metadata-only ffprobe response", () => {
+    expect(
+      parseFfprobeDimensionsOutput(
+        JSON.stringify({ streams: [{ width: 1280, height: 800 }] }),
+      ),
+    ).toEqual({ status: "valid", width: 1280, height: 800 });
+    expect(parseFfprobeDimensionsOutput(JSON.stringify({ streams: [] }))).toBeNull();
   });
 
   it("rejects an empty recording before spawning ffmpeg", async () => {

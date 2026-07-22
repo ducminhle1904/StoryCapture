@@ -1,7 +1,7 @@
 import type {
   RecordingPreflightV3Dto,
   RecordingResultV3,
-} from "@storycapture/shared-types/recording-v2";
+} from "@storycapture/shared-types/recording-v3";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -178,6 +178,8 @@ const v3QualityFailure = {
   diagnostic_bundle_path: "/tmp/demo/exports/v3-failed.sc-recording",
   duration_ms: 1_000,
   bytes: 1,
+  output_width: 1920,
+  output_height: 1080,
   master_path: null,
   proxy_path: null,
   cadence_evidence: {
@@ -366,6 +368,8 @@ describe("RecordingView take lifecycle", () => {
             proxy_path: "/tmp/demo/exports/dev.sc-recording/proxy/video.mp4",
             output_path: "/tmp/demo/exports/dev.sc-recording/proxy/video.mp4",
             diagnostic_bundle_path: null,
+            output_width: 1280,
+            output_height: 800,
             cadence_evidence: {
               ...v3QualityFailure.cadence_evidence,
               artifact_decoded_frames: 60,
@@ -392,7 +396,7 @@ describe("RecordingView take lifecycle", () => {
           projectId="project-1"
           projectName="Demo"
           projectFolder="/tmp/demo"
-          storySource={'meta { app: "https://example.com" viewport: 960x540 }'}
+          storySource={'meta { app: "https://example.com" viewport: 1280x800 }'}
         />
       </MemoryRouter>,
     );
@@ -421,11 +425,292 @@ describe("RecordingView take lifecycle", () => {
         frame_ledger_path: "/tmp/demo/exports/dev.sc-recording/evidence/frame-ledger.jsonl",
         source_frame_count: 60,
         source_scope_verified: true,
+        width: 1280,
+        height: 800,
       }),
     );
     expect(
       screen.getByText("Uncertified Development — not a Strict-certified recording"),
     ).toBeInTheDocument();
+  });
+
+  it.each([
+    { width: 1280, height: 720 },
+    { width: 1280, height: 800 },
+    { width: 1440, height: 900 },
+  ])("starts Dev V3 at the $width x $height story viewport", async ({ width, height }) => {
+    mocks.outputPrefs.recordingV3DevelopmentMode = true;
+    mocks.probeRecordingV3Capability.mockResolvedValue(v3DevelopmentPreflight);
+    mocks.acquireRecordingPreview.mockResolvedValue({
+      streamId: `preview-${width}-${height}`,
+      release: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter>
+        <RecordingView
+          projectId="project-1"
+          projectName="Demo"
+          projectFolder="/tmp/demo"
+          storySource={`meta { app: "https://example.com" viewport: ${width}x${height} }`}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New take" }));
+    expect(screen.getByText(`${width}x${height} @1x -> ${width}x${height}`)).toBeInTheDocument();
+    expect(screen.getByText(`${width}×${height}`)).toBeInTheDocument();
+    const start = await screen.findByRole("button", { name: "Start recording" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+
+    const expectedDimensions = {
+      logical_width: width,
+      logical_height: height,
+      capture_dpr: 1,
+      physical_width: width,
+      physical_height: height,
+      requested_output_width: width,
+      requested_output_height: height,
+    };
+    await waitFor(() => expect(mocks.probeRecordingV3Capability).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(`60/1 · ${width}×${height}`)).toBeInTheDocument();
+    expect(mocks.probeRecordingV3Capability).toHaveBeenCalledWith(
+      expect.objectContaining({
+        width,
+        height,
+        intent: "development",
+        capture_contract: expect.objectContaining({ dimensions: expectedDimensions }),
+      }),
+    );
+    expect(mocks.acquireRecordingPreview).toHaveBeenCalledWith(
+      expect.objectContaining({ viewport: { width, height }, fps: 60 }),
+    );
+    await waitFor(() => expect(mocks.launchAutomation).toHaveBeenCalledTimes(1));
+    expect(mocks.launchAutomation.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ recordingViewport: { width, height } }),
+    );
+  });
+
+  it.each([
+    { width: 318, height: 240 },
+    { width: 1281, height: 800 },
+    { width: 1922, height: 1080 },
+  ])("blocks an invalid Dev V3 viewport at $width x $height", async ({ width, height }) => {
+    mocks.outputPrefs.recordingV3DevelopmentMode = true;
+    mocks.probeRecordingV3Capability.mockResolvedValue(v3DevelopmentPreflight);
+
+    render(
+      <MemoryRouter>
+        <RecordingView
+          projectId="project-1"
+          projectName="Demo"
+          projectFolder="/tmp/demo"
+          storySource={`meta { app: "https://example.com" viewport: ${width}x${height} }`}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New take" }));
+    const start = await screen.findByRole("button", { name: "Start recording" });
+    await waitFor(() => expect(start).toBeDisabled());
+    expect(
+      screen.getByText(/Dev Recording V3 requires an even viewport from 320×240/),
+    ).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    await waitFor(() => expect(useRecorderStore.getState().status).toBe("idle"));
+    expect(mocks.acquireRecordingPreview).not.toHaveBeenCalled();
+    expect(mocks.probeRecordingV3Capability).not.toHaveBeenCalled();
+    expect(mocks.startRecording).not.toHaveBeenCalled();
+  });
+
+  it("uses the latest story viewport after source updates", async () => {
+    mocks.outputPrefs.recordingV3DevelopmentMode = true;
+    mocks.probeRecordingV3Capability.mockResolvedValue(v3DevelopmentPreflight);
+    mocks.acquireRecordingPreview.mockResolvedValue({
+      streamId: "preview-latest",
+      release: vi.fn(),
+    });
+
+    const view = render(
+      <MemoryRouter>
+        <RecordingView
+          projectId="project-1"
+          projectName="Demo"
+          projectFolder="/tmp/demo"
+          storySource={'meta { app: "https://example.com" viewport: 1280x800 }'}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New take" }));
+    expect(screen.getByText("1280x800 @1x -> 1280x800")).toBeInTheDocument();
+
+    view.rerender(
+      <MemoryRouter>
+        <RecordingView
+          projectId="project-1"
+          projectName="Demo"
+          projectFolder="/tmp/demo"
+          storySource={'meta { app: "https://example.com" viewport: 1922x1080 }'}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Start recording" })).toBeDisabled(),
+    );
+    expect(screen.getByText("1922x1080 @1x -> 1922x1080")).toBeInTheDocument();
+
+    view.rerender(
+      <MemoryRouter>
+        <RecordingView
+          projectId="project-1"
+          projectName="Demo"
+          projectFolder="/tmp/demo"
+          storySource={'meta { app: "https://example.com" viewport: 1440x900 }'}
+        />
+      </MemoryRouter>,
+    );
+    const start = screen.getByRole("button", { name: "Start recording" });
+    await waitFor(() => expect(start).toBeEnabled());
+    expect(screen.getByText("1440x900 @1x -> 1440x900")).toBeInTheDocument();
+    expect(screen.queryByText("1280x800 @1x -> 1280x800")).not.toBeInTheDocument();
+    fireEvent.click(start);
+
+    await waitFor(() => expect(mocks.probeRecordingV3Capability).toHaveBeenCalledTimes(1));
+    expect(mocks.probeRecordingV3Capability).toHaveBeenCalledWith(
+      expect.objectContaining({
+        width: 1440,
+        height: 900,
+        capture_contract: expect.objectContaining({
+          dimensions: expect.objectContaining({
+            logical_width: 1440,
+            logical_height: 900,
+            capture_dpr: 1,
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("keeps Strict V3 fixed at the certified 960 x 540 contract", async () => {
+    mocks.outputPrefs.recordingDeliveryPolicy = "strict";
+    mocks.probeRecordingV3Capability.mockResolvedValue(v3Preflight);
+    mocks.acquireRecordingPreview.mockResolvedValue({
+      streamId: "preview-strict",
+      release: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter>
+        <RecordingView
+          projectId="project-1"
+          projectName="Demo"
+          projectFolder="/tmp/demo"
+          storySource={'meta { app: "https://example.com" viewport: 960x540 }'}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New take" }));
+    expect(screen.getByText("960x540 @2x -> 1920x1080")).toBeInTheDocument();
+    const start = await screen.findByRole("button", { name: "Start recording" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+
+    await waitFor(() => expect(mocks.probeRecordingV3Capability).toHaveBeenCalledTimes(1));
+    expect(mocks.probeRecordingV3Capability).toHaveBeenCalledWith(
+      expect.objectContaining({
+        intent: "strict",
+        capture_contract: expect.objectContaining({
+          dimensions: {
+            logical_width: 960,
+            logical_height: 540,
+            capture_dpr: 2,
+            physical_width: 1920,
+            physical_height: 1080,
+            requested_output_width: 1920,
+            requested_output_height: 1080,
+          },
+        }),
+      }),
+    );
+  });
+
+  it("keeps a wide Strict V3 story blocked by the certified geometry", async () => {
+    mocks.outputPrefs.recordingDeliveryPolicy = "strict";
+    mocks.probeRecordingV3Capability.mockResolvedValue(v3Preflight);
+
+    render(
+      <MemoryRouter>
+        <RecordingView
+          projectId="project-1"
+          projectName="Demo"
+          projectFolder="/tmp/demo"
+          storySource={'meta { app: "https://example.com" viewport: 1280x800 }'}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New take" }));
+    expect(screen.getByText("1280x800 @2x -> 2560x1600")).toBeInTheDocument();
+    const start = await screen.findByRole("button", { name: "Start recording" });
+    await waitFor(() => expect(start).toBeDisabled());
+    expect(
+      screen.getByText(/Strict Recording V3 requires 960×540 @2x -> 1920×1080/),
+    ).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    await waitFor(() => expect(useRecorderStore.getState().status).toBe("idle"));
+    expect(mocks.acquireRecordingPreview).not.toHaveBeenCalled();
+    expect(mocks.probeRecordingV3Capability).not.toHaveBeenCalled();
+    expect(mocks.startRecording).not.toHaveBeenCalled();
+  });
+
+  it("keeps Standard recording on the V2 route at a wide story viewport", async () => {
+    mocks.acquireRecordingPreview.mockResolvedValue({
+      streamId: "preview-standard",
+      release: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter>
+        <RecordingView
+          projectId="project-1"
+          projectName="Demo"
+          projectFolder="/tmp/demo"
+          storySource={'meta { app: "https://example.com" viewport: 1440x900 }'}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New take" }));
+    const start = await screen.findByRole("button", { name: "Start recording" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+
+    await waitFor(() => expect(mocks.startRecording).toHaveBeenCalledTimes(1));
+    expect(mocks.probeRecordingV3Capability).not.toHaveBeenCalled();
+    expect(mocks.startRecording).toHaveBeenCalledWith(
+      expect.objectContaining({
+        width: 1440,
+        height: 900,
+        fps: 30,
+        contract_version: 2,
+        intent: undefined,
+        delivery_policy: "best_effort",
+        capture_contract: undefined,
+      }),
+      expect.any(Function),
+    );
+    expect(mocks.acquireRecordingPreview).toHaveBeenCalledWith(
+      expect.objectContaining({ viewport: { width: 1440, height: 900 }, fps: 30 }),
+    );
+    await waitFor(() => expect(mocks.launchAutomation).toHaveBeenCalledTimes(1));
+    expect(mocks.launchAutomation.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ recordingViewport: { width: 1440, height: 900 } }),
+    );
   });
 
   it("clears the owned automation channel on completion", async () => {
