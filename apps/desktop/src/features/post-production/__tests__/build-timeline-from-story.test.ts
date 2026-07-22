@@ -273,6 +273,37 @@ describe("buildTimelineFromStory", () => {
     );
   });
 
+  it("preserves uncertified development provenance without a certification profile", () => {
+    const recording: RecordingInfo = {
+      ...RECORDING,
+      version: 3,
+      path: "/take-uncertified.sc-recording/proxy/video.mp4",
+      bundle_path: "/take-uncertified.sc-recording",
+      master_path: "/take-uncertified.sc-recording/master/video.mkv",
+      proxy_path: "/take-uncertified.sc-recording/proxy/video.mp4",
+      cadence_evidence_path: "/take-uncertified.sc-recording/evidence/cadence.json",
+      quality_evidence_path: "/take-uncertified.sc-recording/evidence/runtime-quality.json",
+      frame_ledger_path: "/take-uncertified.sc-recording/evidence/frame-ledger.jsonl",
+      exact_source_fps: { numerator: 60, denominator: 1 },
+      source_frame_count: 300,
+      guarantee_boundary: "electron_offscreen_delivery",
+      source_scope_verified: true,
+      recording_mode: "uncertified_development",
+      certification_profile: null,
+      quality_verdict: "passed",
+    };
+
+    const out = buildTimelineFromStory({ story: null, recording, trajectory: null });
+
+    expect(out.video[0]?.recordingSource).toMatchObject({
+      version: 3,
+      recording_mode: "uncertified_development",
+      certification_profile_id: null,
+      master_path: recording.master_path,
+      proxy_path: recording.proxy_path,
+    });
+  });
+
   it("emits a cursor clip with derived trajectory path when sidecar present", () => {
     const out = buildTimelineFromStory({
       story: null,

@@ -4,8 +4,15 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import slugify from "@sindresorhus/slugify";
 import type { ExportJobStatus, SupportedExportCompositionGraph } from "@storycapture/shared-types";
+import type { RecordingV3Mode } from "@storycapture/shared-types/recording-v3";
 import type { WebContents } from "electron";
 import { exportFfmpegPath } from "../export-binaries";
+import {
+  recordingV3ModeForExportGraph,
+  recordingV3ModeFromExportGraph,
+  registerUncertifiedDevelopmentExport,
+  suffixUncertifiedDevelopmentBaseName,
+} from "../recording-v3-export-provenance";
 import { clampFps } from "./capture-preview";
 import { sourceHasAudio, verifyExportArtifact } from "./export-artifact-verification";
 import {
@@ -66,6 +73,7 @@ interface EnqueueExportRenderJobArgs {
   writeAiVoiceXmp?: (filePath: string) => Promise<void>;
   presetId?: string | null;
   priority?: number;
+  recordingMode?: RecordingV3Mode | null;
 }
 
 interface QueuedExportRenderJob {
@@ -90,9 +98,21 @@ export {
   validateExportOutput,
 } from "./export-planning";
 
-export function exportOutputPath(args: ExportRunArgs, output: ExportOutput, index: number): string {
+function exportBaseName(args: ExportRunArgs, recordingMode: RecordingV3Mode | null): string {
+  const requested = slugify(args.base_name || args.story_id || "export") || "export";
+  return recordingMode === "uncertified_development"
+    ? suffixUncertifiedDevelopmentBaseName(requested)
+    : requested;
+}
+
+export function exportOutputPath(
+  args: ExportRunArgs,
+  output: ExportOutput,
+  index: number,
+  recordingMode: RecordingV3Mode | null = recordingV3ModeFromExportGraph(args.graph_json),
+): string {
   const ext = output.format.toLowerCase();
-  const base = slugify(args.base_name || args.story_id || "export") || "export";
+  const base = exportBaseName(args, recordingMode);
   const suffix = args.outputs.length > 1 ? `-${index + 1}-${output.resolution}` : "";
   return path.join(args.output_folder, `${base}${suffix}.${ext}`);
 }
@@ -110,6 +130,7 @@ function createRenderJob(args: {
   outputPath: string | null;
   presetId?: string | null;
   priority?: number;
+  recordingMode?: RecordingV3Mode | null;
 }): RenderJob {
   const now = Date.now();
   return {
@@ -135,6 +156,7 @@ function createRenderJob(args: {
     completed_at: null,
     error: null,
     output_path: args.outputPath,
+    recording_mode: args.recordingMode ?? null,
     created_at: now,
   };
 }
@@ -340,6 +362,14 @@ async function executeExportRenderJob(queued: QueuedExportRenderJob): Promise<vo
     setJobPhase(session, "verifying", 99, 100);
     await commitExportOutput(args.outputReservation);
     session.outputReservation = null;
+    if (args.recordingMode === "uncertified_development") {
+      try {
+        await registerUncertifiedDevelopmentExport(args.outputReservation.finalPath);
+      } catch (error) {
+        await fs.unlink(args.outputReservation.finalPath).catch(() => undefined);
+        throw error;
+      }
+    }
     setJobPhase(session, "completed", 100, 100);
   } catch (error) {
     if (session.outputReservation) {
@@ -413,11 +443,13 @@ export async function exportRun(args: ExportRunArgs) {
   if (aiDisclosure.embed_xmp && !aiDisclosure.contains_ai_voiceover) {
     throw new Error("XMP AI voice metadata cannot be embedded without AI-generated voiceover.");
   }
+  const recordingMode = await recordingV3ModeForExportGraph(args.graph_json);
   await prepareExportOutputFolder(args.output_folder);
   const batchId = randomUUID();
+  const snapshotBase = exportBaseName(args, recordingMode);
   const snapshotPath = path.join(
     args.output_folder,
-    `${slugify(args.base_name || args.story_id || "export") || "export"}.${batchId}.graph.json`,
+    `${snapshotBase}.${batchId}.graph.json`,
   );
   await fs.writeFile(snapshotPath, args.graph_json, "utf8");
   const jobIds: string[] = [];
@@ -444,6 +476,7 @@ export async function exportRun(args: ExportRunArgs) {
         outputPath: null,
         presetId: args.preset_id,
         priority: args.priority,
+        recordingMode,
       });
       job.status = "failed";
       job.error = `${output.format} export is unsupported: ${plan.reason}`;
@@ -456,7 +489,7 @@ export async function exportRun(args: ExportRunArgs) {
     }
     try {
       const outputReservation = await reserveExportOutputPath(
-        exportOutputPath(args, output, index),
+        exportOutputPath(args, output, index, recordingMode),
         id,
       );
       enqueueExportRenderJob({
@@ -470,6 +503,7 @@ export async function exportRun(args: ExportRunArgs) {
         embedAiVoiceXmp: aiDisclosure.embed_xmp && output.format.toLowerCase() === "mp4",
         presetId: args.preset_id,
         priority: args.priority,
+        recordingMode,
       });
     } catch (error) {
       const job = createRenderJob({
@@ -481,6 +515,7 @@ export async function exportRun(args: ExportRunArgs) {
         outputPath: null,
         presetId: args.preset_id,
         priority: args.priority,
+        recordingMode,
       });
       job.status = "failed";
       job.error = `Could not reserve export output: ${error instanceof Error ? error.message : String(error)}`;
@@ -496,6 +531,7 @@ export async function exportRun(args: ExportRunArgs) {
     batch_id: batchId,
     job_ids: jobIds,
     graph_snapshot_path: snapshotPath,
+    recording_mode: recordingMode,
   };
 }
 

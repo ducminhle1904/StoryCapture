@@ -18,6 +18,10 @@ export function isDevRuntime(
   return !app.isPackaged || (env[identity.devAppEnv] === "1" && isGeneratedDevAppExecutable(executablePath));
 }
 
-export function isPackagedRuntime(app: Pick<App, "isPackaged">, env: NodeJS.ProcessEnv = process.env) {
-  return !isDevRuntime(app, env);
+export function isPackagedRuntime(
+  app: Pick<App, "isPackaged">,
+  env: NodeJS.ProcessEnv = process.env,
+  executablePath = process.execPath,
+) {
+  return !isDevRuntime(app, env, executablePath);
 }

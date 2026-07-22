@@ -12,6 +12,7 @@ import type {
   RecordingFrameLedgerEntryV3,
   RecordingQualityEvidenceV3,
   RecordingResultV3,
+  RecordingV3Qualification,
 } from "@storycapture/shared-types/recording-v2";
 import type { RecordingActions } from "./action-timeline";
 import { RecordingBundleWorkspace, recordingBundleArtifact } from "./recording-bundle";
@@ -21,8 +22,7 @@ export interface RecordingV3BundleWriterOptions {
   exportsDir: string;
   name: string;
   captureContract: RecordingCaptureContractV3;
-  manifestId: string;
-  profile: RecordingCertifiedProfileV3;
+  qualification: RecordingV3Qualification;
   width: 1920;
   height: 1080;
   ffmpegBinary?: string;
@@ -42,6 +42,31 @@ function profileReference(
     manifest_id: manifestId,
     profile_id: profile.profile_id,
     evidence_artifact_sha256: profile.evidence_artifact_sha256,
+  };
+}
+
+function bundleProvenance(qualification: RecordingV3Qualification):
+  | {
+      delivery_policy: "strict";
+      recording_mode: "certified";
+      certification_profile: RecordingCertificationProfileReferenceV3;
+    }
+  | {
+      delivery_policy: "development";
+      recording_mode: "uncertified_development";
+      certification_profile: null;
+    } {
+  if (qualification.mode === "uncertified_development") {
+    return {
+      delivery_policy: "development",
+      recording_mode: "uncertified_development",
+      certification_profile: null,
+    };
+  }
+  return {
+    delivery_policy: "strict",
+    recording_mode: "certified",
+    certification_profile: profileReference(qualification.profile, qualification.manifestId),
   };
 }
 
@@ -199,7 +224,11 @@ export class RecordingV3BundleWriter {
     await this.workspace.writeJson("diagnostics/manifest.json", {
       version: 3,
       created_at: new Date().toISOString(),
-      profile_id: this.options.profile.profile_id,
+      recording_mode: this.options.qualification.mode,
+      profile_id:
+        this.options.qualification.mode === "certified"
+          ? this.options.qualification.profile.profile_id
+          : null,
       native_stats: input.engineResult.stats,
       failure_codes: input.failureCodes,
       error: input.diagnosticError,
@@ -210,13 +239,12 @@ export class RecordingV3BundleWriter {
       input.status === "completed"
         ? await recordingBundleArtifact(this.workspace.stagingPath, "proxy/video.mp4")
         : null;
-    const certificationProfile = profileReference(this.options.profile, this.options.manifestId);
+    const provenance = bundleProvenance(this.options.qualification);
     const manifest: RecordingBundleV3 = {
       schema_version: 3,
       status: input.status,
       created_at: new Date().toISOString(),
-      delivery_policy: "strict",
-      certification_profile: certificationProfile,
+      ...provenance,
       capture_contract: this.options.captureContract,
       master: {
         ...master,
@@ -240,7 +268,7 @@ export class RecordingV3BundleWriter {
       frame_ledger_path: "evidence/frame-ledger.jsonl",
       diagnostics_manifest_path: "diagnostics/manifest.json",
       failure_codes: input.failureCodes,
-    };
+    } as RecordingBundleV3;
     const bundlePath = await this.workspace.commit(manifest);
     const finalMasterPath = path.join(bundlePath, manifest.master.relative_path);
     const finalProxyPath = manifest.proxy
@@ -252,9 +280,8 @@ export class RecordingV3BundleWriter {
       return {
         version: 3,
         status: "quality_failed",
-        delivery_policy: "strict",
+        ...provenance,
         guarantee_boundary: "electron_offscreen_delivery",
-        certification_profile: certificationProfile,
         bundle_path: bundlePath,
         output_path: null,
         diagnostic_bundle_path: bundlePath,
@@ -264,14 +291,13 @@ export class RecordingV3BundleWriter {
         proxy_path: null,
         cadence_evidence: input.cadenceEvidence,
         quality_evidence: input.qualityEvidence,
-      };
+      } as RecordingResultV3;
     }
     return {
       version: 3,
       status: "completed",
-      delivery_policy: "strict",
+      ...provenance,
       guarantee_boundary: "electron_offscreen_delivery",
-      certification_profile: certificationProfile,
       bundle_path: bundlePath,
       output_path: finalProxyPath,
       diagnostic_bundle_path: null,
@@ -281,7 +307,7 @@ export class RecordingV3BundleWriter {
       proxy_path: finalProxyPath,
       cadence_evidence: input.cadenceEvidence,
       quality_evidence: input.qualityEvidence,
-    };
+    } as RecordingResultV3;
   }
 
   private async writeJsonLines(

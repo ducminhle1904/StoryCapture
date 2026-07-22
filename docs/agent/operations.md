@@ -120,6 +120,25 @@ Recording V3 has dedicated trusted automation:
   retention, and may be manually deleted only after validation as a contained
   `quality_failed` bundle.
 
+### Recording V3 Uncertified Development Boundary
+
+- `STORYCAPTURE_ENABLE_UNCERTIFIED_RECORDING_V3=1` is honored only by the
+  existing generated-dev runtime identity. Packaged production executables
+  reject development creation even when dev-related environment flags are
+  forced; keep admission routed through
+  `apps/desktop/electron/ipc/recording-v3-development-gate.ts`.
+- `dev:recording-v3` bypasses only certification manifest/profile matching. It
+  retains platform, addon, FFmpeg, storage, source-rate, cadence, ledger,
+  decode, and artifact verification gates and never sets `strict_eligible`.
+- Development bundles and derived local exports remain labelled
+  `uncertified_development`/`-uncertified-dev`. Packaged apps may read, preview,
+  edit, and export them locally, but may not create or upload them.
+- Upload enforcement is host-owned in
+  `apps/desktop/electron/ipc/recording-v3-export-provenance.ts` and
+  `apps/desktop/electron/ipc/legacy/web.ts`. The atomic user-data registry
+  preserves canonical export provenance across app reopen; renderer fields and
+  filenames are not the sole authority.
+
 ## Web Deploy And Cron
 
 - Vercel config: `apps/web/vercel.json`.

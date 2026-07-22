@@ -103,6 +103,7 @@ describe("recording bundle discovery", () => {
       status: "completed",
       created_at: new Date(0).toISOString(),
       delivery_policy: "strict",
+      recording_mode: "certified",
       certification_profile: {
         manifest_id: "manifest-2026-07",
         profile_id: "mac17-2-m5-browser-1080p60",
@@ -176,14 +177,30 @@ describe("recording bundle discovery", () => {
       certification_profile: manifest.certification_profile,
       guarantee_boundary: "electron_offscreen_delivery",
       source_scope_verified: true,
+      recording_mode: "certified",
       source_frame_count: 600,
       quality_verdict: "passed",
       validation: { status: "valid" },
     });
     expect(probe).not.toHaveBeenCalled();
 
-    const failedManifest: RecordingBundleV3 = {
+    const developmentManifest: RecordingBundleV3 = {
       ...manifest,
+      delivery_policy: "development",
+      recording_mode: "uncertified_development",
+      certification_profile: null,
+    };
+    await fs.writeFile(path.join(bundle, "manifest.json"), JSON.stringify(developmentManifest));
+    await expect(discoverProjectRecordings(root, probe)).resolves.toEqual([
+      expect.objectContaining({
+        recording_mode: "uncertified_development",
+        certification_profile: null,
+        source_scope_verified: true,
+      }),
+    ]);
+
+    const failedManifest: RecordingBundleV3 = {
+      ...developmentManifest,
       status: "quality_failed",
       proxy: null,
       failure_codes: ["artifact_verification_failed"],

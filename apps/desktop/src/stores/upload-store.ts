@@ -5,8 +5,9 @@
  * No auto-retry — user manually triggers upload.
  */
 
-import { create } from "zustand";
+import type { RecordingV3Mode } from "@storycapture/shared-types/recording-v3";
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { create } from "zustand";
 
 export interface UploadProgress {
   phase: string; // "thumbnail" | "uploading" | "completing"
@@ -28,6 +29,7 @@ export interface UploadStore {
     workspaceId?: string,
     storySource?: string,
     sceneBoundaries?: unknown[],
+    recordingMode?: RecordingV3Mode | null,
   ) => Promise<void>;
   cancelUpload: () => Promise<void>;
   reset: () => void;
@@ -45,6 +47,7 @@ export const useUploadStore = create<UploadStore>((set) => ({
     workspaceId?: string,
     storySource?: string,
     sceneBoundaries?: unknown[],
+    recordingMode?: RecordingV3Mode | null,
   ) => {
     set({ status: "uploading", progress: null, videoSlug: null, error: null });
 
@@ -68,6 +71,7 @@ export const useUploadStore = create<UploadStore>((set) => ({
           ? JSON.stringify(sceneBoundaries)
           : null,
         onProgress,
+        recordingMode: recordingMode ?? null,
       });
 
       set({

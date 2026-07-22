@@ -135,7 +135,8 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/electron/ipc/recording-strict-browser-lifecycle-v3.ts`.
 - Admission and exact runtime binding:
   `recording-v3-runtime-preflight.ts`, `recording-v3-capability.ts`, and
-  `recording-v3-certification-manifest.ts`.
+  `recording-v3-certification-manifest.ts`; the generated-dev-only admission
+  boundary is `recording-v3-development-gate.ts`.
 - Zero-JS-frame data plane: `recording-v3-browser-backend.ts`,
   `recording-v3-engine.ts`, `recording-v3-native-addon.ts`,
   `recording-v3-bundle-writer.ts`, and
@@ -146,6 +147,13 @@ Use this for task routing after reading the short root guide.
 - Protected certification/release entrypoints live in
   `apps/desktop/scripts/recording-v3-*.mjs` and
   `.github/workflows/recording-v3-{nightly,release}.yml`.
+- Development-flow launch/E2E entrypoints are
+  `apps/desktop/scripts/dev-recording-v3.mjs`,
+  `apps/desktop/scripts/run-recording-v3-development-flow.mjs`, and
+  `apps/desktop/electron/recording-v3-development-flow-smoke.ts`.
+- Development export/upload provenance is owned by
+  `apps/desktop/electron/ipc/recording-v3-export-provenance.ts` and the host
+  upload boundary in `apps/desktop/electron/ipc/legacy/web.ts`.
 
 ## DSL, Capture, Render, Export
 

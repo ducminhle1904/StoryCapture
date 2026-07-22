@@ -491,6 +491,13 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const setTracks = useEditorStore((s) => s.setTracks);
   const setDuration = useEditorStore((s) => s.setDuration);
   const tracksVideoLen = useEditorStore((s) => s.tracks.video.length);
+  const hasUncertifiedDevelopmentSource = useEditorStore((s) =>
+    s.tracks.video.some(
+      (clip) =>
+        clip.recordingSource?.version === 3 &&
+        clip.recordingSource.recording_mode === "uncertified_development",
+    ),
+  );
   const tracksCursorLen = useEditorStore((s) => s.tracks.cursor.length);
   const tracksZoomLen = useEditorStore((s) => s.tracks.zoom.length);
   const tracksSoundLen = useEditorStore((s) => s.tracks.sound.length);
@@ -885,6 +892,16 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
           tone: "success",
         }}
       />
+
+      {hasUncertifiedDevelopmentSource ? (
+        <div
+          role="status"
+          className="mx-3 mt-3 flex items-center gap-2 rounded-[var(--sc-r-lg)] border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-200"
+        >
+          <TriangleAlert size={14} aria-hidden="true" />
+          Uncertified Development — not a Strict-certified recording
+        </div>
+      ) : null}
 
       <PageContentTransition className="min-h-0 flex-1">
         {/* Top region: preview | inspector */}

@@ -9,12 +9,17 @@ import type {
   RecordingPreflightV3Request,
   RecordingSourceRateProbeV2,
   RecordingStorageEstimateV2,
+  RecordingV3DevelopmentEnvironmentDto,
 } from "@storycapture/shared-types/recording-v2";
 import { app, BrowserWindow } from "electron";
+import { isPackagedRuntime } from "../runtime";
 import { ffmpegExecutablePath } from "./export-binaries";
 import { recordingStoragePreflight, sha256File } from "./recording-bundle";
 import { disabledRecordingCertificationTierIds } from "./recording-certification-catalog";
-import { evaluateRecordingV3Capability } from "./recording-v3-capability";
+import {
+  evaluateRecordingV3Capability,
+  type RecordingV3CapabilityFacts,
+} from "./recording-v3-capability";
 import {
   BUNDLED_RECORDING_CERTIFICATION_SIGNER_KEYS_V3,
   type RecordingCertificationRuntimeIdentityV3,
@@ -25,8 +30,9 @@ import {
   RECORDING_V3_NATIVE_PROTOCOL_VERSION,
   RecordingV3NativeBridge,
   RecordingV3NativeError,
-  recordingV3NativeAddonPath,
+  recordingV3NativeAddonPathForRuntime,
 } from "./recording-v3-native-addon";
+import { isRecordingV3DevelopmentEnabled } from "./recording-v3-development-gate";
 
 const SOURCE_PROBE_FRAMES = 60;
 const SOURCE_PROBE_TIMEOUT_MS = 8_000;
@@ -60,7 +66,7 @@ function unavailableStorage(): RecordingStorageEstimateV2 {
 }
 
 function certificationRoot(): string {
-  return app.isPackaged
+  return isPackagedRuntime(app)
     ? path.join(process.resourcesPath, "recording-v3-certification")
     : path.join(app.getAppPath(), "recording-v3-certification");
 }
@@ -168,28 +174,35 @@ export async function probeBrowserSourceRateV3(
   };
 }
 
-export async function probeRecordingV3RuntimeCapability(input: {
-  request: RecordingPreflightV3Request;
+interface CommonRecordingV3RuntimeFacts
+  extends Omit<
+    RecordingV3CapabilityFacts,
+    "manifestId" | "matchedProfile" | "sourceRate" | "failureCodes"
+  > {
+  addonPath: string;
+  ffmpegPath: string;
+  failureCodes: RecordingFailureCodeV3[];
+}
+
+async function probeCommonRecordingV3Runtime(input: {
   projectFolder: string;
-  url: string;
-  nowMs?: number;
-}): Promise<RecordingPreflightV3Dto> {
+  certificationRequired: boolean;
+}): Promise<CommonRecordingV3RuntimeFacts> {
   const failureCodes: RecordingFailureCodeV3[] = [];
   const fail = (code: RecordingFailureCodeV3) => {
     if (!failureCodes.includes(code)) failureCodes.push(code);
   };
   const platform: RecordingPlatform = process.platform === "darwin" ? "darwin" : "win32";
-  if (process.platform !== "darwin" || process.arch !== "arm64") fail("profile_mismatch");
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
+    fail(input.certificationRequired ? "profile_mismatch" : "contract_mismatch");
+  }
 
-  const addonPath = recordingV3NativeAddonPath({
-    isPackaged: app.isPackaged,
+  const addonPath = recordingV3NativeAddonPathForRuntime({
+    app,
     resourcesPath: process.resourcesPath,
     desktopRoot: app.getAppPath(),
   });
   const ffmpegPath = ffmpegExecutablePath();
-  const root = certificationRoot();
-  const manifestPath = path.join(root, "manifest.json");
-  const evidencePath = path.join(root, "evidence.json");
 
   let nativeProbePassed = false;
   let addonProtocolVersion = RECORDING_V3_NATIVE_PROTOCOL_VERSION;
@@ -230,41 +243,81 @@ export async function probeRecordingV3RuntimeCapability(input: {
     fail("storage_preflight_failed");
   }
 
+  let hardwareModel = "unknown";
+  let hardwareChip = "unknown";
+  let osBuild = "unknown";
+  try {
+    const [model, chip, build] = await Promise.all([
+      commandText("/usr/sbin/sysctl", ["-n", "hw.model"]),
+      commandText("/usr/sbin/sysctl", ["-n", "machdep.cpu.brand_string"]),
+      commandText("/usr/bin/sw_vers", ["-buildVersion"]),
+    ]);
+    hardwareModel = model;
+    hardwareChip = chip;
+    osBuild = build;
+  } catch {
+    if (input.certificationRequired) fail("profile_mismatch");
+  }
+
+  try {
+    await ffmpegVersion(ffmpegPath);
+  } catch {
+    fail(input.certificationRequired ? "profile_mismatch" : "contract_mismatch");
+  }
+
+  return {
+    platform,
+    arch: process.arch,
+    hardwareModel,
+    hardwareChip,
+    osBuild,
+    addonProtocolVersion,
+    storage,
+    storageEligible,
+    nativeProbePassed,
+    permissionsGranted: true,
+    addonPath,
+    ffmpegPath,
+    failureCodes,
+  };
+}
+
+async function resolveStrictRecordingV3Certification(
+  common: CommonRecordingV3RuntimeFacts,
+  nowMs?: number,
+): Promise<{
+  manifestId: string | null;
+  matchedProfile: RecordingV3CapabilityFacts["matchedProfile"];
+  failureCodes: RecordingFailureCodeV3[];
+}> {
+  const root = certificationRoot();
+  const manifestPath = path.join(root, "manifest.json");
+  const evidencePath = path.join(root, "evidence.json");
   let manifestValue: unknown = null;
   try {
     manifestValue = JSON.parse(await fs.readFile(manifestPath, "utf8")) as unknown;
   } catch {
-    fail("manifest_missing");
+    return { manifestId: null, matchedProfile: null, failureCodes: ["manifest_missing"] };
   }
 
-  let hardwareModel = "unknown";
-  let hardwareChip = "unknown";
-  let osBuild = "unknown";
   let runtimeIdentity: RecordingCertificationRuntimeIdentityV3 | null = null;
   try {
-    const [model, chip, build, addonSha256, ffmpegSha256, evidenceSha256, version] =
-      await Promise.all([
-        commandText("/usr/sbin/sysctl", ["-n", "hw.model"]),
-        commandText("/usr/sbin/sysctl", ["-n", "machdep.cpu.brand_string"]),
-        commandText("/usr/bin/sw_vers", ["-buildVersion"]),
-        sha256File(addonPath),
-        sha256File(ffmpegPath),
-        sha256File(evidencePath),
-        ffmpegVersion(ffmpegPath),
-      ]);
-    hardwareModel = model;
-    hardwareChip = chip;
-    osBuild = build;
+    const [addonSha256, ffmpegSha256, evidenceSha256, version] = await Promise.all([
+      sha256File(common.addonPath),
+      sha256File(common.ffmpegPath),
+      sha256File(evidencePath),
+      ffmpegVersion(common.ffmpegPath),
+    ]);
     runtimeIdentity = {
       target_class: "browser",
-      platform,
-      arch: process.arch,
-      hardware_model: model,
-      hardware_chip: chip,
-      os_build: build,
+      platform: common.platform,
+      arch: common.arch,
+      hardware_model: common.hardwareModel,
+      hardware_chip: common.hardwareChip,
+      os_build: common.osBuild,
       backend_id: "electron_offscreen_shared_texture_v3",
       backend_version: "3.0.0",
-      addon_protocol_version: addonProtocolVersion,
+      addon_protocol_version: common.addonProtocolVersion,
       addon_sha256: addonSha256,
       electron_version: process.versions.electron ?? "unknown",
       chromium_version: process.versions.chrome ?? "unknown",
@@ -278,7 +331,7 @@ export async function probeRecordingV3RuntimeCapability(input: {
       evidence_artifact_sha256: evidenceSha256,
     };
   } catch {
-    fail("profile_mismatch");
+    return { manifestId: null, matchedProfile: null, failureCodes: ["profile_mismatch"] };
   }
 
   const resolution =
@@ -288,28 +341,111 @@ export async function probeRecordingV3RuntimeCapability(input: {
           runtime: runtimeIdentity,
           signerKeys: BUNDLED_RECORDING_CERTIFICATION_SIGNER_KEYS_V3,
           disabledKillSwitchIds: disabledRecordingCertificationTierIds(),
-          nowMs: input.nowMs,
+          nowMs,
         })
       : { manifest: null, profile: null, failure_codes: [] as RecordingFailureCodeV3[] };
-  for (const code of resolution.failure_codes) fail(code);
-
-  const sourceRate = resolution.profile
-    ? await probeBrowserSourceRateV3(input.request, input.url)
-    : unavailableSourceRate();
-  return evaluateRecordingV3Capability(input.request, {
-    platform,
-    arch: process.arch,
-    hardwareModel,
-    hardwareChip,
-    osBuild,
-    addonProtocolVersion,
+  return {
     manifestId: resolution.manifest?.payload.manifest_id ?? null,
     matchedProfile: resolution.profile,
+    failureCodes: resolution.failure_codes,
+  };
+}
+
+export function evaluateRecordingV3DevelopmentEnvironment(input: {
+  developmentEnabled: boolean;
+  nativeProbePassed: boolean;
+  storageEligible: boolean;
+  failureCodes: RecordingFailureCodeV3[];
+}): RecordingV3DevelopmentEnvironmentDto {
+  return {
+    version: 3,
+    development_enabled: input.developmentEnabled,
+    development_available:
+      input.developmentEnabled &&
+      input.nativeProbePassed &&
+      input.storageEligible &&
+      input.failureCodes.length === 0,
+    native_probe_passed: input.nativeProbePassed,
+    failure_codes: input.failureCodes,
+  };
+}
+
+export async function probeRecordingV3DevelopmentEnvironment(): Promise<RecordingV3DevelopmentEnvironmentDto> {
+  const developmentEnabled = isRecordingV3DevelopmentEnabled(app);
+  if (!developmentEnabled) {
+    return evaluateRecordingV3DevelopmentEnvironment({
+      developmentEnabled: false,
+      nativeProbePassed: false,
+      storageEligible: false,
+      failureCodes: [],
+    });
+  }
+  const common = await probeCommonRecordingV3Runtime({
+    projectFolder: app.getPath("userData"),
+    certificationRequired: false,
+  });
+  return evaluateRecordingV3DevelopmentEnvironment({
+    developmentEnabled: true,
+    nativeProbePassed: common.nativeProbePassed,
+    storageEligible: common.storageEligible,
+    failureCodes: common.failureCodes,
+  });
+}
+
+export async function probeRecordingV3RuntimeCapability(input: {
+  request: RecordingPreflightV3Request;
+  projectFolder: string;
+  url: string;
+  nowMs?: number;
+}): Promise<RecordingPreflightV3Dto> {
+  if (
+    input.request.intent === "development" &&
+    !isRecordingV3DevelopmentEnabled(app)
+  ) {
+    return evaluateRecordingV3Capability(input.request, {
+      platform: process.platform === "darwin" ? "darwin" : "win32",
+      arch: process.arch,
+      hardwareModel: "unknown",
+      hardwareChip: "unknown",
+      osBuild: "unknown",
+      addonProtocolVersion: RECORDING_V3_NATIVE_PROTOCOL_VERSION,
+      manifestId: null,
+      matchedProfile: null,
+      sourceRate: unavailableSourceRate(),
+      storage: unavailableStorage(),
+      storageEligible: false,
+      nativeProbePassed: false,
+      permissionsGranted: true,
+      failureCodes: ["contract_mismatch"],
+    });
+  }
+  const certificationRequired = input.request.intent === "strict";
+  const common = await probeCommonRecordingV3Runtime({
+    projectFolder: input.projectFolder,
+    certificationRequired,
+  });
+  const certification = certificationRequired
+    ? await resolveStrictRecordingV3Certification(common, input.nowMs)
+    : { manifestId: null, matchedProfile: null, failureCodes: [] as RecordingFailureCodeV3[] };
+
+  const sourceRate =
+    input.request.intent === "development" || certification.matchedProfile
+      ? await probeBrowserSourceRateV3(input.request, input.url)
+      : unavailableSourceRate();
+  return evaluateRecordingV3Capability(input.request, {
+    platform: common.platform,
+    arch: common.arch,
+    hardwareModel: common.hardwareModel,
+    hardwareChip: common.hardwareChip,
+    osBuild: common.osBuild,
+    addonProtocolVersion: common.addonProtocolVersion,
+    manifestId: certification.manifestId,
+    matchedProfile: certification.matchedProfile,
     sourceRate,
-    storage,
-    storageEligible,
-    nativeProbePassed,
-    permissionsGranted: true,
-    failureCodes,
+    storage: common.storage,
+    storageEligible: common.storageEligible,
+    nativeProbePassed: common.nativeProbePassed,
+    permissionsGranted: common.permissionsGranted,
+    failureCodes: [...common.failureCodes, ...certification.failureCodes],
   });
 }

@@ -76,6 +76,7 @@ export async function discoverProjectRecordings(
             certification_profile: manifest.certification_profile,
             guarantee_boundary: manifest.capture_contract.guarantee_boundary,
             source_scope_verified: true as const,
+            recording_mode: manifest.recording_mode,
             quality_verdict: "passed" as const,
             bundle_path: bundlePath,
           };

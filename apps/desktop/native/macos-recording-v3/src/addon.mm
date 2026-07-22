@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <spawn.h>
+#include <pthread.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -36,6 +37,7 @@ constexpr size_t kFramePoolSlots = 2;
 constexpr size_t kMaxCompletedReceipts = 8;
 constexpr double kNativeDeadlineMs = 16.67;
 constexpr auto kLeaseAdmissionDeadline = std::chrono::microseconds(11'110);
+constexpr auto kPauseDrainDeadline = std::chrono::seconds(1);
 
 struct FrameMetadata {
   uint64_t source_epoch = 0;
@@ -203,13 +205,23 @@ class RecordingSession {
   }
 
   bool Pause() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
     if (lifecycle_ == Lifecycle::kPaused) return true;
     if (lifecycle_ != Lifecycle::kActive || failed_) {
       SetFailureLocked("contract_mismatch", "only an active V3 session can pause");
       return false;
     }
     lifecycle_ = Lifecycle::kPaused;
+    condition_.notify_all();
+    const bool drained = condition_.wait_for(lock, kPauseDrainDeadline, [this] {
+      return failed_ || (queued_leases_.empty() && ready_slots_.empty() && active_leases_ == 0 &&
+                         free_slots_.size() == kFramePoolSlots);
+    });
+    if (!drained) {
+      SetFailureLocked("native_backpressure", "native V3 pause did not drain pending frames");
+      return false;
+    }
+    if (failed_) return false;
     return true;
   }
 
@@ -332,6 +344,7 @@ class RecordingSession {
   }
 
   void ReadbackLoop() {
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
     while (true) {
       FrameLease lease;
       size_t slot_index = 0;
@@ -425,6 +438,7 @@ class RecordingSession {
   }
 
   void WriterLoop() {
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0);
     while (true) {
       size_t slot_index = 0;
       {

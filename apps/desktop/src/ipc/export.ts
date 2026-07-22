@@ -10,6 +10,7 @@ import type {
   ExportIssue,
   ExportPreflightResult,
 } from "@storycapture/shared-types";
+import type { RecordingV3Mode } from "@storycapture/shared-types/recording-v3";
 import { invoke } from "@tauri-apps/api/core";
 
 export type ExportFormat = "mp4" | "webm" | "gif";
@@ -49,6 +50,7 @@ export interface ExportResult {
   batch_id: string;
   job_ids: string[];
   graph_snapshot_path: string;
+  recording_mode: RecordingV3Mode | null;
 }
 
 export interface ExportPreflightArgs {

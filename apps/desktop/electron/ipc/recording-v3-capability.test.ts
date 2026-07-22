@@ -86,6 +86,8 @@ describe("evaluateRecordingV3Capability", () => {
   it("enables only an exact signed-profile match", () => {
     expect(evaluateRecordingV3Capability(request, facts)).toMatchObject({
       strict_eligible: true,
+      development_eligible: false,
+      recording_mode: "certified",
       failure_codes: [],
       matched_profile: profile,
     });
@@ -146,5 +148,36 @@ describe("evaluateRecordingV3Capability", () => {
     const result = evaluateRecordingV3Capability(input.request, input.facts);
     expect(result.strict_eligible).toBe(false);
     expect(result.failure_codes).toContain(expected);
+  });
+
+  it("enables development without certification while preserving common runtime gates", () => {
+    const developmentRequest: RecordingPreflightV3Request = {
+      ...request,
+      intent: "development",
+    };
+    const developmentFacts: RecordingV3CapabilityFacts = {
+      ...facts,
+      manifestId: null,
+      matchedProfile: null,
+    };
+    expect(evaluateRecordingV3Capability(developmentRequest, developmentFacts)).toMatchObject({
+      intent: "development",
+      recording_mode: "uncertified_development",
+      manifest_id: null,
+      matched_profile: null,
+      strict_eligible: false,
+      development_eligible: true,
+      failure_codes: [],
+    });
+
+    expect(
+      evaluateRecordingV3Capability(developmentRequest, {
+        ...developmentFacts,
+        sourceRate: { ...developmentFacts.sourceRate, measured_fps: null },
+      }),
+    ).toMatchObject({
+      development_eligible: false,
+      failure_codes: ["runtime_integrity_failed"],
+    });
   });
 });

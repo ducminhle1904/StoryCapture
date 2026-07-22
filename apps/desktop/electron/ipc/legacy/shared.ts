@@ -222,6 +222,7 @@ export interface RenderJob extends NewRenderJob {
   completed_at: number | null;
   error: string | null;
   output_path: string | null;
+  recording_mode: import("@storycapture/shared-types/recording-v3").RecordingV3Mode | null;
   created_at: number;
   queue_position?: number | null;
 }

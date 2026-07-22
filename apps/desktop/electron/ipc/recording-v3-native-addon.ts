@@ -1,5 +1,7 @@
 import { createRequire } from "node:module";
 import path from "node:path";
+import type { App } from "electron";
+import { isPackagedRuntime } from "../runtime";
 import type { RecordingFailureCodeV3 } from "@storycapture/shared-types/recording-v2";
 
 export const RECORDING_V3_NATIVE_PROTOCOL_VERSION = 3 as const;
@@ -232,6 +234,20 @@ export function recordingV3NativeAddonPath(input: {
   return input.isPackaged
     ? path.join(input.resourcesPath, "native", "macos", ADDON_FILENAME)
     : path.join(input.desktopRoot, "native", "macos-recording-v3", ".build", ADDON_FILENAME);
+}
+
+export function recordingV3NativeAddonPathForRuntime(input: {
+  app: Pick<App, "isPackaged">;
+  env?: NodeJS.ProcessEnv;
+  executablePath?: string;
+  resourcesPath: string;
+  desktopRoot: string;
+}): string {
+  return recordingV3NativeAddonPath({
+    isPackaged: isPackagedRuntime(input.app, input.env, input.executablePath),
+    resourcesPath: input.resourcesPath,
+    desktopRoot: input.desktopRoot,
+  });
 }
 
 export function loadRecordingV3NativeAddon(addonPath: string): RawRecordingV3NativeAddon {

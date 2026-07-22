@@ -126,4 +126,17 @@ describe("JobRow", () => {
     expect(screen.getByText("Saved to /Users/demo/Exports/story.mp4")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /cancel/i })).not.toBeInTheDocument();
   });
+
+  it("keeps uncertified development provenance visible after export", () => {
+    render(
+      <JobRow
+        job={makeJob({ recording_mode: "uncertified_development" })}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText("Uncertified Development — upload and sharing are disabled"),
+    ).toBeVisible();
+  });
 });

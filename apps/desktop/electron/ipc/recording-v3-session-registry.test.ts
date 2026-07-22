@@ -8,6 +8,7 @@ import {
 const preflight: RecordingPreflightV3Dto = {
   version: 3,
   intent: "strict",
+  recording_mode: "certified",
   backend_id: "backend",
   backend_version: "3.0.0",
   addon_protocol_version: 3,
@@ -34,6 +35,7 @@ const preflight: RecordingPreflightV3Dto = {
   native_probe_passed: false,
   permissions_granted: true,
   strict_eligible: false,
+  development_eligible: false,
   failure_codes: ["manifest_missing"],
 };
 

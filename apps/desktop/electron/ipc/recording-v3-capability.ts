@@ -54,7 +54,6 @@ export function evaluateRecordingV3Capability(
   if (request.target_class !== "browser") fail("target_unsupported");
   if (request.audio_roles.length > 0) fail("unsupported_audio_role");
   if (
-    request.intent !== "strict" ||
     request.requested_fps.numerator !== 60 ||
     request.requested_fps.denominator !== 1 ||
     request.cursor_policy !== "sidecar_reconstructed" ||
@@ -80,13 +79,23 @@ export function evaluateRecordingV3Capability(
   ) {
     fail("runtime_integrity_failed");
   }
-  if (!facts.matchedProfile && !failureCodes.some((code) => code.startsWith("manifest_"))) {
+  if (
+    request.intent === "strict" &&
+    !facts.matchedProfile &&
+    !failureCodes.some((code) => code.startsWith("manifest_"))
+  ) {
     fail("profile_mismatch");
   }
+  if (request.intent === "development" && (facts.manifestId !== null || facts.matchedProfile)) {
+    fail("contract_mismatch");
+  }
+
+  const commonEligible = failureCodes.length === 0;
 
   return {
     version: 3,
-    intent: "strict",
+    intent: request.intent,
+    recording_mode: request.intent === "strict" ? "certified" : "uncertified_development",
     backend_id: RECORDING_V3_BROWSER_BACKEND_ID,
     backend_version: RECORDING_V3_BROWSER_BACKEND_VERSION,
     addon_protocol_version: facts.addonProtocolVersion,
@@ -101,7 +110,9 @@ export function evaluateRecordingV3Capability(
     storage: facts.storage,
     native_probe_passed: facts.nativeProbePassed,
     permissions_granted: facts.permissionsGranted,
-    strict_eligible: failureCodes.length === 0 && facts.matchedProfile !== null,
+    strict_eligible:
+      request.intent === "strict" && commonEligible && facts.matchedProfile !== null,
+    development_eligible: request.intent === "development" && commonEligible,
     failure_codes: failureCodes,
   };
 }

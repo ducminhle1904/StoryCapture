@@ -114,15 +114,20 @@ const engineResult: RecordingV3EngineResult = {
 
 async function createWriter(
   verifyArtifact: NonNullable<RecordingV3BundleWriterOptions["verifyArtifact"]>,
+  qualification: RecordingV3BundleWriterOptions["qualification"] = {
+    mode: "certified",
+    manifestId: "manifest-1",
+    profile,
+  },
+  name = "take",
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-v3-bundle-"));
   temporaryRoots.push(root);
   const writer = await RecordingV3BundleWriter.create({
     exportsDir: root,
-    name: "take",
+    name,
     captureContract,
-    manifestId: "manifest-1",
-    profile,
+    qualification,
     width: 1920,
     height: 1080,
     verifyArtifact,
@@ -254,5 +259,92 @@ describe("RecordingV3BundleWriter", () => {
       .readFile(path.join(result.bundle_path, "evidence/frame-ledger.jsonl"), "utf8")
       .then((text) => readRecordingDiagnosticFrameLedgerEntryV3(JSON.parse(text.trim())));
     expect(diagnosticLedger?.decoded_ordinal).toBeNull();
+  });
+
+  it("commits an uncertified development bundle without synthesizing a profile", async () => {
+    const writer = await createWriter(
+      async ({ proxyPath }) => {
+        await fs.writeFile(proxyPath, "proxy");
+        return {
+          ledger: [
+            {
+              version: 3,
+              source_epoch: 0,
+              active_segment: 0,
+              source_frame_count: 7,
+              source_timestamp_us: 12_000,
+              active_time_pts_us: 0,
+              delivery_ordinal: 1,
+              native_lease_ordinal: 1,
+              native_commit_ordinal: 1,
+              encoded_ordinal: 1,
+              decoded_ordinal: 1,
+              bgra_sha256: sha,
+            },
+          ],
+          cadenceEvidence: {
+            version: 3,
+            guarantee_boundary: "electron_offscreen_delivery",
+            source_ordinal_kind: "electron_frame_count",
+            requested_fps: { numerator: 60, denominator: 1 },
+            source_fps: { numerator: 60, denominator: 1 },
+            stream_time_base: { numerator: 1, denominator: 60 },
+            active_duration_us: 16_667,
+            expected_slots: 1,
+            source_presentations: 1,
+            delivery_frames: 1,
+            native_commits: 1,
+            encoded_frames: 1,
+            artifact_decoded_frames: 1,
+            source_ordinal_gaps: 0,
+            source_timestamp_regressions: 0,
+            delivery_duplicates: 0,
+            native_lease_overflows: 0,
+            native_backpressure_events: 0,
+            native_deadline_misses: 0,
+            artifact_pts_gaps: 0,
+            artifact_pts_duplicates: 0,
+            full_decode_succeeded: true,
+            verdict: "passed",
+            failure_codes: [],
+          },
+          runtimeQualityEvidence: {
+            version: 3,
+            measurement_scope: "runtime_integrity",
+            reference_identity: null,
+            evaluated_frames: 1,
+            full_frame_luma_ssim: null,
+            text_edge_roi_ssim: null,
+            p01_edge_contrast_retention: null,
+            edge_spread_increase_px: null,
+            overlay_geometry_delta_px: null,
+            color_channel_delta: null,
+            lossless_master_hashes_match: true,
+            certification_verdict: null,
+            verdict: "passed",
+            failure_codes: [],
+          },
+        };
+      },
+      { mode: "uncertified_development" },
+      "take-uncertified-dev",
+    );
+    const result = await writer.finalize({ engineResult, actions: null });
+
+    expect(result).toMatchObject({
+      status: "completed",
+      delivery_policy: "development",
+      recording_mode: "uncertified_development",
+      certification_profile: null,
+    });
+    expect(path.basename(result.bundle_path)).toBe("take-uncertified-dev.sc-recording");
+    const manifest = await fs
+      .readFile(path.join(result.bundle_path, "manifest.json"), "utf8")
+      .then((text) => readRecordingBundleV3(JSON.parse(text)));
+    expect(manifest).toMatchObject({
+      delivery_policy: "development",
+      recording_mode: "uncertified_development",
+      certification_profile: null,
+    });
   });
 });

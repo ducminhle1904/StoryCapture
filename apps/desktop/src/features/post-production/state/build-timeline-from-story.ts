@@ -224,7 +224,9 @@ function recordingSourceMetadata(recording: RecordingInfo): ExportRecordingSourc
     recording.frame_ledger_path &&
     recording.guarantee_boundary === "electron_offscreen_delivery" &&
     recording.source_scope_verified === true &&
-    recording.certification_profile
+    ((recording.recording_mode === "certified" && recording.certification_profile) ||
+      (recording.recording_mode === "uncertified_development" &&
+        recording.certification_profile == null))
   ) {
     return {
       version: 3,
@@ -232,7 +234,8 @@ function recordingSourceMetadata(recording: RecordingInfo): ExportRecordingSourc
       frame_ledger_path: recording.frame_ledger_path,
       guarantee_boundary: recording.guarantee_boundary,
       source_scope_verified: true,
-      certification_profile_id: recording.certification_profile.profile_id,
+      recording_mode: recording.recording_mode,
+      certification_profile_id: recording.certification_profile?.profile_id ?? null,
     };
   }
   return { version: 2, ...common };
@@ -249,7 +252,7 @@ function hashPath(path: string): string {
 
 export function recordingSourceRevision(recording: RecordingInfo): string {
   return hashPath(
-    `${recording.path}\0${recording.captured_at}\0${recording.duration_ms ?? ""}\0${recording.width ?? ""}x${recording.height ?? ""}`,
+    `${recording.path}\0${recording.captured_at}\0${recording.duration_ms ?? ""}\0${recording.width ?? ""}x${recording.height ?? ""}\0${recording.recording_mode ?? ""}`,
   );
 }
 

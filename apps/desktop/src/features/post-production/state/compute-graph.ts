@@ -82,6 +82,17 @@ export interface ComputeGraphInput {
   };
 }
 
+export function graphHasUncertifiedDevelopmentSource(
+  graph: Pick<ExportCompositionGraphV5, "video">,
+): boolean {
+  return graph.video.some(
+    (node) =>
+      node.type === "source" &&
+      node.recording_source?.version === 3 &&
+      node.recording_source.recording_mode === "uncertified_development",
+  );
+}
+
 export type { CursorSkin, Vec2, XfadeKind, ZoomTarget };
 export type Rgba = ExportRgba;
 export type EasingKind = ExportEasingKind;

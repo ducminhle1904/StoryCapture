@@ -292,6 +292,60 @@ describe("RecordingV3Engine", () => {
     ).toThrowError(expect.objectContaining({ code: "native_deadline_missed" }));
   });
 
+  it("reconciles an interactive stop with one final source frame", () => {
+    const native = new FakeNativeSession();
+    const { engine, clock } = engineFor(native);
+    engine.submitSourceFrame({ ioSurface: Buffer.alloc(8), frameCount: 0, timestampUs: 0 });
+    clock.advance(20_000);
+
+    expect(engine.prepareStop()).toBe("frame_required");
+    engine.submitSourceFrame({
+      ioSurface: Buffer.alloc(8),
+      frameCount: 1,
+      timestampUs: 16_667,
+    });
+    expect(engine.prepareStop()).toBe("ready");
+    expect(engine.stop().expectedSlots).toBe(2);
+  });
+
+  it("freezes a reconciled pause boundary before the event loop advances", () => {
+    const native = new FakeNativeSession();
+    const { engine, clock } = engineFor(native);
+    engine.submitSourceFrame({ ioSurface: Buffer.alloc(8), frameCount: 0, timestampUs: 0 });
+    clock.advance(20_000);
+    expect(engine.preparePause()).toBe("frame_required");
+    engine.submitSourceFrame({
+      ioSurface: Buffer.alloc(8),
+      frameCount: 1,
+      timestampUs: 16_667,
+    });
+    expect(engine.preparePause()).toBe("ready");
+    clock.advance(10_000);
+    engine.pause();
+    engine.resume();
+    clock.advance(13_333);
+    engine.submitSourceFrame({
+      ioSurface: Buffer.alloc(8),
+      frameCount: 2,
+      timestampUs: 33_333,
+    });
+
+    expect(engine.prepareStop()).toBe("ready");
+    expect(engine.stop().expectedSlots).toBe(3);
+  });
+
+  it("waits for the clock when a buffered delivery is one slot ahead", () => {
+    const native = new FakeNativeSession();
+    const { engine, clock } = engineFor(native);
+    engine.submitSourceFrame({ ioSurface: Buffer.alloc(8), frameCount: 0, timestampUs: 0 });
+    engine.submitSourceFrame({ ioSurface: Buffer.alloc(8), frameCount: 1, timestampUs: 16_667 });
+
+    expect(engine.prepareStop()).toBe("clock_pending");
+    clock.advance(10_000);
+    expect(engine.prepareStop()).toBe("ready");
+    expect(engine.stop().expectedSlots).toBe(2);
+  });
+
   it("allows a forward frameCount gap on resume but rejects reset within the epoch", () => {
     const native = new FakeNativeSession();
     const { engine, clock } = engineFor(native);

@@ -5,6 +5,7 @@
  * Disabled if no web account is connected.
  */
 
+import type { RecordingV3Mode } from "@storycapture/shared-types/recording-v3";
 import { useUploadStore } from "@/stores/upload-store";
 import { useWebAccountStore } from "@/stores/web-account-store";
 
@@ -21,6 +22,7 @@ interface ExportCompleteToastProps {
     label: string;
     startTimeSec: number;
   }>;
+  recordingMode?: RecordingV3Mode | null;
   /** Callback when the toast is dismissed. */
   onDismiss?: () => void;
 }
@@ -30,6 +32,7 @@ export function ExportCompleteToast({
   projectName,
   storySource,
   sceneBoundaries,
+  recordingMode = null,
   onDismiss,
 }: ExportCompleteToastProps) {
   const { status: uploadStatus, startUpload } = useUploadStore();
@@ -37,10 +40,11 @@ export function ExportCompleteToast({
 
   const isConnected = account !== null;
   const isUploading = uploadStatus === "uploading";
+  const uploadBlocked = recordingMode === "uncertified_development";
 
   const handleUpload = () => {
-    if (!isConnected || isUploading) return;
-    startUpload(filePath, projectName, undefined, storySource, sceneBoundaries);
+    if (!isConnected || isUploading || uploadBlocked) return;
+    startUpload(filePath, projectName, undefined, storySource, sceneBoundaries, recordingMode);
   };
 
   return (
@@ -60,10 +64,12 @@ export function ExportCompleteToast({
         <div className="relative">
           <button
             onClick={handleUpload}
-            disabled={!isConnected || isUploading}
+            disabled={!isConnected || isUploading || uploadBlocked}
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-[var(--color-fg-primary)] transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
             title={
-              !isConnected
+              uploadBlocked
+                ? "Uncertified Development exports cannot be uploaded or shared"
+                : !isConnected
                 ? "Connect a web account in Settings > Accounts"
                 : isUploading
                   ? "Upload in progress..."
@@ -79,6 +85,12 @@ export function ExportCompleteToast({
             Connect a web account in Settings &gt; Accounts
           </span>
         )}
+
+        {uploadBlocked ? (
+          <span className="text-xs text-amber-400">
+            Uncertified Development — upload and sharing are disabled
+          </span>
+        ) : null}
 
         {onDismiss && (
           <button

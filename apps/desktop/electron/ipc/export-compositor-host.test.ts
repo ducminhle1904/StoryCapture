@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { BrowserWindow } from "electron";
+import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -224,10 +224,14 @@ describe("export compositor production bootstrap", () => {
   it("configures, renders, and disposes a ready hidden compositor", async () => {
     const toBitmap = vi.fn(() => Buffer.alloc(16));
     const win = fakeWindow({ toBitmap });
+    let windowOptions: BrowserWindowConstructorOptions | undefined;
     const host = createExportCompositorHost(plan, {
       app: runtimeApp,
       devRuntime: false,
-      windowFactory: () => win,
+      windowFactory: (options) => {
+        windowOptions = options;
+        return win;
+      },
     });
 
     await host.start();
@@ -235,6 +239,8 @@ describe("export compositor production bootstrap", () => {
     await host.dispose();
 
     expect(win.webContents.setFrameRate).toHaveBeenCalledWith(30);
+    expect(windowOptions?.webPreferences?.preload).toMatch(/export-compositor-preload\.cjs$/);
+    expect(windowOptions?.webPreferences?.sandbox).toBe(true);
     expect(win.setContentSize).toHaveBeenCalledWith(2, 2);
     expect(
       vi

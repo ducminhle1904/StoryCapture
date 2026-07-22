@@ -36,4 +36,10 @@ await Promise.all([
     outfile: path.join(outdir, "preload.cjs"),
     format: "cjs",
   }),
+  build({
+    ...shared,
+    entryPoints: [path.join(root, "electron/export-compositor-preload.ts")],
+    outfile: path.join(outdir, "export-compositor-preload.cjs"),
+    format: "cjs",
+  }),
 ]);

@@ -10,6 +10,7 @@ import {
 } from "../generic-secret-store";
 import { readJson, writeJson } from "../json-store";
 import { userDataPath } from "../paths";
+import { assertRecordingV3UploadAllowed } from "../recording-v3-export-provenance";
 import {
   type AudioInputInfo,
   channelIdFrom,
@@ -387,10 +388,11 @@ export async function parseJsonResponse(response: Response): Promise<Record<stri
 }
 
 export async function uploadVideo(args: Record<string, unknown>, sender: WebContents) {
+  const videoPath = String(args.videoPath ?? "");
+  await assertRecordingV3UploadAllowed(videoPath, args.recordingMode);
   const token = await getWebApiToken();
   if (!token) throw new Error("no web account connected");
 
-  const videoPath = String(args.videoPath ?? "");
   const projectName = String(args.projectName ?? "Untitled project");
   const workspaceId = stringOrNull(args.workspaceId) ?? "personal";
   const onProgress = channelIdFrom(args.onProgress);

@@ -44,11 +44,12 @@ import type { ExportOutputReservation } from "./export-output-lifecycle";
 import {
   analyzeExportPlan,
   enqueueExportRenderJob,
+  exportOutputPath,
   renderCancel,
   renderListActive,
   renderProgress,
 } from "./export-render";
-import type { ExportOutput, RenderJob, RenderSession } from "./shared";
+import type { ExportOutput, ExportRunArgs, RenderJob, RenderSession } from "./shared";
 
 function output(overrides: Partial<ExportOutput> = {}): ExportOutput {
   return {
@@ -99,6 +100,31 @@ function graphJson(): string {
     audio: [],
   });
 }
+
+describe("uncertified development export paths", () => {
+  it.each(["mp4", "webm", "gif"])("suffixes %s outputs exactly once", (format) => {
+    const args = {
+      story_id: "story-1",
+      graph_json: graphJson(),
+      outputs: [output({ format })],
+      priority: 0,
+      output_folder: "/tmp/out",
+      base_name: "Demo",
+      preset_id: null,
+    } as ExportRunArgs;
+
+    const first = exportOutputPath(args, args.outputs[0]!, 0, "uncertified_development");
+    const second = exportOutputPath(
+      { ...args, base_name: "demo-uncertified-dev" },
+      args.outputs[0]!,
+      0,
+      "uncertified_development",
+    );
+
+    expect(first).toBe(`/tmp/out/demo-uncertified-dev.${format}`);
+    expect(second).toBe(`/tmp/out/demo-uncertified-dev.${format}`);
+  });
+});
 
 function planFor(cfg = output()) {
   const plan = analyzeExportPlan(graphJson(), cfg);

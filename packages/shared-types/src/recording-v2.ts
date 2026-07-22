@@ -650,6 +650,7 @@ export interface NormalizedRecordingBundle {
   actions_path: string | null;
   guarantee_boundary: typeof RECORDING_GUARANTEE_BOUNDARY_V3 | null;
   source_scope_verified: boolean;
+  recording_mode: import("./recording-v3").RecordingV3Mode | null;
   certification_profile_id: string | null;
 }
 
@@ -668,6 +669,7 @@ export interface NormalizedExportRecordingSource {
   quality_verdict: Extract<RecordingQualityVerdict, "passed" | "degraded">;
   guarantee_boundary: typeof RECORDING_GUARANTEE_BOUNDARY_V3 | null;
   source_scope_verified: boolean;
+  recording_mode: import("./recording-v3").RecordingV3Mode | null;
   certification_profile_id: string | null;
 }
 
@@ -821,6 +823,7 @@ export function normalizeRecordingBundle(value: unknown): NormalizedRecordingBun
       actions_path: bundle.sidecars.actions_path,
       guarantee_boundary: null,
       source_scope_verified: false,
+      recording_mode: null,
       certification_profile_id: null,
     };
   }
@@ -835,6 +838,7 @@ export function normalizeRecordingBundle(value: unknown): NormalizedRecordingBun
     actions_path: bundle.sidecars.actions_path,
     guarantee_boundary: bundle.capture_contract.guarantee_boundary,
     source_scope_verified: true,
+    recording_mode: bundle.recording_mode,
     certification_profile_id: bundle.certification_profile?.profile_id ?? null,
   };
 }
@@ -851,6 +855,7 @@ export function normalizeExportRecordingSource(
       frame_ledger_path: null,
       guarantee_boundary: null,
       source_scope_verified: false,
+      recording_mode: null,
       certification_profile_id: null,
     };
   }
@@ -869,6 +874,7 @@ export function normalizeExportRecordingSource(
     quality_verdict: source.quality_verdict,
     guarantee_boundary: source.guarantee_boundary,
     source_scope_verified: true,
+    recording_mode: source.recording_mode,
     certification_profile_id: source.certification_profile_id,
   };
 }

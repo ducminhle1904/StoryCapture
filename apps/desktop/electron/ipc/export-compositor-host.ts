@@ -1,4 +1,5 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   app,
@@ -18,6 +19,7 @@ import {
 const EXPORT_COMPOSITOR_QUERY = "storycaptureExportCompositor";
 const DEFAULT_STARTUP_TIMEOUT_MS = 10_000;
 const DEFAULT_READINESS_POLL_MS = 50;
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 const BRIDGE_READINESS_EXPRESSION = `(() => {
   const bridge = window.__STORYCAPTURE_EXPORT_COMPOSITOR__;
@@ -188,6 +190,7 @@ function createWindowOptions(
     height: Math.ceil(plan.outputHeight / captureScaleFactor),
     backgroundColor: "#000000",
     webPreferences: {
+      preload: path.join(here, "export-compositor-preload.cjs"),
       offscreen: { deviceScaleFactor: captureScaleFactor },
       nodeIntegration: false,
       contextIsolation: true,

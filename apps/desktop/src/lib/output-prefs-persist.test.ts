@@ -73,6 +73,9 @@ describe("migrate", () => {
     expect(migrate({ recordingDeliveryPolicy: "unsafe" }).recordingDeliveryPolicy).toBe(
       "best_effort",
     );
+    expect(migrate({ recordingDeliveryPolicy: "development" }).recordingDeliveryPolicy).toBe(
+      "best_effort",
+    );
   });
 
   it("normalizes legacy MP4 audio to the delivery contract", () => {

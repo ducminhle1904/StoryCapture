@@ -3,7 +3,10 @@ import { recordingV3FailureMessage } from "@storycapture/shared-types/recording-
 import { ScSegmented, ScSlider, ScSwitch } from "@storycapture/ui";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { probeRecordingV3Environment } from "@/ipc/encode";
+import {
+  probeRecordingV3DevelopmentEnvironment,
+  probeRecordingV3Environment,
+} from "@/ipc/encode";
 import { useAppSettingsStore } from "@/state/app-settings";
 import { useOutputPrefsStore } from "@/state/output-prefs";
 import { SettingsCard, SettingsPanel, SettingsRow } from "../settings-row";
@@ -29,9 +32,13 @@ export function RenderCategory() {
   const patchRender = useAppSettingsStore((s) => s.patchRender);
   const recordingKnobs = useOutputPrefsStore((s) => s.recordingKnobs);
   const recordingDeliveryPolicy = useOutputPrefsStore((s) => s.recordingDeliveryPolicy);
+  const recordingV3DevelopmentMode = useOutputPrefsStore((s) => s.recordingV3DevelopmentMode);
   const exportKnobs = useOutputPrefsStore((s) => s.exportKnobs);
   const setRecordingKnob = useOutputPrefsStore((s) => s.setRecordingKnob);
   const setRecordingDeliveryPolicy = useOutputPrefsStore((s) => s.setRecordingDeliveryPolicy);
+  const setRecordingV3DevelopmentMode = useOutputPrefsStore(
+    (s) => s.setRecordingV3DevelopmentMode,
+  );
   const setExportKnob = useOutputPrefsStore((s) => s.setExportKnob);
 
   const resoKey = resolutionKey(recordingKnobs.resolution);
@@ -42,6 +49,11 @@ export function RenderCategory() {
   const [strictEnvironmentReason, setStrictEnvironmentReason] = useState<string | null>(
     "Checking the certified Recording V3 environment…",
   );
+  const [developmentEnvironment, setDevelopmentEnvironment] = useState<{
+    enabled: boolean;
+    available: boolean;
+    reason: string | null;
+  } | null>(null);
 
   useEffect(() => {
     setParallelDraft(savedParallelRenders);
@@ -67,6 +79,30 @@ export function RenderCategory() {
             `Strict environment check failed: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void probeRecordingV3DevelopmentEnvironment()
+      .then((environment) => {
+        if (cancelled) return;
+        setDevelopmentEnvironment({
+          enabled: environment.development_enabled,
+          available: environment.development_available,
+          reason:
+            environment.failure_codes.length > 0
+              ? environment.failure_codes.map(recordingV3FailureMessage).join(" ")
+              : environment.development_available
+                ? null
+                : "The common Recording V3 runtime checks did not pass.",
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setDevelopmentEnvironment(null);
       });
     return () => {
       cancelled = true;
@@ -99,10 +135,14 @@ export function RenderCategory() {
           control={
             <ScSegmented
               size="sm"
-              value={recordingDeliveryPolicy}
-              onValueChange={(value) =>
-                setRecordingDeliveryPolicy(value === "strict" ? "strict" : "best_effort")
-              }
+              value={recordingV3DevelopmentMode ? "development" : recordingDeliveryPolicy}
+              onValueChange={(value) => {
+                if (value === "development") {
+                  setRecordingV3DevelopmentMode(true);
+                  return;
+                }
+                setRecordingDeliveryPolicy(value === "strict" ? "strict" : "best_effort");
+              }}
               options={[
                 { value: "best_effort", label: "Standard" },
                 {
@@ -111,10 +151,25 @@ export function RenderCategory() {
                   disabled: strictEnvironmentReason !== null,
                   title: strictEnvironmentReason ?? undefined,
                 },
+                ...(developmentEnvironment?.enabled
+                  ? [
+                      {
+                        value: "development",
+                        label: "Dev V3",
+                        disabled: !developmentEnvironment.available,
+                        title: developmentEnvironment.reason ?? undefined,
+                      },
+                    ]
+                  : []),
               ]}
             />
           }
         />
+        {recordingV3DevelopmentMode && (
+          <div className="border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-2 text-xs font-medium text-[var(--color-warning)]">
+            Uncertified Development — not a Strict-certified recording
+          </div>
+        )}
         <SettingsRow
           label="Resolution"
           control={

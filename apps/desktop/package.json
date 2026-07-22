@@ -8,6 +8,7 @@
   "main": "dist-electron/main.mjs",
   "scripts": {
     "dev": "pnpm electron:dev",
+    "dev:recording-v3": "node scripts/dev-recording-v3.mjs",
     "build": "pnpm electron:build",
     "renderer:dev": "vite",
     "renderer:build": "tsc -b && vite build",
@@ -34,6 +35,7 @@
     "test:e2e:recording-v2-helper": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && pnpm native:verify:packaged",
     "test:e2e:recording-v3-shared-texture-probe": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && pnpm electron:build:shared-texture-probe && electron-builder --dir --publish never --config.extraMetadata.main=dist-electron/recording-v3-shared-texture-probe.mjs && node scripts/run-recording-v3-shared-texture-probe.mjs",
     "test:e2e:recording-v3-production-probe": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && pnpm electron:build:recording-v3-production-probe && electron-builder --dir --publish never --config.extraMetadata.main=dist-electron/recording-v3-production-probe.mjs && node scripts/run-recording-v3-production-probe.mjs",
+    "test:e2e:recording-v3-development-flow": "pnpm native:build:recording-v3 && pnpm electron:build-main && node scripts/run-recording-v3-development-flow.mjs",
     "test:e2e:recording-v3-60s": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && pnpm electron:build:recording-v3-production-probe && electron-builder --dir --publish never --config.extraMetadata.main=dist-electron/recording-v3-production-probe.mjs && pnpm recording:v3:certify:60s",
     "test:e2e:recording-v3-soak": "pnpm recording:v3:certify:10m",
     "preview": "vite preview",

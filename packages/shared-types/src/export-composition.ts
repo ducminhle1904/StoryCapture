@@ -5,6 +5,7 @@
  */
 
 import type { ExportRecordingSource } from "./recording-v2";
+import type { RecordingV3Mode } from "./recording-v3";
 
 export const EXPORT_COMPOSITION_SCHEMA_VERSION = 5 as const;
 export const EXPORT_FOREGROUND_SCALE_MIN = 0.7;
@@ -418,6 +419,7 @@ export interface ExportJobDto {
   phase_progress_pct: number;
   priority: number;
   output_path: string | null;
+  recording_mode?: RecordingV3Mode | null;
   error: string | null;
   started_at: number | null;
   completed_at: number | null;

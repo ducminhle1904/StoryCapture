@@ -1,7 +1,6 @@
 import type {
   RecordingBundleArtifactV2,
   RecordingCertificationStage,
-  RecordingDeliveryPolicy,
   RecordingDimensionsV2,
   RecordingPlatform,
   RecordingQualityMetricV2,
@@ -27,6 +26,9 @@ export type RecordingSourceOrdinalKindV3 = typeof RECORDING_SOURCE_ORDINAL_KIND_
 export type RecordingCursorPolicyV3 = typeof RECORDING_CURSOR_POLICY_V3;
 export type RecordingMeasurementScopeV3 = "runtime_integrity" | "certification_fixture";
 export type RecordingAudioRoleV3 = "microphone" | "system";
+export type RecordingV3Intent = "strict" | "development";
+export type RecordingV3DeliveryPolicy = "strict" | "development";
+export type RecordingV3Mode = "certified" | "uncertified_development";
 
 export type RecordingFailureCodeV3 =
   | "source_metadata_missing"
@@ -159,7 +161,7 @@ export interface RecordingCaptureContractV3 {
 
 export interface RecordingPreflightV3Request {
   version: typeof RECORDING_CONTRACT_VERSION_V3;
-  intent: "strict";
+  intent: RecordingV3Intent;
   target_class: RecordingTargetClass;
   requested_fps: RecordingRational;
   dimensions: RecordingDimensionsV2;
@@ -169,7 +171,8 @@ export interface RecordingPreflightV3Request {
 
 export interface RecordingPreflightV3Dto {
   version: typeof RECORDING_CONTRACT_VERSION_V3;
-  intent: "strict";
+  intent: RecordingV3Intent;
+  recording_mode: RecordingV3Mode;
   backend_id: string;
   backend_version: string;
   addon_protocol_version: number;
@@ -185,6 +188,15 @@ export interface RecordingPreflightV3Dto {
   native_probe_passed: boolean;
   permissions_granted: boolean;
   strict_eligible: boolean;
+  development_eligible: boolean;
+  failure_codes: RecordingFailureCodeV3[];
+}
+
+export interface RecordingV3DevelopmentEnvironmentDto {
+  version: typeof RECORDING_CONTRACT_VERSION_V3;
+  development_enabled: boolean;
+  development_available: boolean;
+  native_probe_passed: boolean;
   failure_codes: RecordingFailureCodeV3[];
 }
 
@@ -265,9 +277,18 @@ export interface RecordingCertificationProfileReferenceV3 {
   evidence_artifact_sha256: string;
 }
 
+export type RecordingV3Qualification =
+  | {
+      mode: "certified";
+      manifestId: string;
+      profile: RecordingCertifiedProfileV3;
+    }
+  | { mode: "uncertified_development" };
+
 export interface RecordingResultV3Base {
   version: typeof RECORDING_CONTRACT_VERSION_V3;
-  delivery_policy: Extract<RecordingDeliveryPolicy, "strict">;
+  delivery_policy: RecordingV3DeliveryPolicy;
+  recording_mode: RecordingV3Mode;
   guarantee_boundary: RecordingGuaranteeBoundaryV3;
   certification_profile: RecordingCertificationProfileReferenceV3 | null;
   bundle_path: string;
@@ -284,12 +305,32 @@ export interface RecordingResultV3Base {
 export type RecordingResultV3 =
   | (RecordingResultV3Base & {
       status: "completed";
+      delivery_policy: "strict";
+      recording_mode: "certified";
       certification_profile: RecordingCertificationProfileReferenceV3;
       output_path: string;
       diagnostic_bundle_path: null;
     })
   | (RecordingResultV3Base & {
+      status: "completed";
+      delivery_policy: "development";
+      recording_mode: "uncertified_development";
+      certification_profile: null;
+      output_path: string;
+      diagnostic_bundle_path: null;
+    })
+  | (RecordingResultV3Base & {
       status: "quality_failed";
+      delivery_policy: "strict";
+      recording_mode: "certified";
+      output_path: null;
+      diagnostic_bundle_path: string;
+    })
+  | (RecordingResultV3Base & {
+      status: "quality_failed";
+      delivery_policy: "development";
+      recording_mode: "uncertified_development";
+      certification_profile: null;
       output_path: null;
       diagnostic_bundle_path: string;
     });
@@ -342,6 +383,7 @@ export interface RecordingInfoV3 {
   cursor_path: string | null;
   exact_source_fps: RecordingRational | null;
   source_frame_count: number | null;
+  recording_mode: RecordingV3Mode;
   certification_profile: RecordingCertificationProfileReferenceV3 | null;
   guarantee_boundary: RecordingGuaranteeBoundaryV3;
   source_scope_verified: true;
@@ -349,12 +391,9 @@ export interface RecordingInfoV3 {
   bundle_path: string | null;
 }
 
-export interface RecordingBundleV3 {
+export interface RecordingBundleV3Base {
   schema_version: typeof RECORDING_BUNDLE_SCHEMA_VERSION_V3;
-  status: "completed" | "quality_failed";
   created_at: string;
-  delivery_policy: "strict";
-  certification_profile: RecordingCertificationProfileReferenceV3 | null;
   capture_contract: RecordingCaptureContractV3;
   master: RecordingBundleArtifactV2 & {
     relative_path: "master/video.mkv";
@@ -384,6 +423,28 @@ export interface RecordingBundleV3 {
   failure_codes: RecordingFailureCodeV3[];
 }
 
+export type RecordingBundleV3 = RecordingBundleV3Base &
+  (
+    | {
+        status: "completed";
+        delivery_policy: "strict";
+        recording_mode: "certified";
+        certification_profile: RecordingCertificationProfileReferenceV3;
+      }
+    | {
+        status: "quality_failed";
+        delivery_policy: "strict";
+        recording_mode: "certified";
+        certification_profile: RecordingCertificationProfileReferenceV3 | null;
+      }
+    | {
+        status: "completed" | "quality_failed";
+        delivery_policy: "development";
+        recording_mode: "uncertified_development";
+        certification_profile: null;
+      }
+  );
+
 export interface ExportRecordingSourceV3 {
   version: typeof RECORDING_COMPOSITION_SOURCE_VERSION_V3;
   bundle_path: string;
@@ -399,7 +460,8 @@ export interface ExportRecordingSourceV3 {
   quality_verdict: Extract<RecordingQualityVerdict, "passed" | "degraded">;
   guarantee_boundary: RecordingGuaranteeBoundaryV3;
   source_scope_verified: true;
-  certification_profile_id: string;
+  recording_mode: RecordingV3Mode;
+  certification_profile_id: string | null;
 }
 
 const FAILURE_CODES_V3 = new Set<RecordingFailureCodeV3>([
@@ -591,6 +653,33 @@ function isProfileReference(value: unknown): value is RecordingCertificationProf
   );
 }
 
+function normalizeRecordingMode(
+  deliveryPolicy: unknown,
+  recordingMode: unknown,
+): RecordingV3Mode | null {
+  if (recordingMode === undefined && deliveryPolicy === "strict") return "certified";
+  if (recordingMode === "certified" || recordingMode === "uncertified_development") {
+    return recordingMode;
+  }
+  return null;
+}
+
+function isValidArtifactQualification(
+  status: "completed" | "quality_failed",
+  deliveryPolicy: unknown,
+  recordingMode: RecordingV3Mode,
+  certificationProfile: unknown,
+): boolean {
+  if (deliveryPolicy === "strict" && recordingMode === "certified") {
+    return status === "quality_failed" || isProfileReference(certificationProfile);
+  }
+  return (
+    deliveryPolicy === "development" &&
+    recordingMode === "uncertified_development" &&
+    certificationProfile === null
+  );
+}
+
 export function readRecordingCertifiedProfileV3(
   value: unknown,
 ): RecordingCertifiedProfileV3 | null {
@@ -740,7 +829,7 @@ export function readRecordingPreflightV3Request(
   value: unknown,
 ): RecordingPreflightV3Request | null {
   if (!isRecord(value) || value.version !== RECORDING_CONTRACT_VERSION_V3) return null;
-  if (value.intent !== "strict") return null;
+  if (value.intent !== "strict" && value.intent !== "development") return null;
   if (
     value.target_class !== "browser" &&
     value.target_class !== "display" &&
@@ -761,7 +850,15 @@ export function readRecordingPreflightV3Request(
 
 export function readRecordingPreflightV3Dto(value: unknown): RecordingPreflightV3Dto | null {
   if (!isRecord(value) || value.version !== RECORDING_CONTRACT_VERSION_V3) return null;
-  if (value.intent !== "strict") return null;
+  if (value.intent !== "strict" && value.intent !== "development") return null;
+  if (value.recording_mode !== "certified" && value.recording_mode !== "uncertified_development")
+    return null;
+  if (
+    (value.intent === "strict" && value.recording_mode !== "certified") ||
+    (value.intent === "development" && value.recording_mode !== "uncertified_development")
+  ) {
+    return null;
+  }
   if (!isNonEmptyString(value.backend_id) || !isNonEmptyString(value.backend_version)) return null;
   if (!isPositiveInteger(value.addon_protocol_version)) return null;
   if (value.platform !== "darwin" && value.platform !== "win32") return null;
@@ -775,13 +872,16 @@ export function readRecordingPreflightV3Dto(value: unknown): RecordingPreflightV
     typeof value.native_probe_passed !== "boolean" ||
     typeof value.permissions_granted !== "boolean" ||
     typeof value.strict_eligible !== "boolean" ||
+    typeof value.development_eligible !== "boolean" ||
     !isFailureCodes(value.failure_codes)
   ) {
     return null;
   }
   if (
     value.strict_eligible &&
-    (value.matched_profile === null ||
+    (value.intent !== "strict" ||
+      value.development_eligible ||
+      value.matched_profile === null ||
       value.manifest_id === null ||
       !value.native_probe_passed ||
       !value.permissions_granted ||
@@ -789,7 +889,44 @@ export function readRecordingPreflightV3Dto(value: unknown): RecordingPreflightV
   ) {
     return null;
   }
+  if (
+    value.intent === "development" &&
+    (value.strict_eligible || value.matched_profile !== null || value.manifest_id !== null)
+  ) {
+    return null;
+  }
+  if (value.intent === "strict" && value.development_eligible) return null;
+  if (
+    value.development_eligible &&
+    (value.intent !== "development" ||
+      !value.native_probe_passed ||
+      !value.permissions_granted ||
+      value.failure_codes.length > 0)
+  ) {
+    return null;
+  }
   return value as unknown as RecordingPreflightV3Dto;
+}
+
+export function readRecordingV3DevelopmentEnvironmentDto(
+  value: unknown,
+): RecordingV3DevelopmentEnvironmentDto | null {
+  if (!isRecord(value) || value.version !== RECORDING_CONTRACT_VERSION_V3) return null;
+  if (
+    typeof value.development_enabled !== "boolean" ||
+    typeof value.development_available !== "boolean" ||
+    typeof value.native_probe_passed !== "boolean" ||
+    !isFailureCodes(value.failure_codes)
+  ) {
+    return null;
+  }
+  if (
+    value.development_available &&
+    (!value.development_enabled || !value.native_probe_passed || value.failure_codes.length > 0)
+  ) {
+    return null;
+  }
+  return value as unknown as RecordingV3DevelopmentEnvironmentDto;
 }
 
 export function readRecordingFrameLedgerEntryV3(
@@ -1003,11 +1140,22 @@ export function readRecordingCaptureContractV3(value: unknown): RecordingCapture
 export function readRecordingBundleV3(value: unknown): RecordingBundleV3 | null {
   if (!isRecord(value) || value.schema_version !== RECORDING_BUNDLE_SCHEMA_VERSION_V3) return null;
   if (value.status !== "completed" && value.status !== "quality_failed") return null;
-  if (!isIsoTimestamp(value.created_at) || value.delivery_policy !== "strict") return null;
+  if (!isIsoTimestamp(value.created_at)) return null;
+  const recordingMode = normalizeRecordingMode(value.delivery_policy, value.recording_mode);
+  if (!recordingMode) return null;
   if (!readRecordingCaptureContractV3(value.capture_contract)) return null;
   if (value.certification_profile !== null && !isProfileReference(value.certification_profile))
     return null;
-  if (value.status === "completed" && !isProfileReference(value.certification_profile)) return null;
+  if (
+    !isValidArtifactQualification(
+      value.status,
+      value.delivery_policy,
+      recordingMode,
+      value.certification_profile,
+    )
+  ) {
+    return null;
+  }
   if (!isRecord(value.master) || !isBundleArtifact(value.master, "master/video.mkv")) return null;
   if (value.master.codec !== "ffv1" || value.master.pixel_format !== "bgra") return null;
   if (
@@ -1044,7 +1192,7 @@ export function readRecordingBundleV3(value: unknown): RecordingBundleV3 | null 
   if (value.frame_ledger_path !== "evidence/frame-ledger.jsonl") return null;
   if (value.diagnostics_manifest_path !== "diagnostics/manifest.json") return null;
   if (!isFailureCodes(value.failure_codes)) return null;
-  return value as unknown as RecordingBundleV3;
+  return { ...value, recording_mode: recordingMode } as unknown as RecordingBundleV3;
 }
 
 export function readExportRecordingSourceV3(value: unknown): ExportRecordingSourceV3 | null {
@@ -1056,9 +1204,19 @@ export function readExportRecordingSourceV3(value: unknown): ExportRecordingSour
     value.cadence_evidence_path,
     value.quality_evidence_path,
     value.frame_ledger_path,
-    value.certification_profile_id,
   ];
   if (!strings.every(isNonEmptyString)) return null;
+  const recordingMode = normalizeRecordingMode(
+    value.recording_mode === undefined ? "strict" : undefined,
+    value.recording_mode,
+  );
+  if (!recordingMode) return null;
+  if (
+    (recordingMode === "certified" && !isNonEmptyString(value.certification_profile_id)) ||
+    (recordingMode === "uncertified_development" && value.certification_profile_id !== null)
+  ) {
+    return null;
+  }
   if (
     !isExactStrictFrameRate(value.exact_source_fps) ||
     !isPositiveInteger(value.source_frame_count)
@@ -1072,7 +1230,7 @@ export function readExportRecordingSourceV3(value: unknown): ExportRecordingSour
     value.source_scope_verified !== true
   )
     return null;
-  return value as unknown as ExportRecordingSourceV3;
+  return { ...value, recording_mode: recordingMode } as unknown as ExportRecordingSourceV3;
 }
 
 export function readRecordingInfoV3(value: unknown): RecordingInfoV3 | null {
@@ -1086,6 +1244,17 @@ export function readRecordingInfoV3(value: unknown): RecordingInfoV3 | null {
   if (!isQualityVerdict(value.quality_verdict)) return null;
   if (value.certification_profile !== null && !isProfileReference(value.certification_profile))
     return null;
+  const recordingMode = normalizeRecordingMode(
+    value.recording_mode === undefined ? "strict" : undefined,
+    value.recording_mode,
+  );
+  if (!recordingMode) return null;
+  if (
+    (recordingMode === "certified" && !isProfileReference(value.certification_profile)) ||
+    (recordingMode === "uncertified_development" && value.certification_profile !== null)
+  ) {
+    return null;
+  }
   const nullableStrings = [
     value.master_path,
     value.proxy_path,
@@ -1103,17 +1272,15 @@ export function readRecordingInfoV3(value: unknown): RecordingInfoV3 | null {
   if (value.exact_source_fps !== null && !isRational(value.exact_source_fps)) return null;
   if (value.source_frame_count !== null && !isNonNegativeInteger(value.source_frame_count))
     return null;
-  return value as unknown as RecordingInfoV3;
+  return { ...value, recording_mode: recordingMode } as unknown as RecordingInfoV3;
 }
 
 export function readRecordingResultV3(value: unknown): RecordingResultV3 | null {
   if (!isRecord(value) || value.version !== RECORDING_CONTRACT_VERSION_V3) return null;
   if (value.status !== "completed" && value.status !== "quality_failed") return null;
-  if (
-    value.delivery_policy !== "strict" ||
-    value.guarantee_boundary !== RECORDING_GUARANTEE_BOUNDARY_V3
-  )
-    return null;
+  if (value.guarantee_boundary !== RECORDING_GUARANTEE_BOUNDARY_V3) return null;
+  const recordingMode = normalizeRecordingMode(value.delivery_policy, value.recording_mode);
+  if (!recordingMode) return null;
   if (
     !isNonEmptyString(value.bundle_path) ||
     !isFiniteNonNegative(value.duration_ms) ||
@@ -1129,14 +1296,23 @@ export function readRecordingResultV3(value: unknown): RecordingResultV3 | null 
     return null;
   if (value.certification_profile !== null && !isProfileReference(value.certification_profile))
     return null;
+  if (
+    !isValidArtifactQualification(
+      value.status,
+      value.delivery_policy,
+      recordingMode,
+      value.certification_profile,
+    )
+  ) {
+    return null;
+  }
   if (value.status === "completed") {
-    if (!isProfileReference(value.certification_profile) || !isNonEmptyString(value.output_path))
-      return null;
+    if (!isNonEmptyString(value.output_path)) return null;
     if (value.diagnostic_bundle_path !== null) return null;
   } else {
     if (value.output_path !== null || !isNonEmptyString(value.diagnostic_bundle_path)) return null;
   }
-  return value as unknown as RecordingResultV3;
+  return { ...value, recording_mode: recordingMode } as unknown as RecordingResultV3;
 }
 
 export function readRecordingEventV3(value: unknown): RecordingEventV3 | null {

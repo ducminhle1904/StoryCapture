@@ -25,7 +25,7 @@ import { recordEngineLog } from "./recording-observability";
 import { RecordingPauseGate } from "./recording-pause-gate";
 import {
   acknowledgeStrictBrowserRecordingV3,
-  isStrictRecordingV3Request,
+  isRecordingV3Request,
   pauseStrictBrowserRecordingV3,
   probeStrictBrowserRecordingV3Capability,
   queryStrictBrowserRecordingV3,
@@ -34,7 +34,7 @@ import {
   resumeStrictBrowserRecordingV3,
   type StrictBrowserSessionV3,
   setStrictBrowserRecordingV3Actions,
-  startStrictBrowserRecordingV3,
+  startBrowserRecordingV3,
   stopStrictBrowserRecordingV3,
   strictBrowserRecordingV3ClockMs,
   strictBrowserRecordingV3Contents,
@@ -102,8 +102,8 @@ export async function startStrictBrowserRecording(
   sender: WebContents,
   url: string,
 ): Promise<{ id: string }> {
-  if (isStrictRecordingV3Request(args)) {
-    return startStrictBrowserRecordingV3(args, onEvent, sender, url);
+  if (isRecordingV3Request(args)) {
+    return startBrowserRecordingV3(args, onEvent, sender, url);
   }
   if (args.target.kind !== "author_preview") {
     throw new Error("Strict browser recording requires an authoritative author-preview target.");

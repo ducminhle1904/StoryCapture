@@ -44,6 +44,7 @@ import {
 } from "../recording-tail";
 import { type ParsedCommand, parseStorySource } from "../story-parser";
 import { recordingEncoderFailure, recordingErrorCode } from "./recording-errors";
+import { routeSpecializedRecordingStart } from "./recording-start-routing";
 import {
   type AuthorPreviewSession,
   type AuthorSnapshotEntry,
@@ -1862,26 +1863,29 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
     quality_preset?: RecordingQualityPreset | null;
     scale_algo?: RecordingScaleAlgo | null;
     contract_version?: 2 | 3;
-    intent?: "strict";
-    delivery_policy?: "strict" | "best_effort";
+    intent?: "strict" | "development";
+    delivery_policy?: "strict" | "development" | "best_effort";
     certified_tier?: StartRecordingArgs["certified_tier"];
     capture_contract?: StartRecordingArgs["capture_contract"];
   };
   if (!args.project_folder) throw new Error("project_folder required");
-  const id = randomUUID();
-  const eventChannelId = channelIdFrom(onEvent);
   const fps = clampFps(args.fps);
   const requestedFps = positiveNumber(args.fps, fps);
   const target = args.target ?? defaultCaptureTarget();
   const width = clampDimension(args.width, 1280);
   const height = clampDimension(args.height, 720);
-  if (args.delivery_policy === "strict") {
-    const url =
-      target.kind === "author_preview"
-        ? authorSession(target.stream_id).window.webContents.getURL()
-        : "";
-    return startStrictBrowserRecording(args as StartRecordingArgs, onEvent, sender, url);
-  }
+  const specialized = await routeSpecializedRecordingStart(
+    { ...args, target, project_folder: args.project_folder } as StartRecordingArgs,
+    onEvent,
+    sender,
+    {
+      authorPreviewUrl: (streamId) => authorSession(streamId).window.webContents.getURL(),
+      startStrictBrowser: startStrictBrowserRecording,
+    },
+  );
+  if (specialized.handled) return specialized.result;
+  const id = randomUUID();
+  const eventChannelId = channelIdFrom(onEvent);
   const output = resolveRecordingOutput(width, height, {
     outputResolution: args.output_resolution,
     fitMode: args.fit_mode,

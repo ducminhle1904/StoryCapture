@@ -6,6 +6,7 @@ import {
   RecordingV3NativeError,
   RecordingV3NativeSession,
   recordingV3NativeAddonPath,
+  recordingV3NativeAddonPathForRuntime,
 } from "./recording-v3-native-addon";
 
 const hash = "a".repeat(64);
@@ -70,6 +71,29 @@ describe("Recording V3 native addon wrapper", () => {
         isPackaged: true,
         resourcesPath: "/resources",
         desktopRoot: "/desktop",
+      }),
+    ).toBe(path.join("/resources/native/macos/storycapture_recording_v3.node"));
+  });
+
+  it("uses source build output for the generated dev app and packaged resources for production", () => {
+    const common = {
+      app: { isPackaged: true },
+      resourcesPath: "/resources",
+      desktopRoot: "/desktop",
+    } as const;
+    expect(
+      recordingV3NativeAddonPathForRuntime({
+        ...common,
+        env: { STORYCAPTURE_DEV_APP: "1" },
+        executablePath:
+          "/desktop/.electron-dev/StoryCapture Dev.app/Contents/MacOS/StoryCapture Dev",
+      }),
+    ).toBe(path.join("/desktop/native/macos-recording-v3/.build/storycapture_recording_v3.node"));
+    expect(
+      recordingV3NativeAddonPathForRuntime({
+        ...common,
+        env: { STORYCAPTURE_DEV_APP: "1" },
+        executablePath: "/Applications/StoryCapture.app/Contents/MacOS/StoryCapture",
       }),
     ).toBe(path.join("/resources/native/macos/storycapture_recording_v3.node"));
   });

@@ -21,6 +21,10 @@ const mocks = vi.hoisted(() => ({
   parseStory: vi.fn(),
   deleteFailedRecordingBundle: vi.fn(),
   openRecordingDiagnosticBundle: vi.fn(),
+  outputPrefs: {
+    recordingDeliveryPolicy: "best_effort" as "best_effort" | "strict",
+    recordingV3DevelopmentMode: false,
+  },
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
@@ -71,12 +75,12 @@ vi.mock("@/state/output-prefs", () => ({
   useOutputPrefsStore: Object.assign(
     (selector: (state: unknown) => unknown) =>
       selector({
-        recordingDeliveryPolicy: "best_effort",
+        ...mocks.outputPrefs,
       }),
     {
       getState: () => ({
         activePreset: null,
-        recordingDeliveryPolicy: "best_effort",
+        ...mocks.outputPrefs,
         recordingKnobs: { fps: 30, fit: "contain", pad: "#000000", quality: "high" },
       }),
     },
@@ -121,6 +125,7 @@ const targets = {
 const v3Preflight = {
   version: 3,
   intent: "strict",
+  recording_mode: "certified",
   backend_id: "electron_offscreen_shared_texture_v3",
   backend_version: "3.0.0",
   addon_protocol_version: 3,
@@ -147,13 +152,25 @@ const v3Preflight = {
   native_probe_passed: true,
   permissions_granted: true,
   strict_eligible: true,
+  development_eligible: false,
   failure_codes: [],
+} satisfies RecordingPreflightV3Dto;
+
+const v3DevelopmentPreflight = {
+  ...v3Preflight,
+  intent: "development",
+  recording_mode: "uncertified_development",
+  manifest_id: null,
+  matched_profile: null,
+  strict_eligible: false,
+  development_eligible: true,
 } satisfies RecordingPreflightV3Dto;
 
 const v3QualityFailure = {
   version: 3,
   status: "quality_failed",
   delivery_policy: "strict",
+  recording_mode: "certified",
   guarantee_boundary: "electron_offscreen_delivery",
   certification_profile: null,
   bundle_path: "/tmp/demo/exports/v3-failed.sc-recording",
@@ -208,6 +225,8 @@ const v3QualityFailure = {
 } satisfies RecordingResultV3;
 
 beforeEach(() => {
+  mocks.outputPrefs.recordingDeliveryPolicy = "best_effort";
+  mocks.outputPrefs.recordingV3DevelopmentMode = false;
   useRecorderStore.getState().reset();
   useRecorderStore.setState({
     status: "completed",
@@ -326,6 +345,87 @@ describe("RecordingView take lifecycle", () => {
     expect(useRecorderStore.getState().outputPath).toBe("/tmp/early.mp4");
     expect(mocks.publishCompletedRecording).toHaveBeenCalledTimes(1);
     expect(mocks.launchAutomation).not.toHaveBeenCalled();
+  });
+
+  it("routes Dev V3 through development admission and keeps provenance in publication", async () => {
+    mocks.outputPrefs.recordingV3DevelopmentMode = true;
+    mocks.probeRecordingV3Capability.mockResolvedValue(v3DevelopmentPreflight);
+    mocks.acquireRecordingPreview.mockResolvedValue({ streamId: "preview-dev", release: vi.fn() });
+    mocks.startRecording.mockImplementation(
+      async (_args: unknown, onEvent: (event: RecordingEvent) => void) => {
+        onEvent({
+          type: "completed",
+          result: {
+            ...v3QualityFailure,
+            status: "completed",
+            delivery_policy: "development",
+            recording_mode: "uncertified_development",
+            certification_profile: null,
+            bundle_path: "/tmp/demo/exports/dev.sc-recording",
+            master_path: "/tmp/demo/exports/dev.sc-recording/master/video.mkv",
+            proxy_path: "/tmp/demo/exports/dev.sc-recording/proxy/video.mp4",
+            output_path: "/tmp/demo/exports/dev.sc-recording/proxy/video.mp4",
+            diagnostic_bundle_path: null,
+            cadence_evidence: {
+              ...v3QualityFailure.cadence_evidence,
+              artifact_decoded_frames: 60,
+              full_decode_succeeded: true,
+              verdict: "passed",
+              failure_codes: [],
+            },
+            quality_evidence: {
+              ...v3QualityFailure.quality_evidence,
+              evaluated_frames: 60,
+              lossless_master_hashes_match: true,
+              verdict: "passed",
+              failure_codes: [],
+            },
+          },
+        });
+        return { id: "take-dev-v3" };
+      },
+    );
+
+    render(
+      <MemoryRouter>
+        <RecordingView
+          projectId="project-1"
+          projectName="Demo"
+          projectFolder="/tmp/demo"
+          storySource={'meta { app: "https://example.com" viewport: 960x540 }'}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New take" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Start recording" }));
+
+    await waitFor(() => expect(mocks.probeRecordingV3Capability).toHaveBeenCalledTimes(1));
+    expect(mocks.probeRecordingV3Capability).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contract_version: 3,
+        intent: "development",
+        delivery_policy: "development",
+        fps: 60,
+      }),
+    );
+    await waitFor(() => expect(mocks.publishCompletedRecording).toHaveBeenCalledTimes(1));
+    expect(mocks.publishCompletedRecording).toHaveBeenCalledWith(
+      expect.anything(),
+      "project-1",
+      expect.objectContaining({
+        version: 3,
+        recording_mode: "uncertified_development",
+        bundle_path: "/tmp/demo/exports/dev.sc-recording",
+        master_path: "/tmp/demo/exports/dev.sc-recording/master/video.mkv",
+        frame_ledger_path: "/tmp/demo/exports/dev.sc-recording/evidence/frame-ledger.jsonl",
+        source_frame_count: 60,
+        source_scope_verified: true,
+      }),
+    );
+    expect(
+      screen.getByText("Uncertified Development — not a Strict-certified recording"),
+    ).toBeInTheDocument();
   });
 
   it("clears the owned automation channel on completion", async () => {

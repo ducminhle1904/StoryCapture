@@ -175,6 +175,55 @@ describe("ExportModal", () => {
     expect(btn).not.toBeDisabled();
   });
 
+  it("warns when the graph contains an uncertified development source", () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [
+          {
+            id: "v-dev",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 1000,
+            sourcePath: "/tmp/take.sc-recording/proxy/video.mp4",
+            recordingSource: {
+              version: 3,
+              bundle_path: "/tmp/take.sc-recording",
+              master_path: "/tmp/take.sc-recording/master/video.mkv",
+              proxy_path: "/tmp/take.sc-recording/proxy/video.mp4",
+              cadence_evidence_path: "/tmp/take.sc-recording/evidence/cadence.json",
+              quality_evidence_path: "/tmp/take.sc-recording/evidence/runtime-quality.json",
+              frame_ledger_path: "/tmp/take.sc-recording/evidence/frame-ledger.jsonl",
+              exact_source_fps: { numerator: 60, denominator: 1 },
+              source_frame_count: 60,
+              master_width: 1920,
+              master_height: 1080,
+              quality_verdict: "passed",
+              guarantee_boundary: "electron_offscreen_delivery",
+              source_scope_verified: true,
+              recording_mode: "uncertified_development",
+              certification_profile_id: null,
+            },
+          },
+        ],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    render(
+      <Wrapped>
+        <ExportModal storyId="s1" />
+      </Wrapped>,
+    );
+
+    expect(
+      screen.getByText("Uncertified Development — not a Strict-certified recording"),
+    ).toBeVisible();
+    expect(screen.getByText(/cannot be uploaded or shared/i)).toBeVisible();
+  });
+
   it.each([
     true,
     false,

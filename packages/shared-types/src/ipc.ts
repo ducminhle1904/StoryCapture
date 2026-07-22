@@ -13,6 +13,8 @@ import type {
   RecordingGuaranteeBoundaryV3,
   RecordingPreflightDto,
   RecordingResult,
+  RecordingV3Intent,
+  RecordingV3Mode,
 } from "./recording-v2";
 
 export type * from "./recording-v2";
@@ -1491,6 +1493,7 @@ export const commands = {
     storySource: string | null,
     sceneBoundaries: string | null,
     onProgress: TAURI_CHANNEL<UploadProgressEvent>,
+    recordingMode: RecordingV3Mode | null = null,
   ): Promise<Result<UploadResult, UploadError>> {
     try {
       return {
@@ -1502,6 +1505,7 @@ export const commands = {
           storySource,
           sceneBoundaries,
           onProgress,
+          recordingMode,
         }),
       };
     } catch (e) {
@@ -2103,7 +2107,12 @@ export type ExportPresetsCatalogue = {
   fps: number[];
   qualities: string[];
 };
-export type ExportResultDto = { batch_id: string; job_ids: string[]; graph_snapshot_path: string };
+export type ExportResultDto = {
+  batch_id: string;
+  job_ids: string[];
+  graph_snapshot_path: string;
+  recording_mode?: RecordingV3Mode | null;
+};
 export type AiDisclosureDto = {
   contains_ai_voiceover: boolean;
   embed_xmp: boolean;
@@ -2486,6 +2495,7 @@ export type RecordingInfoDto = {
   source_frame_count?: number | null;
   certified_tier?: RecordingCertifiedTier | null;
   certification_profile?: RecordingCertificationProfileReferenceV3 | null;
+  recording_mode?: RecordingV3Mode;
   guarantee_boundary?: RecordingGuaranteeBoundaryV3 | null;
   source_scope_verified?: boolean;
   frame_ledger_path?: string | null;
@@ -2540,6 +2550,7 @@ export type RenderJobDto = {
   error: string | null;
   priority: number;
   output_path: string | null;
+  recording_mode: RecordingV3Mode | null;
   batch_id: string | null;
   created_at: bigint;
   queue_position?: number | null;
@@ -2670,8 +2681,8 @@ export type StartRecordingArgs = {
   fps: number;
   /** Missing on legacy callers and therefore interpreted as best-effort. */
   contract_version?: 2 | 3;
-  intent?: "strict";
-  delivery_policy?: RecordingDeliveryPolicy;
+  intent?: RecordingV3Intent;
+  delivery_policy?: RecordingDeliveryPolicy | "development";
   certified_tier?: RecordingCertifiedTier | null;
   capture_contract?: RecordingCaptureContract | null;
   /**

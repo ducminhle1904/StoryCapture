@@ -6,8 +6,10 @@ import identity from "./identity.json";
 import { registerIpcHandlers } from "./ipc";
 import { runExportCompositorArtifactSmoke } from "./ipc/export-compositor-smoke";
 import { initializeExportOutputLifecycle } from "./ipc/legacy/export-output-lifecycle";
+import { initializeRecordingV3ExportProvenance } from "./ipc/recording-v3-export-provenance";
 import { registerLocalAssetProtocol, registerLocalAssetScheme } from "./local-assets";
 import { runRecordingV3ReleaseSmoke } from "./recording-v3-release-smoke";
+import { runRecordingV3DevelopmentFlowSmoke } from "./recording-v3-development-flow-smoke";
 import { isDevRuntime } from "./runtime";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -19,6 +21,9 @@ const exportCompositorSmokeResultPath =
   process.env.STORYCAPTURE_EXPORT_COMPOSITOR_SMOKE_RESULT;
 const recordingV3ReleaseSmokeResultPath = app.commandLine.getSwitchValue(
   "storycapture-recording-v3-release-smoke-result",
+);
+const recordingV3DevelopmentFlowResultPath = app.commandLine.getSwitchValue(
+  "storycapture-recording-v3-development-flow-result",
 );
 
 let mainWindow: BrowserWindow | null = null;
@@ -102,9 +107,17 @@ void app.whenReady().then(async () => {
     app.exit(succeeded ? 0 : 1);
     return;
   }
+  if (recordingV3DevelopmentFlowResultPath) {
+    const succeeded = await runRecordingV3DevelopmentFlowSmoke(
+      recordingV3DevelopmentFlowResultPath,
+    );
+    app.exit(succeeded ? 0 : 1);
+    return;
+  }
   await initializeExportOutputLifecycle(app.getPath("userData")).catch((error) => {
     console.warn("[export-render] orphan cleanup failed", error);
   });
+  initializeRecordingV3ExportProvenance(app.getPath("userData"));
   const appIcon = createAppIcon();
   if (process.platform === "darwin" && appIcon) {
     app.dock?.setIcon(appIcon);

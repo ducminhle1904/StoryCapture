@@ -7,6 +7,7 @@ import {
   type RecordingPreflightV3Dto,
   type RecordingPreflightV3Request,
   type RecordingResultV3,
+  type RecordingV3Qualification,
   readRecordingCaptureContractV3,
   recordingV3FailureMessage,
 } from "@storycapture/shared-types/recording-v2";
@@ -28,13 +29,15 @@ import {
   RecordingV3NativeBridge,
   RecordingV3NativeError,
   type RecordingV3NativeSession,
-  recordingV3NativeAddonPath,
+  recordingV3NativeAddonPathForRuntime,
 } from "./recording-v3-native-addon";
+import { isRecordingV3DevelopmentEnabled } from "./recording-v3-development-gate";
 import { probeRecordingV3RuntimeCapability } from "./recording-v3-runtime-preflight";
 import {
   type RecordingV3CoordinatorSession,
   RecordingV3HostSessionRegistry,
 } from "./recording-v3-session-registry";
+import { RecordingV3TransitionQueue } from "./recording-v3-transition-queue";
 
 const WIDTH = 1920 as const;
 const HEIGHT = 1080 as const;
@@ -59,6 +62,10 @@ export interface StrictBrowserSessionV3 extends RecordingV3CoordinatorSession {
   firstFrameTimeoutMs: number;
   heartbeat: ReturnType<typeof setInterval>;
   stopPromise: Promise<RecordingResultV3> | null;
+  boundaryFrameResolve: (() => void) | null;
+  boundaryFrameReject: ((error: Error) => void) | null;
+  boundaryKind: "pause" | "stop" | null;
+  transitionQueue: RecordingV3TransitionQueue;
   terminalError: Error | null;
   terminalizing: boolean;
   paintListener: (event: Electron.Event) => void;
@@ -76,11 +83,11 @@ export interface StrictBrowserSessionV3 extends RecordingV3CoordinatorSession {
 
 const registry = new RecordingV3HostSessionRegistry<StrictBrowserSessionV3>();
 
-export function strictRecordingV3Request(args: StartRecordingArgs): RecordingPreflightV3Request {
+export function recordingV3Request(args: StartRecordingArgs): RecordingPreflightV3Request {
   const captureContract = readRecordingCaptureContractV3(args.capture_contract);
   return {
     version: 3,
-    intent: "strict",
+    intent: args.intent === "development" ? "development" : "strict",
     target_class: args.target.kind === "author_preview" ? "browser" : "display",
     requested_fps: { numerator: 60, denominator: 1 },
     dimensions: captureContract?.dimensions ?? {
@@ -103,13 +110,22 @@ export function isStrictRecordingV3Request(args: StartRecordingArgs): boolean {
   );
 }
 
-export async function probeStrictBrowserRecordingV3Capability(
+export function isRecordingV3Request(args: StartRecordingArgs): boolean {
+  return (
+    isStrictRecordingV3Request(args) ||
+    (args.contract_version === 3 &&
+      args.intent === "development" &&
+      args.delivery_policy === "development")
+  );
+}
+
+export async function probeBrowserRecordingV3Capability(
   args: StartRecordingArgs,
   url: string,
 ): Promise<RecordingPreflightV3Dto> {
   const captureContract = readRecordingCaptureContractV3(args.capture_contract);
   const preflight = await probeRecordingV3RuntimeCapability({
-    request: strictRecordingV3Request(args),
+    request: recordingV3Request(args),
     projectFolder: args.project_folder,
     url,
   });
@@ -123,9 +139,12 @@ export async function probeStrictBrowserRecordingV3Capability(
   return {
     ...preflight,
     strict_eligible: false,
+    development_eligible: false,
     failure_codes: [...new Set(["contract_mismatch" as const, ...preflight.failure_codes])],
   };
 }
+
+export const probeStrictBrowserRecordingV3Capability = probeBrowserRecordingV3Capability;
 
 function send(session: StrictBrowserSessionV3, event: unknown): void {
   if (session.sender) sendChannel(session.sender, session.eventChannelId, event);
@@ -157,6 +176,11 @@ async function failSession(session: StrictBrowserSessionV3, error: unknown): Pro
   const failure = failureFrom(error);
   if (!session.terminalizing) {
     session.terminalizing = true;
+    const rejectBoundary = session.boundaryFrameReject;
+    session.boundaryFrameResolve = null;
+    session.boundaryFrameReject = null;
+    session.boundaryKind = null;
+    rejectBoundary?.(failure.error);
     clearInterval(session.heartbeat);
     session.acceptingFrames = false;
     session.pauseGate.cancel();
@@ -221,14 +245,18 @@ function waitForNativeCommits(
   });
 }
 
-export async function startStrictBrowserRecordingV3(
+export async function startBrowserRecordingV3(
   args: StartRecordingArgs,
   onEvent: unknown,
   sender: WebContents,
   url: string,
 ): Promise<{ id: string }> {
-  if (!isStrictRecordingV3Request(args))
-    throw new Error("Recording V3 requires explicit Strict intent");
+  if (!isRecordingV3Request(args))
+    throw new Error("Recording V3 requires explicit Strict or development intent");
+  const development = args.intent === "development";
+  if (development && !isRecordingV3DevelopmentEnabled(app)) {
+    throw new Error("Uncertified Recording V3 development mode is not enabled");
+  }
   if (args.target.kind !== "author_preview" || !url || url === "about:blank") {
     throw new Error(recordingV3FailureMessage("target_unsupported"));
   }
@@ -236,15 +264,29 @@ export async function startStrictBrowserRecordingV3(
   const eventChannelId = channelIdFrom(onEvent);
   const preflight = await probeStrictBrowserRecordingV3Capability(args, url);
   sendChannel(sender, eventChannelId, { type: "preflight", result: preflight });
-  if (!preflight.strict_eligible || !preflight.matched_profile || !preflight.manifest_id) {
+  const eligible = development ? preflight.development_eligible : preflight.strict_eligible;
+  const qualification: RecordingV3Qualification | null = development
+    ? preflight.matched_profile === null && preflight.manifest_id === null
+      ? { mode: "uncertified_development" }
+      : null
+    : preflight.matched_profile && preflight.manifest_id
+      ? {
+          mode: "certified",
+          manifestId: preflight.manifest_id,
+          profile: preflight.matched_profile,
+        }
+      : null;
+  if (!eligible || !qualification) {
     closeChannel(sender, eventChannelId);
-    const code = preflight.failure_codes[0] ?? "profile_mismatch";
+    const code = preflight.failure_codes[0] ?? (development ? "contract_mismatch" : "profile_mismatch");
     throw new Error(`${recordingV3FailureMessage(code)} (${preflight.failure_codes.join(", ")})`);
   }
 
   const id = randomUUID();
   const exportsDir = path.join(args.project_folder, "exports");
-  const name = `recording-${new Date().toISOString().replaceAll(/[:.]/g, "-")}`;
+  const name = `recording-${new Date().toISOString().replaceAll(/[:.]/g, "-")}${
+    development ? "-uncertified-dev" : ""
+  }`;
   const bundleWriter = await RecordingV3BundleWriter.create({
     exportsDir,
     name,
@@ -254,12 +296,11 @@ export async function startStrictBrowserRecordingV3(
       source_ordinal_kind: "electron_frame_count",
       target_class: "browser",
       exact_fps: { numerator: 60, denominator: 1 },
-      dimensions: strictRecordingV3Request(args).dimensions,
+      dimensions: recordingV3Request(args).dimensions,
       cursor_policy: "sidecar_reconstructed",
       audio_roles: [],
     },
-    manifestId: preflight.manifest_id,
-    profile: preflight.matched_profile,
+    qualification,
     width: WIDTH,
     height: HEIGHT,
   });
@@ -267,8 +308,8 @@ export async function startStrictBrowserRecordingV3(
   let window: BrowserWindow | null = null;
   let session: StrictBrowserSessionV3 | null = null;
   try {
-    const addonPath = recordingV3NativeAddonPath({
-      isPackaged: app.isPackaged,
+    const addonPath = recordingV3NativeAddonPathForRuntime({
+      app,
       resourcesPath: process.resourcesPath,
       desktopRoot: app.getAppPath(),
     });
@@ -281,7 +322,7 @@ export async function startStrictBrowserRecordingV3(
     });
     const engine = new RecordingV3Engine(native);
     const backend = new BrowserCaptureBackendV3(engine);
-    const request = strictRecordingV3Request(args);
+    const request = recordingV3Request(args);
     window = new BrowserWindow({
       show: false,
       paintWhenInitiallyHidden: true,
@@ -324,6 +365,10 @@ export async function startStrictBrowserRecordingV3(
       firstFrameTimeoutMs: Number(args.first_frame_timeout_ms ?? 8_000),
       heartbeat: placeholderHeartbeat,
       stopPromise: null,
+      boundaryFrameResolve: null,
+      boundaryFrameReject: null,
+      boundaryKind: null,
+      transitionQueue: new RecordingV3TransitionQueue(),
       terminalError: null,
       terminalizing: false,
       paintListener: (_event: Electron.Event) => undefined,
@@ -350,6 +395,20 @@ export async function startStrictBrowserRecordingV3(
       }
       try {
         activeSession.backend.submitTexture(texture);
+        if (activeSession.boundaryFrameResolve && activeSession.boundaryKind) {
+          const readiness =
+            activeSession.boundaryKind === "pause"
+              ? activeSession.engine.preparePause()
+              : activeSession.engine.prepareStop();
+          if (readiness === "frame_required") return;
+          activeSession.acceptingFrames = false;
+          activeSession.window.webContents.stopPainting();
+          const resolve = activeSession.boundaryFrameResolve;
+          activeSession.boundaryFrameResolve = null;
+          activeSession.boundaryFrameReject = null;
+          activeSession.boundaryKind = null;
+          resolve();
+        }
       } catch (error) {
         void failSession(activeSession, error).catch(() => undefined);
       }
@@ -454,6 +513,10 @@ export function strictBrowserRecordingV3ClockMs(id: string): number | null {
   return strictBrowserRecordingV3Session(id)?.engine.recordingClockMs() ?? null;
 }
 
+export function recordingV3SessionNativeStats(id: string) {
+  return registry.session(id)?.native.getStats() ?? null;
+}
+
 export async function requireStrictBrowserRecordingV3Readiness(
   id: string,
   state: "source_ready" | "first_frame_committed" | "pre_input_frame_committed",
@@ -473,27 +536,90 @@ export async function requireStrictBrowserRecordingV3Readiness(
   }
 }
 
+async function reconcileRecordingV3Boundary(
+  session: StrictBrowserSessionV3,
+  kind: "pause" | "stop",
+): Promise<void> {
+  const reconciliationDeadline = Date.now() + session.firstFrameTimeoutMs;
+  while (true) {
+    const readiness =
+      kind === "pause" ? session.engine.preparePause() : session.engine.prepareStop();
+    if (readiness === "ready") {
+      session.acceptingFrames = false;
+      session.window.webContents.stopPainting();
+      return;
+    }
+    if (Date.now() >= reconciliationDeadline) {
+      return failSession(
+        session,
+        new RecordingV3EngineError(
+          "native_deadline_missed",
+          `Recording V3 ${kind} reconciliation timed out`,
+        ),
+      );
+    }
+    if (readiness === "clock_pending") {
+      session.acceptingFrames = false;
+      session.window.webContents.stopPainting();
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      continue;
+    }
+    await new Promise<void>((resolve, reject) => {
+      const complete = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+      const timeout = setTimeout(() => {
+        if (session.boundaryFrameResolve === complete) {
+          session.boundaryFrameResolve = null;
+          session.boundaryFrameReject = null;
+          session.boundaryKind = null;
+        }
+        reject(
+          new RecordingV3EngineError(
+            "native_deadline_missed",
+            `Recording V3 ${kind} frame did not arrive`,
+          ),
+        );
+      }, session.firstFrameTimeoutMs);
+      session.boundaryFrameResolve = complete;
+      session.boundaryFrameReject = reject;
+      session.boundaryKind = kind;
+      session.acceptingFrames = true;
+      session.window.webContents.startPainting();
+      session.window.webContents.invalidate();
+    }).catch((error) => failSession(session, error));
+  }
+}
+
 export async function pauseStrictBrowserRecordingV3(id: string): Promise<boolean> {
   const session = strictBrowserRecordingV3Session(id);
   if (!session) return false;
-  session.acceptingFrames = false;
-  session.window.webContents.stopPainting();
-  session.engine.pause();
-  session.pauseGate.pause();
-  registry.updateLifecycle(id, "paused");
-  return true;
+  return session.transitionQueue.run(async () => {
+    try {
+      await reconcileRecordingV3Boundary(session, "pause");
+      session.engine.pause();
+      session.pauseGate.pause();
+      registry.updateLifecycle(id, "paused");
+      return true;
+    } catch (error) {
+      return failSession(session, error);
+    }
+  });
 }
 
 export async function resumeStrictBrowserRecordingV3(id: string): Promise<boolean> {
   const session = strictBrowserRecordingV3Session(id);
   if (!session) return false;
-  session.engine.resume();
-  session.pauseGate.resume();
-  session.window.webContents.startPainting();
-  session.acceptingFrames = true;
-  registry.updateLifecycle(id, "recording");
-  session.window.webContents.invalidate();
-  return true;
+  return session.transitionQueue.run(async () => {
+    session.engine.resume();
+    session.pauseGate.resume();
+    session.window.webContents.startPainting();
+    session.acceptingFrames = true;
+    registry.updateLifecycle(id, "recording");
+    session.window.webContents.invalidate();
+    return true;
+  });
 }
 
 export function setStrictBrowserRecordingV3Actions(
@@ -515,15 +641,20 @@ export async function stopStrictBrowserRecordingV3(id: string): Promise<Recordin
   const session = registry.session(id);
   if (!session) return null;
   if (session.terminalError) throw session.terminalError;
-  if (!session.stopPromise) session.stopPromise = stopSession(session);
+  if (!session.stopPromise) {
+    session.stopPromise = session.transitionQueue.run(() => stopSession(session));
+  }
   return session.stopPromise;
 }
 
 async function stopSession(session: StrictBrowserSessionV3): Promise<RecordingResultV3> {
   registry.updateLifecycle(session.id, "stopping");
+  await reconcileRecordingV3Boundary(session, "stop");
   session.terminalizing = true;
   clearInterval(session.heartbeat);
-  session.acceptingFrames = false;
+  session.boundaryFrameResolve = null;
+  session.boundaryFrameReject = null;
+  session.boundaryKind = null;
   session.pauseGate.cancel();
   detachSurface(session);
   session.window.webContents.stopPainting();

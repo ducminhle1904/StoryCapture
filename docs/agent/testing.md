@@ -22,6 +22,11 @@
   display/window capture or a sustained release soak.
 - Recording V3 native addon protocol gate:
   `pnpm --dir apps/desktop run native:build:recording-v3`.
+- Recording V3 uncertified-development E2E:
+  `pnpm --dir apps/desktop run test:e2e:recording-v3-development-flow`. Run it
+  after changes to the dev gate, preflight, V3 lifecycle, bundle discovery,
+  export provenance, or upload guard. The command performs a fresh native
+  addon build and requires macOS ARM64 plus screen-capture permission.
 - Recording V3 packaged production proof:
   `pnpm --dir apps/desktop run test:e2e:recording-v3-production-probe`.
 - Recording V3 sustained gates are

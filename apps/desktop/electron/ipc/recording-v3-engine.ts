@@ -75,6 +75,8 @@ export class RecordingV3Engine implements RecordingV3BrowserFrameSink {
   private activeStartedAtUs: number;
   private accumulatedActiveUs = 0;
   private schedulerOriginActiveUs: number | null = null;
+  private stopActiveDurationUs: number | null = null;
+  private pauseActiveElapsedUs: number | null = null;
 
   constructor(
     private readonly native: RecordingV3NativeSession,
@@ -87,6 +89,9 @@ export class RecordingV3Engine implements RecordingV3BrowserFrameSink {
 
   submitSourceFrame(frame: RecordingV3BrowserFrame): void {
     this.requireOperational();
+    if (this.stopActiveDurationUs !== null) {
+      this.fail("contract_mismatch", "source frame arrived after the stop clock was frozen");
+    }
     if (this.paused) this.fail("active_segment_violation", "source frame arrived while paused");
     if (!safeSourceInteger(frame.frameCount) || !safeSourceInteger(frame.timestampUs)) {
       this.fail("source_metadata_invalid", "Electron frame metadata was not a safe integer");
@@ -152,8 +157,8 @@ export class RecordingV3Engine implements RecordingV3BrowserFrameSink {
     } catch (error) {
       this.handleNativeError(error);
     }
-    const nowUs = this.clock.nowUs();
-    this.accumulatedActiveUs += nowUs - this.activeStartedAtUs;
+    this.accumulatedActiveUs = this.pauseActiveElapsedUs ?? this.schedulerActiveElapsedUs();
+    this.pauseActiveElapsedUs = null;
     this.paused = true;
   }
 
@@ -193,7 +198,8 @@ export class RecordingV3Engine implements RecordingV3BrowserFrameSink {
     if (this.schedulerOriginActiveUs === null) {
       this.fail("runtime_integrity_failed", "Recording V3 stopped without a source presentation");
     }
-    const activeDurationUs = this.schedulerActiveElapsedUs() - this.schedulerOriginActiveUs;
+    const activeDurationUs =
+      this.stopActiveDurationUs ?? this.schedulerActiveElapsedUs() - this.schedulerOriginActiveUs;
     const expectedSlots = expectedSlotsAt(activeDurationUs);
     if (expectedSlots !== this.deliveryOrdinal) {
       this.fail(
@@ -234,6 +240,48 @@ export class RecordingV3Engine implements RecordingV3BrowserFrameSink {
         ? 0
         : this.schedulerActiveElapsedUs() - this.schedulerOriginActiveUs;
     return Math.max(0, activeUs / 1_000);
+  }
+
+  prepareStop(): "ready" | "frame_required" | "clock_pending" {
+    this.requireOperational();
+    if (this.stopActiveDurationUs !== null) return "ready";
+    if (this.schedulerOriginActiveUs === null) {
+      this.fail("runtime_integrity_failed", "Recording V3 stopped without a source presentation");
+    }
+    const activeDurationUs = this.schedulerActiveElapsedUs() - this.schedulerOriginActiveUs;
+    const deficit = expectedSlotsAt(activeDurationUs) - this.deliveryOrdinal;
+    if (deficit === 0) {
+      this.stopActiveDurationUs = activeDurationUs;
+      return "ready";
+    }
+    if (deficit === 1) return "frame_required";
+    if (deficit === -1) return "clock_pending";
+    this.fail(
+      "native_deadline_missed",
+      `60 Hz scheduler stop reconciliation drifted by ${deficit} slots`,
+    );
+  }
+
+  preparePause(): "ready" | "frame_required" | "clock_pending" {
+    this.requireOperational();
+    if (this.pauseActiveElapsedUs !== null) return "ready";
+    if (this.paused) return "ready";
+    if (this.schedulerOriginActiveUs === null) {
+      this.fail("runtime_integrity_failed", "Recording V3 paused without a source presentation");
+    }
+    const activeElapsedUs = this.schedulerActiveElapsedUs();
+    const activeDurationUs = activeElapsedUs - this.schedulerOriginActiveUs;
+    const deficit = expectedSlotsAt(activeDurationUs) - this.deliveryOrdinal;
+    if (deficit === 0) {
+      this.pauseActiveElapsedUs = activeElapsedUs;
+      return "ready";
+    }
+    if (deficit === 1) return "frame_required";
+    if (deficit === -1) return "clock_pending";
+    this.fail(
+      "native_deadline_missed",
+      `60 Hz scheduler pause reconciliation drifted by ${deficit} slots`,
+    );
   }
 
   fail(code: RecordingFailureCodeV3, message: string): never {

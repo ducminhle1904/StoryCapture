@@ -13,6 +13,7 @@ function resetStore() {
   useOutputPrefsStore.setState({
     activePreset: "Standard",
     recordingDeliveryPolicy: "best_effort",
+    recordingV3DevelopmentMode: false,
     recordingKnobs: PRESET_BUNDLES.Standard,
     recordingPacing: DEFAULT_RECORDING_PACING,
     exportKnobs: DEFAULT_EXPORT_KNOBS,
@@ -28,6 +29,7 @@ describe("useOutputPrefsStore", () => {
     const s = useOutputPrefsStore.getState();
     expect(s.activePreset).toBe("Standard");
     expect(s.recordingDeliveryPolicy).toBe("best_effort");
+    expect(s.recordingV3DevelopmentMode).toBe(false);
     expect(s.recordingKnobs).toEqual(PRESET_BUNDLES.Standard);
     expect(s.recordingPacing).toBe(DEFAULT_RECORDING_PACING);
     expect(s.exportKnobs).toEqual(DEFAULT_EXPORT_KNOBS);
@@ -42,6 +44,24 @@ describe("useOutputPrefsStore", () => {
     useOutputPrefsStore.getState().setRecordingDeliveryPolicy("strict");
     expect(useOutputPrefsStore.getState().recordingDeliveryPolicy).toBe("strict");
     expect(useOutputPrefsStore.getState().activePreset).toBe("Standard");
+  });
+
+  it("keeps Dev V3 session-only and clears a persisted Strict selection", () => {
+    useOutputPrefsStore.getState().setRecordingDeliveryPolicy("strict");
+    useOutputPrefsStore.getState().setRecordingV3DevelopmentMode(true);
+    expect(useOutputPrefsStore.getState()).toMatchObject({
+      recordingDeliveryPolicy: "best_effort",
+      recordingV3DevelopmentMode: true,
+    });
+
+    useOutputPrefsStore.getState().hydrate({
+      activePreset: "Standard",
+      recordingDeliveryPolicy: "strict",
+      recordingKnobs: PRESET_BUNDLES.Standard,
+      recordingPacing: DEFAULT_RECORDING_PACING,
+      exportKnobs: DEFAULT_EXPORT_KNOBS,
+    });
+    expect(useOutputPrefsStore.getState().recordingV3DevelopmentMode).toBe(false);
   });
 
   it("applyPreset('Lossless') swaps recordingKnobs to the Lossless bundle", () => {

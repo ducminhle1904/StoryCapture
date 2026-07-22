@@ -6,6 +6,7 @@ import type {
   RecordingEvent,
   RecordingHostSessionSnapshotV3,
   RecordingPreflightV3Dto,
+  RecordingV3DevelopmentEnvironmentDto,
   RecordingSessionId,
   RecordingStopResult,
   StartRecordingArgs,
@@ -18,6 +19,7 @@ export type {
   RecordingEvent,
   RecordingHostSessionSnapshotV3,
   RecordingPreflightV3Dto,
+  RecordingV3DevelopmentEnvironmentDto,
   RecordingSessionId,
   RecordingStopResult,
   StartRecordingArgs,
@@ -51,6 +53,10 @@ export async function probeRecordingV3Capability(
 
 export async function probeRecordingV3Environment(): Promise<RecordingPreflightV3Dto> {
   return invoke("recording_v3_environment");
+}
+
+export async function probeRecordingV3DevelopmentEnvironment(): Promise<RecordingV3DevelopmentEnvironmentDto> {
+  return invoke("recording_v3_development_environment");
 }
 
 export async function queryRecordingV3Sessions(
