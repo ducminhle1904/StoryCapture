@@ -43,7 +43,7 @@ import { DEFAULT_EXPORT_KNOBS, type ExportKnobs, useOutputPrefsStore } from "@/s
 
 import {
   compileExportComposition,
-  graphHasUncertifiedDevelopmentSource,
+  graphHasStrictLocalSource,
   graphIsRenderable,
 } from "../state/compute-graph";
 import { useEditorStore } from "../state/store";
@@ -163,7 +163,7 @@ export function ExportModal({ storyId }: ExportModalProps) {
   );
   const graph = compilation.graph;
   const graphAvailable = graphIsRenderable(graph);
-  const hasUncertifiedDevelopmentSource = graphHasUncertifiedDevelopmentSource(graph);
+  const hasStrictLocalSource = graphHasStrictLocalSource(graph);
 
   const outputs: ExportOutput[] = useMemo(() => {
     const encoderOptions = buildEncoderOptions(exportKnobs);
@@ -361,17 +361,17 @@ export function ExportModal({ storyId }: ExportModalProps) {
               </header>
 
               <div className="flex-1 space-y-4 overflow-auto px-5 py-5">
-                {hasUncertifiedDevelopmentSource ? (
+                {hasStrictLocalSource ? (
                   <section
                     role="status"
                     className="rounded-[var(--sc-r-xl)] border border-amber-500/35 bg-amber-500/10 p-4 text-amber-100"
                   >
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <TriangleAlert className="h-4 w-4" />
-                      Uncertified Development — not a Strict-certified recording
+                      Strict Local — runtime-verified, not release-certified
                     </div>
                     <p className="font-serif mt-2 text-xs leading-5 text-amber-100/80">
-                      Every exported filename will include -uncertified-dev and the result cannot be
+                      Every exported filename will include -strict-local and the result cannot be
                       uploaded or shared.
                     </p>
                   </section>

@@ -6,7 +6,7 @@ import type {
 } from "@storycapture/shared-types";
 import {
   RECORDING_V3_STRICT_DIMENSIONS,
-  type RecordingV3Intent,
+  type RecordingV3CertificationMode,
   recordingV3DimensionsForViewport,
   recordingV3FailureMessage,
   validateRecordingV3Dimensions,
@@ -116,13 +116,13 @@ const initialPermissionReport: ScreenCapturePermissionReport = {
 };
 
 function recordingV3CaptureContract(
-  intent: RecordingV3Intent,
+  certificationMode: RecordingV3CertificationMode,
   viewport: { width: number; height: number },
 ): RecordingCaptureContractV3 {
   const dimensions =
-    intent === "strict"
+    certificationMode === "certified"
       ? { ...RECORDING_V3_STRICT_DIMENSIONS }
-      : recordingV3DimensionsForViewport(intent, viewport);
+      : recordingV3DimensionsForViewport(certificationMode, viewport);
   return {
     version: 3,
     guarantee_boundary: "electron_offscreen_delivery",
@@ -143,14 +143,8 @@ function recordingV3FailureSummary(preflight: RecordingPreflightV3Dto): string {
   return preflight.failure_codes.map(recordingV3FailureMessage).join(" ");
 }
 
-function recordingPreflightEligible(
-  preflight: RecordingPreflightDto,
-  developmentMode = preflight.version === 3 && preflight.intent === "development",
-): boolean {
-  if (developmentMode) {
-    return preflight.version === 3 && preflight.development_eligible;
-  }
-  return preflight.strict_eligible;
+function recordingPreflightEligible(preflight: RecordingPreflightDto): boolean {
+  return preflight.version === 3 ? preflight.eligible : preflight.strict_eligible;
 }
 
 function formatTime(ms: number): string {
@@ -239,8 +233,7 @@ export function RecordingView({
   // Mirror the active browser preset for ChromeHidingToggle.
   const [browserPreset, setBrowserPreset] = useState<string | null>(null);
   const appSettings = useAppSettingsStore((s) => s.settings);
-  const recordingDeliveryPolicy = useOutputPrefsStore((s) => s.recordingDeliveryPolicy);
-  const recordingV3DevelopmentMode = useOutputPrefsStore((s) => s.recordingV3DevelopmentMode);
+  const recordingPolicyPreference = useOutputPrefsStore((s) => s.recordingPolicyPreference);
 
   const applyRecorderDefaults = () => {
     const capture = useAppSettingsStore.getState().settings?.capture;
@@ -323,18 +316,19 @@ export function RecordingView({
   const storyViewport = storyRecordingInfo.viewport;
   const storyInitialUrl = storyRecordingInfo.initialUrl;
   const recordingV3DimensionPolicy = useMemo(() => {
-    const intent: RecordingV3Intent | null = recordingV3DevelopmentMode
-      ? "development"
-      : recordingDeliveryPolicy === "strict"
-        ? "strict"
-        : null;
-    if (!intent) return null;
-    const dimensions = recordingV3DimensionsForViewport(intent, storyViewport);
+    const certificationMode: RecordingV3CertificationMode | null =
+      recordingPolicyPreference === "strict_local"
+        ? "local"
+        : recordingPolicyPreference === "strict_certified"
+          ? "certified"
+          : null;
+    if (!certificationMode) return null;
+    const dimensions = recordingV3DimensionsForViewport(certificationMode, storyViewport);
     return {
       dimensions,
-      validation: validateRecordingV3Dimensions(intent, dimensions),
+      validation: validateRecordingV3Dimensions(certificationMode, dimensions),
     };
-  }, [recordingDeliveryPolicy, recordingV3DevelopmentMode, storyViewport]);
+  }, [recordingPolicyPreference, storyViewport]);
   const selectedCaptureDims = useMemo(() => {
     const dims = storyHasBrowser
       ? { w: storyViewport.width, h: storyViewport.height }
@@ -353,7 +347,7 @@ export function RecordingView({
     return dims;
   }, [selectedDisplayInfo, storyHasBrowser, storyViewport.height, storyViewport.width]);
   const strictUnavailableReason = useMemo(() => {
-    if (recordingDeliveryPolicy !== "strict" && !recordingV3DevelopmentMode) return null;
+    if (recordingPolicyPreference === "best_effort") return null;
     if (permission !== "granted") return recordingV3FailureMessage("permission_denied");
     if (!storyHasBrowser) return recordingV3FailureMessage("target_unsupported");
     if (audioDeviceId) return recordingV3FailureMessage("unsupported_audio_role");
@@ -365,7 +359,7 @@ export function RecordingView({
     }
     if (
       preflight?.version === 3 &&
-      !recordingPreflightEligible(preflight, recordingV3DevelopmentMode)
+      !recordingPreflightEligible(preflight)
     ) {
       return recordingV3FailureSummary(preflight);
     }
@@ -374,13 +368,12 @@ export function RecordingView({
     audioDeviceId,
     permission,
     preflight,
-    recordingDeliveryPolicy,
+    recordingPolicyPreference,
     recordingV3DimensionPolicy,
-    recordingV3DevelopmentMode,
     storyHasBrowser,
   ]);
 
-  const strictCapabilityInputs = `${audioDeviceId ?? "none"}:${permission}:${recordingDeliveryPolicy}:${recordingV3DevelopmentMode}:${storyHasBrowser}:${storyViewport.width}x${storyViewport.height}`;
+  const strictCapabilityInputs = `${audioDeviceId ?? "none"}:${permission}:${recordingPolicyPreference}:${storyHasBrowser}:${storyViewport.width}x${storyViewport.height}`;
   useEffect(() => {
     void strictCapabilityInputs;
     if (useRecorderStore.getState().status === "idle") setPreflight(null);
@@ -649,9 +642,12 @@ export function RecordingView({
     const message = result.cadence_evidence.failure_codes
       .concat(result.quality_evidence.failure_codes)
       .join(", ");
-    const label = result.version === 3 && result.recording_mode === "uncertified_development"
-      ? "Development verification failed"
-      : "Strict verification failed";
+    const label =
+      result.version === 3
+        ? result.recording_mode === "strict_local"
+          ? "Strict Local verification failed"
+          : "Strict Certified verification failed"
+        : "Strict verification failed";
     setError(message || label);
     toast.error(label, {
       description: message || result.diagnostic_bundle_path || undefined,
@@ -810,31 +806,29 @@ export function RecordingView({
       // Output knobs from useOutputPrefsStore (one-shot read).
       const {
         activePreset,
-        recordingDeliveryPolicy,
-        recordingV3DevelopmentMode,
+        recordingPolicyPreference,
         recordingKnobs: prefs,
       } = useOutputPrefsStore.getState();
-      const strictV3 = recordingDeliveryPolicy === "strict";
-      const developmentV3 = recordingV3DevelopmentMode;
-      const recordingIntent: RecordingV3Intent | null = developmentV3
-        ? "development"
-        : strictV3
-          ? "strict"
-          : null;
-      const recordingV3 = recordingIntent !== null;
+      const certificationMode: RecordingV3CertificationMode | null =
+        recordingPolicyPreference === "strict_local"
+          ? "local"
+          : recordingPolicyPreference === "strict_certified"
+            ? "certified"
+            : null;
+      const recordingV3 = certificationMode !== null;
       if (recordingV3 && !storyHasBrowser) {
         throw new Error(recordingV3FailureMessage("target_unsupported"));
       }
       if (recordingV3 && audioDeviceId) {
         throw new Error(recordingV3FailureMessage("unsupported_audio_role"));
       }
-      if (recordingIntent) {
+      if (certificationMode) {
         const requestedDimensions = recordingV3DimensionsForViewport(
-          recordingIntent,
+          certificationMode,
           storyViewport,
         );
         const dimensionValidation = validateRecordingV3Dimensions(
-          recordingIntent,
+          certificationMode,
           requestedDimensions,
         );
         if (!dimensionValidation.valid) {
@@ -910,10 +904,11 @@ export function RecordingView({
         height,
         fps: recordingV3 ? 60 : prefs.fps,
         contract_version: recordingV3 ? 3 : 2,
-        intent: recordingIntent ?? undefined,
-        delivery_policy: developmentV3 ? "development" : recordingDeliveryPolicy,
-        capture_contract: recordingIntent
-          ? recordingV3CaptureContract(recordingIntent, storyViewport)
+        enforcement_mode: recordingV3 ? "strict" : undefined,
+        certification_mode: certificationMode ?? undefined,
+        delivery_policy: recordingV3 ? "strict" : "best_effort",
+        capture_contract: certificationMode
+          ? recordingV3CaptureContract(certificationMode, storyViewport)
           : undefined,
         audio_device_id: recordingV3 ? undefined : (audioDeviceId ?? undefined),
         include_cursor: recordingV3 ? false : includeCursor,
@@ -927,7 +922,7 @@ export function RecordingView({
       if (recordingV3) {
         const capability = await probeRecordingV3Capability(recordingArgs);
         setPreflight(capability);
-        if (!recordingPreflightEligible(capability, developmentV3)) {
+        if (!recordingPreflightEligible(capability)) {
           throw new Error(recordingV3FailureSummary(capability));
         }
       }
@@ -1267,7 +1262,13 @@ export function RecordingView({
       <ProjectStageHeader
         projectId={projectId ?? ""}
         projectName={projectName}
-        workflowLabel={`${recordingV3DevelopmentMode ? "Dev V3" : recordingDeliveryPolicy === "strict" ? "Strict" : "Standard"} recording`}
+        workflowLabel={`${
+          recordingPolicyPreference === "strict_local"
+            ? "Strict Local"
+            : recordingPolicyPreference === "strict_certified"
+              ? "Strict Certified"
+              : "Standard"
+        } recording`}
         currentStage="record"
         snapshot={workflowSnapshot}
         navigationLocked={navigationLocked}
@@ -1367,36 +1368,34 @@ export function RecordingView({
         />
       ) : null}
 
-      {(recordingDeliveryPolicy === "strict" || recordingV3DevelopmentMode) && preflight ? (
+      {recordingPolicyPreference !== "best_effort" && preflight ? (
         <div
           role="status"
           className={`flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2 text-xs ${
-            recordingPreflightEligible(preflight, recordingV3DevelopmentMode)
+            recordingPreflightEligible(preflight)
               ? "border-[var(--color-success)]/30 bg-[var(--color-success)]/10"
               : "border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10"
           }`}
         >
           <div className="flex min-w-0 items-center gap-2">
-            {recordingPreflightEligible(preflight, recordingV3DevelopmentMode) ? (
+            {recordingPreflightEligible(preflight) ? (
               <CheckCircle2 size={13} className="text-[var(--color-success)]" aria-hidden="true" />
             ) : (
               <AlertTriangle size={13} className="text-[var(--color-danger)]" aria-hidden="true" />
             )}
             <span className="font-medium text-[var(--color-fg-primary)]">
-              {recordingV3DevelopmentMode
-                ? preflight.version === 3 && preflight.development_eligible
-                  ? "Dev V3 preflight passed"
-                  : "Dev V3 preflight blocked"
-                : preflight.strict_eligible
-                  ? "Strict preflight passed"
-                  : "Strict preflight blocked"}
+              {recordingPreflightEligible(preflight)
+                ? `${recordingPolicyPreference === "strict_local" ? "Strict Local" : "Strict Certified"} preflight passed`
+                : `${recordingPolicyPreference === "strict_local" ? "Strict Local" : "Strict Certified"} preflight blocked`}
             </span>
             <span className="text-[var(--color-fg-secondary)]">
               {preflight.backend_id} {preflight.backend_version}
               {preflight.version === 3
                 ? preflight.matched_profile
                   ? ` · ${preflight.matched_profile.profile_id}`
-                  : " · uncertified"
+                  : preflight.certification_mode === "local"
+                    ? " · local-only"
+                    : " · certification unavailable"
                 : preflight.certification
                   ? ` · ${preflight.certification.id}`
                   : " · uncertified"}
@@ -1419,10 +1418,10 @@ export function RecordingView({
         </div>
       ) : null}
 
-      {recordingV3DevelopmentMode ? (
+      {recordingPolicyPreference === "strict_local" ? (
         <div className="flex items-center gap-2 border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-2 text-xs font-medium text-[var(--color-warning)]">
           <AlertTriangle size={13} aria-hidden="true" />
-          Uncertified Development — not a Strict-certified recording
+          Strict Local — runtime-verified, not release-certified
         </div>
       ) : null}
 
@@ -1431,9 +1430,11 @@ export function RecordingView({
           <div className="min-w-0">
             <div className="font-medium text-[var(--color-fg-primary)]">
               {qualityFailure.version === 3 &&
-              qualityFailure.recording_mode === "uncertified_development"
-                ? "Development take was not published"
-                : "Strict take was not published"}
+              qualityFailure.recording_mode === "strict_local"
+                ? "Strict Local take was not published"
+                : qualityFailure.version === 3
+                  ? "Strict Certified take was not published"
+                  : "Strict take was not published"}
             </div>
             <div className="truncate text-[var(--color-fg-secondary)]">
               {[
@@ -1648,10 +1649,14 @@ export function RecordingView({
               <SettingsRow k="Target" v={captureTarget ? "Selected" : "Choose target"} />
               <SettingsRow k="Audio" v={audioDeviceId ? "Enabled" : "Video only"} />
               <SettingsRow k="Output" v={isOutputBlocked ? "Needs attention" : "Ready"} />
-              {recordingDeliveryPolicy === "strict" || recordingV3DevelopmentMode ? (
+              {recordingPolicyPreference !== "best_effort" ? (
                 <>
                   <SettingsRow
-                    k={recordingV3DevelopmentMode ? "Dev V3" : "Strict"}
+                    k={
+                      recordingPolicyPreference === "strict_local"
+                        ? "Strict Local"
+                        : "Strict Certified"
+                    }
                     v={strictUnavailableReason ? "Blocked" : "Ready to probe"}
                   />
                   {recordingV3DimensionPolicy ? (

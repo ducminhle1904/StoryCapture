@@ -175,7 +175,7 @@ describe("ExportModal", () => {
     expect(btn).not.toBeDisabled();
   });
 
-  it("warns when the graph contains an uncertified development source", () => {
+  it("warns when the graph contains a Strict Local source", () => {
     useEditorStore.setState({
       tracks: {
         video: [
@@ -200,7 +200,7 @@ describe("ExportModal", () => {
               quality_verdict: "passed",
               guarantee_boundary: "electron_offscreen_delivery",
               source_scope_verified: true,
-              recording_mode: "uncertified_development",
+              recording_mode: "strict_local",
               certification_profile_id: null,
             },
           },
@@ -219,7 +219,7 @@ describe("ExportModal", () => {
     );
 
     expect(
-      screen.getByText("Uncertified Development — not a Strict-certified recording"),
+      screen.getByText("Strict Local — runtime-verified, not release-certified"),
     ).toBeVisible();
     expect(screen.getByText(/cannot be uploaded or shared/i)).toBeVisible();
   });

@@ -11,7 +11,6 @@ import type {
   RecordingFailureCodeV3,
   RecordingPreflightV3Dto,
   RecordingPreflightV3Request,
-  RecordingV3DevelopmentEnvironmentDto,
 } from "@storycapture/shared-types/recording-v3";
 import { RECORDING_V3_STRICT_DIMENSIONS } from "@storycapture/shared-types/recording-v3";
 import { app, BrowserWindow } from "electron";
@@ -36,7 +35,6 @@ import {
   RecordingV3NativeError,
   recordingV3NativeAddonPathForRuntime,
 } from "./recording-v3-native-addon";
-import { isRecordingV3DevelopmentEnabled } from "./recording-v3-development-gate";
 
 const SOURCE_PROBE_FRAMES = 60;
 const SOURCE_PROBE_TIMEOUT_MS = 8_000;
@@ -227,16 +225,19 @@ export async function probeBrowserSourceRateV3(
 interface CommonRecordingV3RuntimeFacts
   extends Omit<
     RecordingV3CapabilityFacts,
-    "manifestId" | "matchedProfile" | "sourceRate" | "failureCodes"
+    | "manifestId"
+    | "matchedProfile"
+    | "sourceRate"
+    | "runtimeFailureCodes"
+    | "certificationFailureCodes"
   > {
   addonPath: string;
   ffmpegPath: string;
-  failureCodes: RecordingFailureCodeV3[];
+  runtimeFailureCodes: RecordingFailureCodeV3[];
 }
 
 async function probeCommonRecordingV3Runtime(input: {
   projectFolder: string;
-  certificationRequired: boolean;
   outputWidth: number;
   outputHeight: number;
 }): Promise<CommonRecordingV3RuntimeFacts> {
@@ -246,7 +247,7 @@ async function probeCommonRecordingV3Runtime(input: {
   };
   const platform: RecordingPlatform = process.platform === "darwin" ? "darwin" : "win32";
   if (process.platform !== "darwin" || process.arch !== "arm64") {
-    fail(input.certificationRequired ? "profile_mismatch" : "contract_mismatch");
+    fail("contract_mismatch");
   }
 
   const addonPath = recordingV3NativeAddonPathForRuntime({
@@ -308,13 +309,13 @@ async function probeCommonRecordingV3Runtime(input: {
     hardwareChip = chip;
     osBuild = build;
   } catch {
-    if (input.certificationRequired) fail("profile_mismatch");
+    // Certification resolves exact identity separately; Local does not require it.
   }
 
   try {
     await ffmpegVersion(ffmpegPath);
   } catch {
-    fail(input.certificationRequired ? "profile_mismatch" : "contract_mismatch");
+    fail("contract_mismatch");
   }
 
   return {
@@ -330,7 +331,7 @@ async function probeCommonRecordingV3Runtime(input: {
     permissionsGranted: true,
     addonPath,
     ffmpegPath,
-    failureCodes,
+    runtimeFailureCodes: failureCodes,
   };
 }
 
@@ -403,91 +404,22 @@ async function resolveStrictRecordingV3Certification(
   };
 }
 
-export function evaluateRecordingV3DevelopmentEnvironment(input: {
-  developmentEnabled: boolean;
-  nativeProbePassed: boolean;
-  storageEligible: boolean;
-  failureCodes: RecordingFailureCodeV3[];
-}): RecordingV3DevelopmentEnvironmentDto {
-  return {
-    version: 3,
-    development_enabled: input.developmentEnabled,
-    development_available:
-      input.developmentEnabled &&
-      input.nativeProbePassed &&
-      input.storageEligible &&
-      input.failureCodes.length === 0,
-    native_probe_passed: input.nativeProbePassed,
-    failure_codes: input.failureCodes,
-  };
-}
-
-export async function probeRecordingV3DevelopmentEnvironment(): Promise<RecordingV3DevelopmentEnvironmentDto> {
-  const developmentEnabled = isRecordingV3DevelopmentEnabled(app);
-  if (!developmentEnabled) {
-    return evaluateRecordingV3DevelopmentEnvironment({
-      developmentEnabled: false,
-      nativeProbePassed: false,
-      storageEligible: false,
-      failureCodes: [],
-    });
-  }
-  const common = await probeCommonRecordingV3Runtime({
-    projectFolder: app.getPath("userData"),
-    certificationRequired: false,
-    outputWidth: RECORDING_V3_STRICT_DIMENSIONS.requested_output_width,
-    outputHeight: RECORDING_V3_STRICT_DIMENSIONS.requested_output_height,
-  });
-  return evaluateRecordingV3DevelopmentEnvironment({
-    developmentEnabled: true,
-    nativeProbePassed: common.nativeProbePassed,
-    storageEligible: common.storageEligible,
-    failureCodes: common.failureCodes,
-  });
-}
-
 export async function probeRecordingV3RuntimeCapability(input: {
   request: RecordingPreflightV3Request;
   projectFolder: string;
   url: string;
   nowMs?: number;
 }): Promise<RecordingPreflightV3Dto> {
-  if (
-    input.request.intent === "development" &&
-    !isRecordingV3DevelopmentEnabled(app)
-  ) {
-    return evaluateRecordingV3Capability(input.request, {
-      platform: process.platform === "darwin" ? "darwin" : "win32",
-      arch: process.arch,
-      hardwareModel: "unknown",
-      hardwareChip: "unknown",
-      osBuild: "unknown",
-      addonProtocolVersion: RECORDING_V3_NATIVE_PROTOCOL_VERSION,
-      manifestId: null,
-      matchedProfile: null,
-      sourceRate: unavailableSourceRate(),
-      storage: unavailableStorage(),
-      storageEligible: false,
-      nativeProbePassed: false,
-      permissionsGranted: true,
-      failureCodes: ["contract_mismatch"],
-    });
-  }
-  const certificationRequired = input.request.intent === "strict";
   const common = await probeCommonRecordingV3Runtime({
     projectFolder: input.projectFolder,
-    certificationRequired,
     outputWidth: input.request.dimensions.requested_output_width,
     outputHeight: input.request.dimensions.requested_output_height,
   });
-  const certification = certificationRequired
+  const certification = input.request.certification_mode === "certified"
     ? await resolveStrictRecordingV3Certification(common, input.nowMs)
     : { manifestId: null, matchedProfile: null, failureCodes: [] as RecordingFailureCodeV3[] };
 
-  const sourceProbe =
-    input.request.intent === "development" || certification.matchedProfile
-      ? await probeBrowserSourceV3(input.request, input.url)
-      : { sourceRate: unavailableSourceRate(), failureCodes: [] as RecordingFailureCodeV3[] };
+  const sourceProbe = await probeBrowserSourceV3(input.request, input.url);
   return evaluateRecordingV3Capability(input.request, {
     platform: common.platform,
     arch: common.arch,
@@ -502,10 +434,7 @@ export async function probeRecordingV3RuntimeCapability(input: {
     storageEligible: common.storageEligible,
     nativeProbePassed: common.nativeProbePassed,
     permissionsGranted: common.permissionsGranted,
-    failureCodes: [
-      ...common.failureCodes,
-      ...certification.failureCodes,
-      ...sourceProbe.failureCodes,
-    ],
+    runtimeFailureCodes: [...common.runtimeFailureCodes, ...sourceProbe.failureCodes],
+    certificationFailureCodes: certification.failureCodes,
   });
 }

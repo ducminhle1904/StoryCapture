@@ -127,16 +127,16 @@ describe("JobRow", () => {
     expect(screen.queryByRole("button", { name: /cancel/i })).not.toBeInTheDocument();
   });
 
-  it("keeps uncertified development provenance visible after export", () => {
+  it("keeps Strict Local provenance visible after export", () => {
     render(
       <JobRow
-        job={makeJob({ recording_mode: "uncertified_development" })}
+        job={makeJob({ recording_mode: "strict_local" })}
         onCancel={vi.fn()}
       />,
     );
 
     expect(
-      screen.getByText("Uncertified Development — upload and sharing are disabled"),
+      screen.getByText("Strict Local — runtime-verified; upload and sharing are disabled"),
     ).toBeVisible();
   });
 });

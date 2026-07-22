@@ -30,24 +30,26 @@ describe("upload Recording V3 provenance admission", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.assertAllowed.mockRejectedValue(
-      new Error("Uncertified Development recordings and exports cannot be uploaded or shared."),
+      new Error(
+        "Strict Local recordings and exports are runtime-verified but not release-certified, so they cannot be uploaded or shared.",
+      ),
     );
   });
 
-  it("rejects explicit development provenance before reading credentials or starting network work", async () => {
+  it("rejects explicit Strict Local provenance before reading credentials or starting network work", async () => {
     await expect(
       uploadVideo(
         {
-          videoPath: "/missing/demo-uncertified-dev.mp4",
-          recordingMode: "uncertified_development",
+          videoPath: "/missing/demo-strict-local.mp4",
+          recordingMode: "strict_local",
         },
         {} as never,
       ),
     ).rejects.toThrow(/cannot be uploaded or shared/i);
 
     expect(mocks.assertAllowed).toHaveBeenCalledWith(
-      "/missing/demo-uncertified-dev.mp4",
-      "uncertified_development",
+      "/missing/demo-strict-local.mp4",
+      "strict_local",
     );
     expect(mocks.loadSecret).not.toHaveBeenCalled();
   });

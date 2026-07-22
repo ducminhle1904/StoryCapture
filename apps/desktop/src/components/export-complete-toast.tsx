@@ -40,7 +40,7 @@ export function ExportCompleteToast({
 
   const isConnected = account !== null;
   const isUploading = uploadStatus === "uploading";
-  const uploadBlocked = recordingMode === "uncertified_development";
+  const uploadBlocked = recordingMode === "strict_local";
 
   const handleUpload = () => {
     if (!isConnected || isUploading || uploadBlocked) return;
@@ -68,7 +68,7 @@ export function ExportCompleteToast({
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-[var(--color-fg-primary)] transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
             title={
               uploadBlocked
-                ? "Uncertified Development exports cannot be uploaded or shared"
+                ? "Strict Local exports are not release-certified and cannot be uploaded or shared"
                 : !isConnected
                 ? "Connect a web account in Settings > Accounts"
                 : isUploading
@@ -88,7 +88,7 @@ export function ExportCompleteToast({
 
         {uploadBlocked ? (
           <span className="text-xs text-amber-400">
-            Uncertified Development — upload and sharing are disabled
+            Strict Local — runtime-verified; upload and sharing are disabled
           </span>
         ) : null}
 

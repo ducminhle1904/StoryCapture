@@ -7,13 +7,15 @@ import { recordingV3DimensionsForViewport } from "@storycapture/shared-types/rec
 import { describe, expect, it } from "vitest";
 import {
   evaluateRecordingV3Capability,
+  recordingV3QualificationFromPreflight,
   type RecordingV3CapabilityFacts,
 } from "./recording-v3-capability";
 
 const sha = "a".repeat(64);
 const request: RecordingPreflightV3Request = {
   version: 3,
-  intent: "strict",
+  enforcement_mode: "strict",
+  certification_mode: "certified",
   target_class: "browser",
   requested_fps: { numerator: 60, denominator: 1 },
   dimensions: {
@@ -85,12 +87,19 @@ const facts: RecordingV3CapabilityFacts = {
 
 describe("evaluateRecordingV3Capability", () => {
   it("enables only an exact signed-profile match", () => {
-    expect(evaluateRecordingV3Capability(request, facts)).toMatchObject({
-      strict_eligible: true,
-      development_eligible: false,
-      recording_mode: "certified",
+    const result = evaluateRecordingV3Capability(request, facts);
+    expect(result).toMatchObject({
+      runtime_eligible: true,
+      certification_eligible: true,
+      eligible: true,
+      recording_mode: "strict_certified",
       failure_codes: [],
       matched_profile: profile,
+    });
+    expect(recordingV3QualificationFromPreflight(result)).toEqual({
+      mode: "strict_certified",
+      manifestId: "manifest",
+      profile,
     });
   });
 
@@ -138,7 +147,7 @@ describe("evaluateRecordingV3Capability", () => {
           ...facts,
           manifestId: null,
           matchedProfile: null,
-          failureCodes: ["manifest_missing"],
+          certificationFailureCodes: ["manifest_missing"],
         },
       },
       "manifest_missing",
@@ -147,43 +156,61 @@ describe("evaluateRecordingV3Capability", () => {
 
   it.each(mismatches)("fails closed for %s mismatch", (_name, input, expected) => {
     const result = evaluateRecordingV3Capability(input.request, input.facts);
-    expect(result.strict_eligible).toBe(false);
+    expect(result.eligible).toBe(false);
     expect(result.failure_codes).toContain(expected);
   });
 
-  it("enables development without certification while preserving common runtime gates", () => {
-    const developmentRequest: RecordingPreflightV3Request = {
+  it("enables Strict Local without certification while preserving common runtime gates", () => {
+    const localRequest: RecordingPreflightV3Request = {
       ...request,
-      intent: "development",
-      dimensions: recordingV3DimensionsForViewport("development", {
+      certification_mode: "local",
+      dimensions: recordingV3DimensionsForViewport("local", {
         width: 1280,
         height: 800,
       }),
     };
-    const developmentFacts: RecordingV3CapabilityFacts = {
+    const localFacts: RecordingV3CapabilityFacts = {
       ...facts,
       manifestId: null,
       matchedProfile: null,
     };
-    expect(evaluateRecordingV3Capability(developmentRequest, developmentFacts)).toMatchObject({
-      intent: "development",
-      recording_mode: "uncertified_development",
+    const localResult = evaluateRecordingV3Capability(localRequest, localFacts);
+    expect(localResult).toMatchObject({
+      enforcement_mode: "strict",
+      certification_mode: "local",
+      recording_mode: "strict_local",
       manifest_id: null,
       matched_profile: null,
-      strict_eligible: false,
-      development_eligible: true,
+      runtime_eligible: true,
+      certification_eligible: false,
+      eligible: true,
+      failure_codes: [],
+    });
+    expect(recordingV3QualificationFromPreflight(localResult)).toEqual({
+      mode: "strict_local",
+    });
+
+    expect(evaluateRecordingV3Capability(localRequest, facts)).toMatchObject({
+      recording_mode: "strict_local",
+      manifest_id: null,
+      matched_profile: null,
+      runtime_eligible: true,
+      certification_eligible: true,
+      eligible: true,
       failure_codes: [],
     });
 
-    expect(
-      evaluateRecordingV3Capability(developmentRequest, {
-        ...developmentFacts,
-        sourceRate: { ...developmentFacts.sourceRate, measured_fps: null },
-      }),
-    ).toMatchObject({
-      development_eligible: false,
+    const blockedLocal = evaluateRecordingV3Capability(localRequest, {
+        ...localFacts,
+        sourceRate: { ...localFacts.sourceRate, measured_fps: null },
+      });
+    expect(blockedLocal).toMatchObject({
+      runtime_eligible: false,
+      certification_eligible: false,
+      eligible: false,
       failure_codes: ["runtime_integrity_failed"],
     });
+    expect(recordingV3QualificationFromPreflight(blockedLocal)).toBeNull();
 
     for (const [width, height] of [
       [1280, 720],
@@ -192,23 +219,24 @@ describe("evaluateRecordingV3Capability", () => {
       [1920, 1080],
     ]) {
       const candidate = {
-        ...developmentRequest,
-        dimensions: recordingV3DimensionsForViewport("development", { width, height }),
+        ...localRequest,
+        dimensions: recordingV3DimensionsForViewport("local", { width, height }),
       };
-      expect(evaluateRecordingV3Capability(candidate, developmentFacts)).toMatchObject({
-        strict_eligible: false,
-        development_eligible: true,
+      expect(evaluateRecordingV3Capability(candidate, localFacts)).toMatchObject({
+        runtime_eligible: true,
+        eligible: true,
         failure_codes: [],
       });
     }
 
-    const strictWideRequest: RecordingPreflightV3Request = {
+    const certifiedWideRequest: RecordingPreflightV3Request = {
       ...request,
-      dimensions: recordingV3DimensionsForViewport("strict", { width: 1280, height: 720 }),
+      dimensions: recordingV3DimensionsForViewport("certified", { width: 1280, height: 720 }),
     };
-    expect(evaluateRecordingV3Capability(strictWideRequest, facts)).toMatchObject({
-      strict_eligible: false,
-      development_eligible: false,
+    expect(evaluateRecordingV3Capability(certifiedWideRequest, facts)).toMatchObject({
+      runtime_eligible: false,
+      certification_eligible: false,
+      eligible: false,
       failure_codes: ["contract_mismatch"],
     });
   });

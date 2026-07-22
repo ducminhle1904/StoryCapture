@@ -22,8 +22,10 @@ const mocks = vi.hoisted(() => ({
   deleteFailedRecordingBundle: vi.fn(),
   openRecordingDiagnosticBundle: vi.fn(),
   outputPrefs: {
-    recordingDeliveryPolicy: "best_effort" as "best_effort" | "strict",
-    recordingV3DevelopmentMode: false,
+    recordingPolicyPreference: "best_effort" as
+      | "best_effort"
+      | "strict_local"
+      | "strict_certified",
   },
 }));
 
@@ -124,8 +126,9 @@ const targets = {
 
 const v3Preflight = {
   version: 3,
-  intent: "strict",
-  recording_mode: "certified",
+  enforcement_mode: "strict",
+  certification_mode: "certified",
+  recording_mode: "strict_certified",
   backend_id: "electron_offscreen_shared_texture_v3",
   backend_version: "3.0.0",
   addon_protocol_version: 3,
@@ -135,7 +138,7 @@ const v3Preflight = {
   hardware_chip: "Apple M5",
   os_build: "25F84",
   manifest_id: "manifest-1",
-  matched_profile: null,
+  matched_profile: { profile_id: "profile-1" } as RecordingPreflightV3Dto["matched_profile"],
   source_rate: {
     measured_fps: { numerator: 60, denominator: 1 },
     source_presentations: 60,
@@ -151,26 +154,26 @@ const v3Preflight = {
   },
   native_probe_passed: true,
   permissions_granted: true,
-  strict_eligible: true,
-  development_eligible: false,
+  runtime_eligible: true,
+  certification_eligible: true,
+  eligible: true,
   failure_codes: [],
 } satisfies RecordingPreflightV3Dto;
 
-const v3DevelopmentPreflight = {
+const v3LocalPreflight = {
   ...v3Preflight,
-  intent: "development",
-  recording_mode: "uncertified_development",
+  certification_mode: "local",
+  recording_mode: "strict_local",
   manifest_id: null,
   matched_profile: null,
-  strict_eligible: false,
-  development_eligible: true,
+  certification_eligible: false,
 } satisfies RecordingPreflightV3Dto;
 
 const v3QualityFailure = {
   version: 3,
   status: "quality_failed",
   delivery_policy: "strict",
-  recording_mode: "certified",
+  recording_mode: "strict_certified",
   guarantee_boundary: "electron_offscreen_delivery",
   certification_profile: null,
   bundle_path: "/tmp/demo/exports/v3-failed.sc-recording",
@@ -227,8 +230,7 @@ const v3QualityFailure = {
 } satisfies RecordingResultV3;
 
 beforeEach(() => {
-  mocks.outputPrefs.recordingDeliveryPolicy = "best_effort";
-  mocks.outputPrefs.recordingV3DevelopmentMode = false;
+  mocks.outputPrefs.recordingPolicyPreference = "best_effort";
   useRecorderStore.getState().reset();
   useRecorderStore.setState({
     status: "completed",
@@ -349,10 +351,10 @@ describe("RecordingView take lifecycle", () => {
     expect(mocks.launchAutomation).not.toHaveBeenCalled();
   });
 
-  it("routes Dev V3 through development admission and keeps provenance in publication", async () => {
-    mocks.outputPrefs.recordingV3DevelopmentMode = true;
-    mocks.probeRecordingV3Capability.mockResolvedValue(v3DevelopmentPreflight);
-    mocks.acquireRecordingPreview.mockResolvedValue({ streamId: "preview-dev", release: vi.fn() });
+  it("routes Strict Local through runtime admission and keeps provenance in publication", async () => {
+    mocks.outputPrefs.recordingPolicyPreference = "strict_local";
+    mocks.probeRecordingV3Capability.mockResolvedValue(v3LocalPreflight);
+    mocks.acquireRecordingPreview.mockResolvedValue({ streamId: "preview-local", release: vi.fn() });
     mocks.startRecording.mockImplementation(
       async (_args: unknown, onEvent: (event: RecordingEvent) => void) => {
         onEvent({
@@ -360,8 +362,8 @@ describe("RecordingView take lifecycle", () => {
           result: {
             ...v3QualityFailure,
             status: "completed",
-            delivery_policy: "development",
-            recording_mode: "uncertified_development",
+            delivery_policy: "strict",
+            recording_mode: "strict_local",
             certification_profile: null,
             bundle_path: "/tmp/demo/exports/dev.sc-recording",
             master_path: "/tmp/demo/exports/dev.sc-recording/master/video.mkv",
@@ -408,8 +410,9 @@ describe("RecordingView take lifecycle", () => {
     expect(mocks.probeRecordingV3Capability).toHaveBeenCalledWith(
       expect.objectContaining({
         contract_version: 3,
-        intent: "development",
-        delivery_policy: "development",
+        enforcement_mode: "strict",
+        certification_mode: "local",
+        delivery_policy: "strict",
         fps: 60,
       }),
     );
@@ -419,7 +422,7 @@ describe("RecordingView take lifecycle", () => {
       "project-1",
       expect.objectContaining({
         version: 3,
-        recording_mode: "uncertified_development",
+        recording_mode: "strict_local",
         bundle_path: "/tmp/demo/exports/dev.sc-recording",
         master_path: "/tmp/demo/exports/dev.sc-recording/master/video.mkv",
         frame_ledger_path: "/tmp/demo/exports/dev.sc-recording/evidence/frame-ledger.jsonl",
@@ -430,17 +433,53 @@ describe("RecordingView take lifecycle", () => {
       }),
     );
     expect(
-      screen.getByText("Uncertified Development — not a Strict-certified recording"),
+      screen.getByText("Strict Local — runtime-verified, not release-certified"),
     ).toBeInTheDocument();
+  });
+
+  it("does not fall back to Standard when Strict Local preflight fails", async () => {
+    mocks.outputPrefs.recordingPolicyPreference = "strict_local";
+    mocks.probeRecordingV3Capability.mockResolvedValue({
+      ...v3LocalPreflight,
+      runtime_eligible: false,
+      certification_eligible: false,
+      eligible: false,
+      failure_codes: ["addon_load_failed"],
+    });
+    mocks.acquireRecordingPreview.mockResolvedValue({
+      streamId: "preview-local-blocked",
+      release: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter>
+        <RecordingView
+          projectId="project-1"
+          projectName="Demo"
+          projectFolder="/tmp/demo"
+          storySource={'meta { app: "https://example.com" viewport: 1280x800 }'}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New take" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Start recording" }));
+
+    await waitFor(() => expect(mocks.probeRecordingV3Capability).toHaveBeenCalledTimes(1));
+    expect(mocks.startRecording).not.toHaveBeenCalled();
+    expect(mocks.outputPrefs.recordingPolicyPreference).toBe("strict_local");
+    expect(useRecorderStore.getState().error).toContain(
+      "The native Recording V3 engine is unavailable.",
+    );
   });
 
   it.each([
     { width: 1280, height: 720 },
     { width: 1280, height: 800 },
     { width: 1440, height: 900 },
-  ])("starts Dev V3 at the $width x $height story viewport", async ({ width, height }) => {
-    mocks.outputPrefs.recordingV3DevelopmentMode = true;
-    mocks.probeRecordingV3Capability.mockResolvedValue(v3DevelopmentPreflight);
+  ])("starts Strict Local at the $width x $height story viewport", async ({ width, height }) => {
+    mocks.outputPrefs.recordingPolicyPreference = "strict_local";
+    mocks.probeRecordingV3Capability.mockResolvedValue(v3LocalPreflight);
     mocks.acquireRecordingPreview.mockResolvedValue({
       streamId: `preview-${width}-${height}`,
       release: vi.fn(),
@@ -479,7 +518,8 @@ describe("RecordingView take lifecycle", () => {
       expect.objectContaining({
         width,
         height,
-        intent: "development",
+        enforcement_mode: "strict",
+        certification_mode: "local",
         capture_contract: expect.objectContaining({ dimensions: expectedDimensions }),
       }),
     );
@@ -496,9 +536,9 @@ describe("RecordingView take lifecycle", () => {
     { width: 318, height: 240 },
     { width: 1281, height: 800 },
     { width: 1922, height: 1080 },
-  ])("blocks an invalid Dev V3 viewport at $width x $height", async ({ width, height }) => {
-    mocks.outputPrefs.recordingV3DevelopmentMode = true;
-    mocks.probeRecordingV3Capability.mockResolvedValue(v3DevelopmentPreflight);
+  ])("blocks an invalid Strict Local viewport at $width x $height", async ({ width, height }) => {
+    mocks.outputPrefs.recordingPolicyPreference = "strict_local";
+    mocks.probeRecordingV3Capability.mockResolvedValue(v3LocalPreflight);
 
     render(
       <MemoryRouter>
@@ -515,7 +555,7 @@ describe("RecordingView take lifecycle", () => {
     const start = await screen.findByRole("button", { name: "Start recording" });
     await waitFor(() => expect(start).toBeDisabled());
     expect(
-      screen.getByText(/Dev Recording V3 requires an even viewport from 320×240/),
+      screen.getByText(/Strict Local Recording V3 requires an even viewport from 320×240/),
     ).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "r", ctrlKey: true });
@@ -526,8 +566,8 @@ describe("RecordingView take lifecycle", () => {
   });
 
   it("uses the latest story viewport after source updates", async () => {
-    mocks.outputPrefs.recordingV3DevelopmentMode = true;
-    mocks.probeRecordingV3Capability.mockResolvedValue(v3DevelopmentPreflight);
+    mocks.outputPrefs.recordingPolicyPreference = "strict_local";
+    mocks.probeRecordingV3Capability.mockResolvedValue(v3LocalPreflight);
     mocks.acquireRecordingPreview.mockResolvedValue({
       streamId: "preview-latest",
       release: vi.fn(),
@@ -594,8 +634,8 @@ describe("RecordingView take lifecycle", () => {
     );
   });
 
-  it("keeps Strict V3 fixed at the certified 960 x 540 contract", async () => {
-    mocks.outputPrefs.recordingDeliveryPolicy = "strict";
+  it("keeps Strict Certified fixed at the signed 960 x 540 contract", async () => {
+    mocks.outputPrefs.recordingPolicyPreference = "strict_certified";
     mocks.probeRecordingV3Capability.mockResolvedValue(v3Preflight);
     mocks.acquireRecordingPreview.mockResolvedValue({
       streamId: "preview-strict",
@@ -622,7 +662,8 @@ describe("RecordingView take lifecycle", () => {
     await waitFor(() => expect(mocks.probeRecordingV3Capability).toHaveBeenCalledTimes(1));
     expect(mocks.probeRecordingV3Capability).toHaveBeenCalledWith(
       expect.objectContaining({
-        intent: "strict",
+        enforcement_mode: "strict",
+        certification_mode: "certified",
         capture_contract: expect.objectContaining({
           dimensions: {
             logical_width: 960,
@@ -638,8 +679,8 @@ describe("RecordingView take lifecycle", () => {
     );
   });
 
-  it("keeps a wide Strict V3 story blocked by the certified geometry", async () => {
-    mocks.outputPrefs.recordingDeliveryPolicy = "strict";
+  it("keeps a wide Strict Certified story blocked by the signed geometry", async () => {
+    mocks.outputPrefs.recordingPolicyPreference = "strict_certified";
     mocks.probeRecordingV3Capability.mockResolvedValue(v3Preflight);
 
     render(
@@ -698,7 +739,8 @@ describe("RecordingView take lifecycle", () => {
         height: 900,
         fps: 30,
         contract_version: 2,
-        intent: undefined,
+        enforcement_mode: undefined,
+        certification_mode: undefined,
         delivery_policy: "best_effort",
         capture_contract: undefined,
       }),

@@ -13,7 +13,8 @@ import type {
   RecordingGuaranteeBoundaryV3,
   RecordingPreflightDto,
   RecordingResult,
-  RecordingV3Intent,
+  RecordingV3CertificationMode,
+  RecordingV3EnforcementMode,
   RecordingV3Mode,
 } from "./recording-v2";
 
@@ -2681,8 +2682,9 @@ export type StartRecordingArgs = {
   fps: number;
   /** Missing on legacy callers and therefore interpreted as best-effort. */
   contract_version?: 2 | 3;
-  intent?: RecordingV3Intent;
-  delivery_policy?: RecordingDeliveryPolicy | "development";
+  enforcement_mode?: RecordingV3EnforcementMode;
+  certification_mode?: RecordingV3CertificationMode;
+  delivery_policy?: RecordingDeliveryPolicy;
   certified_tier?: RecordingCertifiedTier | null;
   capture_contract?: RecordingCaptureContract | null;
   /**

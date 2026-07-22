@@ -2,9 +2,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  developmentMode: false,
-  probeDevelopmentEnvironment: vi.fn(),
-  setDevelopmentMode: vi.fn(),
+  policy: "best_effort" as "best_effort" | "strict_local" | "strict_certified",
+  probeEnvironment: vi.fn(),
+  setPolicy: vi.fn(),
 }));
 
 vi.mock("@storycapture/ui", () => ({
@@ -34,8 +34,7 @@ vi.mock("@storycapture/ui", () => ({
 }));
 
 vi.mock("@/ipc/encode", () => ({
-  probeRecordingV3Environment: vi.fn().mockResolvedValue({ failure_codes: [] }),
-  probeRecordingV3DevelopmentEnvironment: mocks.probeDevelopmentEnvironment,
+  probeRecordingV3Environment: mocks.probeEnvironment,
 }));
 
 vi.mock("@/state/app-settings", () => ({
@@ -47,12 +46,10 @@ vi.mock("@/state/output-prefs", () => ({
   useOutputPrefsStore: (selector: (state: unknown) => unknown) =>
     selector({
       recordingKnobs: { resolution: { kind: "p1080" } },
-      recordingDeliveryPolicy: "best_effort",
-      recordingV3DevelopmentMode: mocks.developmentMode,
+      recordingPolicyPreference: mocks.policy,
       exportKnobs: { codec: "h264", hwEncoder: "auto" },
       setRecordingKnob: vi.fn(),
-      setRecordingDeliveryPolicy: vi.fn(),
-      setRecordingV3DevelopmentMode: mocks.setDevelopmentMode,
+      setRecordingPolicyPreference: mocks.setPolicy,
       setExportKnob: vi.fn(),
     }),
 }));
@@ -70,44 +67,44 @@ vi.mock("../settings-row", () => ({
 
 import { RenderCategory } from "./render-category";
 
-describe("RenderCategory Recording V3 development mode", () => {
+describe("RenderCategory Recording V3 policy", () => {
   beforeEach(() => {
-    mocks.developmentMode = false;
-    mocks.probeDevelopmentEnvironment.mockReset().mockResolvedValue({
-      development_enabled: true,
-      development_available: true,
+    mocks.policy = "best_effort";
+    mocks.probeEnvironment.mockReset().mockResolvedValue({
       failure_codes: [],
     });
-    mocks.setDevelopmentMode.mockReset();
+    mocks.setPolicy.mockReset();
   });
 
-  it("hides Dev V3 when the guarded development runtime is disabled", async () => {
-    mocks.probeDevelopmentEnvironment.mockResolvedValue({
-      development_enabled: false,
-      development_available: false,
-      failure_codes: [],
-    });
+  it("shows Standard, Local and Certified and selects Local without an environment gate", async () => {
     render(<RenderCategory />);
 
-    await screen.findByRole("button", { name: "Standard" });
-    expect(screen.queryByRole("button", { name: "Dev V3" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Standard" })).toBeEnabled();
+    const local = screen.getByRole("button", { name: "Strict Local" });
+    expect(local).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Strict Certified" })).toBeEnabled();
+    fireEvent.click(local);
+    expect(mocks.setPolicy).toHaveBeenCalledWith("strict_local");
   });
 
-  it("shows the gated Dev V3 option and selects the session-only mode", async () => {
+  it("keeps Certified visible with the exact unavailable reason", async () => {
+    mocks.probeEnvironment.mockResolvedValue({ failure_codes: ["manifest_missing"] });
     render(<RenderCategory />);
 
-    const option = await screen.findByRole("button", { name: "Dev V3" });
-    expect(option).toBeEnabled();
-    fireEvent.click(option);
-    expect(mocks.setDevelopmentMode).toHaveBeenCalledWith(true);
+    const certified = await screen.findByRole("button", { name: "Strict Certified" });
+    expect(certified).toBeDisabled();
+    expect(certified).toHaveAttribute(
+      "title",
+      "This build does not include a Recording V3 certification manifest.",
+    );
   });
 
-  it("shows the mandatory warning while development mode is selected", async () => {
-    mocks.developmentMode = true;
+  it("shows the Local provenance warning while Local is selected", async () => {
+    mocks.policy = "strict_local";
     render(<RenderCategory />);
 
     expect(
-      await screen.findByText("Uncertified Development — not a Strict-certified recording"),
+      await screen.findByText("Strict Local — runtime-verified, not release-certified"),
     ).toBeVisible();
   });
 });

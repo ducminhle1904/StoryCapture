@@ -288,7 +288,7 @@ describe("buildTimelineFromStory", () => {
       source_frame_count: 300,
       guarantee_boundary: "electron_offscreen_delivery",
       source_scope_verified: true,
-      recording_mode: "uncertified_development",
+      recording_mode: "strict_local",
       certification_profile: null,
       quality_verdict: "passed",
     };
@@ -297,7 +297,7 @@ describe("buildTimelineFromStory", () => {
 
     expect(out.video[0]?.recordingSource).toMatchObject({
       version: 3,
-      recording_mode: "uncertified_development",
+      recording_mode: "strict_local",
       certification_profile_id: null,
       master_path: recording.master_path,
       proxy_path: recording.proxy_path,

@@ -171,7 +171,6 @@ file explicitly says otherwise.
   `apps/desktop/electron/ipc/capture-backend-v2-guard.ts`,
   `apps/desktop/electron/ipc/recording-strict-browser-lifecycle.ts`,
   `apps/desktop/electron/ipc/recording-strict-browser-lifecycle-v3.ts`,
-  `apps/desktop/electron/ipc/recording-v3-development-gate.ts`,
   `apps/desktop/electron/ipc/recording-v3-{runtime-preflight,capability,browser-backend,engine,native-addon,bundle-writer}.ts`,
   `apps/desktop/electron/ipc/recording-v3-certification-{manifest,evidence,quality}.ts`,
   `apps/desktop/electron/ipc/browser-capture-backend-v2.ts`,
@@ -182,7 +181,7 @@ file explicitly says otherwise.
   `macos-screen-capture-backend.ts`, `windows-capture-backend.ts`, and
   `apps/desktop/native/`; the V3 macOS addon is under
   `apps/desktop/native/macos-recording-v3/`. Use `docs/agent/operations.md` for
-  uncertified-development boundaries, certification, packaging, signing,
+  Strict Local/Strict Certified boundaries, certification, packaging, signing,
   trusted-runner, and rollback rules.
 - Recording logs/diagnostics: read
   `apps/desktop/electron/ipc/recording-observability.ts`,
@@ -225,9 +224,9 @@ file explicitly says otherwise.
 - Recording V3 addon/probe gates:
   `pnpm --dir apps/desktop run native:build:recording-v3` and
   `pnpm --dir apps/desktop run test:e2e:recording-v3-production-probe`.
-- Uncertified local V3 is opt-in through
+- Strict Local V3 development uses
   `pnpm --dir apps/desktop run dev:recording-v3`; verify its complete local
-  flow with `pnpm --dir apps/desktop run test:e2e:recording-v3-development-flow`.
+  flow with `pnpm --dir apps/desktop run test:e2e:recording-v3-strict-local-flow`.
 - Recording V3 sustained gates:
   `pnpm --dir apps/desktop run test:e2e:recording-v3-60s` and, only after the
   packaged certification executable exists,

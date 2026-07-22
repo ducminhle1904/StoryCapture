@@ -98,16 +98,18 @@ Recording V3 has dedicated trusted automation:
 
 ### Strict Recording V2/V3 Release Controls
 
-- `BUNDLED_RECORDING_CERTIFICATION_TIERS` is intentionally empty. Strict is
-  fail-closed until the exact platform/architecture/hardware/backend/target
-  tuple completes packaged live capture and release-soak certification.
+- `BUNDLED_RECORDING_CERTIFICATION_TIERS` is intentionally empty. V2 Strict and
+  V3 Strict Certified are fail-closed until the exact
+  platform/architecture/hardware/backend/target tuple completes packaged live
+  capture and release-soak certification.
 - `STORYCAPTURE_DISABLE_RECORDING_TIER_IDS` is a comma-separated emergency
   kill switch. For V3 it matches the signed profile's `kill_switch_id`; the
   signed manifest can also list `disabled_kill_switch_ids`. Neither path may
   relabel a failed/degraded take as Strict.
 - V3 source checkouts deliberately ship an empty generated signer-key map and
-  no signed release manifest/evidence. Local/dev builds therefore remain
-  fail-closed even when the addon and packaged production proof pass.
+  no signed release manifest/evidence. Strict Certified therefore remains
+  unavailable even when the addon and packaged production proof pass; Strict
+  Local does not require these certification assets.
 - Never hand-edit the V3 signer map, signed manifest, or certification evidence.
   `recording-v3-certification-profile.mjs`,
   `recording-v3-certification-sign-manifest.mjs`, and
@@ -120,21 +122,24 @@ Recording V3 has dedicated trusted automation:
   retention, and may be manually deleted only after validation as a contained
   `quality_failed` bundle.
 
-### Recording V3 Uncertified Development Boundary
+### Recording V3 Local And Certified Boundary
 
-- `STORYCAPTURE_ENABLE_UNCERTIFIED_RECORDING_V3=1` is honored only by the
-  existing generated-dev runtime identity. Packaged production executables
-  reject development creation even when dev-related environment flags are
-  forced; keep admission routed through
-  `apps/desktop/electron/ipc/recording-v3-development-gate.ts`.
-- `dev:recording-v3` bypasses only certification manifest/profile matching. It
-  retains platform, addon, FFmpeg, storage, source-rate, cadence, ledger,
-  decode, and artifact verification gates and never sets `strict_eligible`.
-- Development viewport flexibility does not relax the exact signed Strict
-  dimension profile or make a Development bundle `strict_eligible`.
-- Development bundles and derived local exports remain labelled
-  `uncertified_development`/`-uncertified-dev`. Packaged apps may read, preview,
-  edit, and export them locally, but may not create or upload them.
+- Strict Local and Strict Certified share the browser target, addon, FFmpeg,
+  storage, source-rate, metadata, cadence, ledger, decode, deadline, and
+  artifact-verification gates. Strict Certified alone adds signed
+  manifest/profile matching.
+- Strict Local is available in development and packaged builds without an
+  environment opt-in. `dev:recording-v3` builds the addon and starts the normal
+  Electron development runtime; it does not bypass a runtime gate.
+- Strict Local uses validated DPR-1 viewport dimensions within the native
+  safety limits. This flexibility does not relax the exact signed Strict
+  Certified dimension profile.
+- New Local bundles and derived exports use `strict_local`/`-strict-local` with
+  a null certification profile. Legacy `uncertified_development` artifacts are
+  normalized to Strict Local in memory without rewriting their manifests.
+  Both remain previewable/editable/exportable locally and cannot be uploaded.
+- New Certified bundles use `strict_certified` with a valid profile reference.
+  Legacy `certified` artifacts normalize to that mode at read boundaries.
 - Upload enforcement is host-owned in
   `apps/desktop/electron/ipc/recording-v3-export-provenance.ts` and
   `apps/desktop/electron/ipc/legacy/web.ts`. The atomic user-data registry

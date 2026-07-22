@@ -101,7 +101,7 @@ function graphJson(): string {
   });
 }
 
-describe("uncertified development export paths", () => {
+describe("Strict Local export paths", () => {
   it.each(["mp4", "webm", "gif"])("suffixes %s outputs exactly once", (format) => {
     const args = {
       story_id: "story-1",
@@ -113,16 +113,16 @@ describe("uncertified development export paths", () => {
       preset_id: null,
     } as ExportRunArgs;
 
-    const first = exportOutputPath(args, args.outputs[0]!, 0, "uncertified_development");
+    const first = exportOutputPath(args, args.outputs[0]!, 0, "strict_local");
     const second = exportOutputPath(
-      { ...args, base_name: "demo-uncertified-dev" },
+      { ...args, base_name: "demo-strict-local" },
       args.outputs[0]!,
       0,
-      "uncertified_development",
+      "strict_local",
     );
 
-    expect(first).toBe(`/tmp/out/demo-uncertified-dev.${format}`);
-    expect(second).toBe(`/tmp/out/demo-uncertified-dev.${format}`);
+    expect(first).toBe(`/tmp/out/demo-strict-local.${format}`);
+    expect(second).toBe(`/tmp/out/demo-strict-local.${format}`);
   });
 });
 

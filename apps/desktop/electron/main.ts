@@ -9,7 +9,7 @@ import { initializeExportOutputLifecycle } from "./ipc/legacy/export-output-life
 import { initializeRecordingV3ExportProvenance } from "./ipc/recording-v3-export-provenance";
 import { registerLocalAssetProtocol, registerLocalAssetScheme } from "./local-assets";
 import { runRecordingV3ReleaseSmoke } from "./recording-v3-release-smoke";
-import { runRecordingV3DevelopmentFlowSmoke } from "./recording-v3-development-flow-smoke";
+import { runRecordingV3StrictLocalFlowSmoke } from "./recording-v3-strict-local-flow-smoke";
 import { isDevRuntime } from "./runtime";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -22,8 +22,8 @@ const exportCompositorSmokeResultPath =
 const recordingV3ReleaseSmokeResultPath = app.commandLine.getSwitchValue(
   "storycapture-recording-v3-release-smoke-result",
 );
-const recordingV3DevelopmentFlowResultPath = app.commandLine.getSwitchValue(
-  "storycapture-recording-v3-development-flow-result",
+const recordingV3StrictLocalFlowResultPath = app.commandLine.getSwitchValue(
+  "storycapture-recording-v3-strict-local-flow-result",
 );
 
 let mainWindow: BrowserWindow | null = null;
@@ -107,9 +107,9 @@ void app.whenReady().then(async () => {
     app.exit(succeeded ? 0 : 1);
     return;
   }
-  if (recordingV3DevelopmentFlowResultPath) {
-    const succeeded = await runRecordingV3DevelopmentFlowSmoke(
-      recordingV3DevelopmentFlowResultPath,
+  if (recordingV3StrictLocalFlowResultPath) {
+    const succeeded = await runRecordingV3StrictLocalFlowSmoke(
+      recordingV3StrictLocalFlowResultPath,
     );
     app.exit(succeeded ? 0 : 1);
     return;

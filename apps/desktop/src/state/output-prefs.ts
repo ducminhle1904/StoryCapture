@@ -3,8 +3,8 @@ import type {
   OutputResolutionDto,
   PadColorDto,
   QualityPresetDto,
-  RecordingDeliveryPolicy,
 } from "@storycapture/shared-types";
+import type { RecordingV3Mode } from "@storycapture/shared-types/recording-v3";
 import { create } from "zustand";
 
 export type PresetName = "Standard" | "Lossless" | "Custom";
@@ -19,6 +19,7 @@ export interface RecordingKnobs {
 }
 
 export type RecordingPacingProfile = "normal";
+export type RecordingPolicyPreference = "best_effort" | RecordingV3Mode;
 export const DEFAULT_RECORDING_PACING: RecordingPacingProfile = "normal";
 
 export interface AudioKnobs {
@@ -118,20 +119,18 @@ function padEqual(a: PadColorDto, b: PadColorDto): boolean {
 
 interface State {
   activePreset: PresetName;
-  recordingDeliveryPolicy: RecordingDeliveryPolicy;
-  recordingV3DevelopmentMode: boolean;
+  recordingPolicyPreference: RecordingPolicyPreference;
   recordingKnobs: RecordingKnobs;
   recordingPacing: RecordingPacingProfile;
   exportKnobs: ExportKnobs;
   setRecordingKnob<K extends keyof RecordingKnobs>(k: K, v: RecordingKnobs[K]): void;
-  setRecordingDeliveryPolicy(v: RecordingDeliveryPolicy): void;
-  setRecordingV3DevelopmentMode(v: boolean): void;
+  setRecordingPolicyPreference(v: RecordingPolicyPreference): void;
   setRecordingPacing(v: RecordingPacingProfile): void;
   setExportKnob<K extends keyof ExportKnobs>(k: K, v: ExportKnobs[K]): void;
   applyPreset(name: Exclude<PresetName, "Custom">): void;
   hydrate(s: {
     activePreset: PresetName;
-    recordingDeliveryPolicy: RecordingDeliveryPolicy;
+    recordingPolicyPreference: RecordingPolicyPreference;
     recordingKnobs: RecordingKnobs;
     recordingPacing: RecordingPacingProfile;
     exportKnobs: ExportKnobs;
@@ -140,8 +139,7 @@ interface State {
 
 export const useOutputPrefsStore = create<State>((set) => ({
   activePreset: "Standard",
-  recordingDeliveryPolicy: "best_effort",
-  recordingV3DevelopmentMode: false,
+  recordingPolicyPreference: "best_effort",
   recordingKnobs: PRESET_BUNDLES.Standard,
   recordingPacing: DEFAULT_RECORDING_PACING,
   exportKnobs: DEFAULT_EXPORT_KNOBS,
@@ -152,16 +150,8 @@ export const useOutputPrefsStore = create<State>((set) => ({
       const matched = matchPreset(next);
       return { recordingKnobs: next, activePreset: matched ?? "Custom" };
     }),
-  setRecordingDeliveryPolicy: (recordingDeliveryPolicy) =>
-    set({ recordingDeliveryPolicy, recordingV3DevelopmentMode: false }),
-  setRecordingV3DevelopmentMode: (recordingV3DevelopmentMode) =>
-    set((state) => ({
-      recordingV3DevelopmentMode,
-      recordingDeliveryPolicy:
-        recordingV3DevelopmentMode && state.recordingDeliveryPolicy === "strict"
-          ? "best_effort"
-          : state.recordingDeliveryPolicy,
-    })),
+  setRecordingPolicyPreference: (recordingPolicyPreference) =>
+    set({ recordingPolicyPreference }),
   setExportKnob: (k, v) =>
     set((s) => {
       if (s.exportKnobs[k] === v) return s;
@@ -173,11 +163,10 @@ export const useOutputPrefsStore = create<State>((set) => ({
       return { recordingPacing: DEFAULT_RECORDING_PACING };
     }),
   applyPreset: (name) => set({ activePreset: name, recordingKnobs: PRESET_BUNDLES[name] }),
-  hydrate: ({ activePreset, recordingDeliveryPolicy, recordingKnobs, exportKnobs }) =>
+  hydrate: ({ activePreset, recordingPolicyPreference, recordingKnobs, exportKnobs }) =>
     set({
       activePreset,
-      recordingDeliveryPolicy,
-      recordingV3DevelopmentMode: false,
+      recordingPolicyPreference,
       recordingKnobs,
       recordingPacing: DEFAULT_RECORDING_PACING,
       exportKnobs,

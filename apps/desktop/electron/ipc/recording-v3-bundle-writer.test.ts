@@ -116,7 +116,7 @@ const engineResult: RecordingV3EngineResult = {
 async function createWriter(
   verifyArtifact: NonNullable<RecordingV3BundleWriterOptions["verifyArtifact"]>,
   qualification: RecordingV3BundleWriterOptions["qualification"] = {
-    mode: "certified",
+    mode: "strict_certified",
     manifestId: "manifest-1",
     profile,
   },
@@ -125,8 +125,8 @@ async function createWriter(
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-v3-bundle-"));
   temporaryRoots.push(root);
   const dimensions =
-    qualification.mode === "uncertified_development"
-      ? recordingV3DimensionsForViewport("development", { width: 1280, height: 800 })
+    qualification.mode === "strict_local"
+      ? recordingV3DimensionsForViewport("local", { width: 1280, height: 800 })
       : captureContract.dimensions;
   const writer = await RecordingV3BundleWriter.create({
     exportsDir: root,
@@ -266,21 +266,21 @@ describe("RecordingV3BundleWriter", () => {
     expect(diagnosticLedger?.decoded_ordinal).toBeNull();
   });
 
-  it("preserves wide Development dimensions through verification and quality-failed retention", async () => {
+  it("preserves wide Strict Local dimensions through verification and quality-failed retention", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-v3-bundle-"));
     temporaryRoots.push(root);
-    const dimensions = recordingV3DimensionsForViewport("development", {
+    const dimensions = recordingV3DimensionsForViewport("local", {
       width: 1280,
       height: 800,
     });
     const verifyArtifact = vi.fn(async () => {
-      throw new Error("development artifact mismatch");
+      throw new Error("Strict Local artifact mismatch");
     });
     const writer = await RecordingV3BundleWriter.create({
       exportsDir: root,
-      name: "development",
+      name: "strict-local",
       captureContract: { ...captureContract, dimensions },
-      qualification: { mode: "uncertified_development" },
+      qualification: { mode: "strict_local" },
       width: 1280,
       height: 800,
       verifyArtifact,
@@ -293,8 +293,8 @@ describe("RecordingV3BundleWriter", () => {
     );
     expect(result).toMatchObject({
       status: "quality_failed",
-      delivery_policy: "development",
-      recording_mode: "uncertified_development",
+      delivery_policy: "strict",
+      recording_mode: "strict_local",
       certification_profile: null,
       output_width: 1280,
       output_height: 800,
@@ -305,7 +305,26 @@ describe("RecordingV3BundleWriter", () => {
     expect(manifest?.capture_contract.dimensions).toEqual(dimensions);
   });
 
-  it("commits an uncertified development bundle without synthesizing a profile", async () => {
+  it("rejects a Strict Certified profile that does not match the capture contract", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-v3-bundle-"));
+    temporaryRoots.push(root);
+    await expect(
+      RecordingV3BundleWriter.create({
+        exportsDir: root,
+        name: "mismatched-certified-profile",
+        captureContract,
+        qualification: {
+          mode: "strict_certified",
+          manifestId: "manifest-1",
+          profile: { ...profile, output_width: 1280 },
+        },
+        width: 1920,
+        height: 1080,
+      }),
+    ).rejects.toThrow("does not match the capture contract");
+  });
+
+  it("commits a Strict Local bundle without synthesizing a profile", async () => {
     const writer = await createWriter(
       async ({ proxyPath }) => {
         await fs.writeFile(proxyPath, "proxy");
@@ -370,24 +389,24 @@ describe("RecordingV3BundleWriter", () => {
           },
         };
       },
-      { mode: "uncertified_development" },
-      "take-uncertified-dev",
+      { mode: "strict_local" },
+      "take-strict-local",
     );
     const result = await writer.finalize({ engineResult, actions: null });
 
     expect(result).toMatchObject({
       status: "completed",
-      delivery_policy: "development",
-      recording_mode: "uncertified_development",
+      delivery_policy: "strict",
+      recording_mode: "strict_local",
       certification_profile: null,
     });
-    expect(path.basename(result.bundle_path)).toBe("take-uncertified-dev.sc-recording");
+    expect(path.basename(result.bundle_path)).toBe("take-strict-local.sc-recording");
     const manifest = await fs
       .readFile(path.join(result.bundle_path, "manifest.json"), "utf8")
       .then((text) => readRecordingBundleV3(JSON.parse(text)));
     expect(manifest).toMatchObject({
-      delivery_policy: "development",
-      recording_mode: "uncertified_development",
+      delivery_policy: "strict",
+      recording_mode: "strict_local",
       certification_profile: null,
     });
   });

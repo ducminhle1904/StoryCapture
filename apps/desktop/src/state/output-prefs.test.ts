@@ -12,8 +12,7 @@ import {
 function resetStore() {
   useOutputPrefsStore.setState({
     activePreset: "Standard",
-    recordingDeliveryPolicy: "best_effort",
-    recordingV3DevelopmentMode: false,
+    recordingPolicyPreference: "best_effort",
     recordingKnobs: PRESET_BUNDLES.Standard,
     recordingPacing: DEFAULT_RECORDING_PACING,
     exportKnobs: DEFAULT_EXPORT_KNOBS,
@@ -28,8 +27,7 @@ describe("useOutputPrefsStore", () => {
   it("starts in Standard with bundled knobs + default export bag", () => {
     const s = useOutputPrefsStore.getState();
     expect(s.activePreset).toBe("Standard");
-    expect(s.recordingDeliveryPolicy).toBe("best_effort");
-    expect(s.recordingV3DevelopmentMode).toBe(false);
+    expect(s.recordingPolicyPreference).toBe("best_effort");
     expect(s.recordingKnobs).toEqual(PRESET_BUNDLES.Standard);
     expect(s.recordingPacing).toBe(DEFAULT_RECORDING_PACING);
     expect(s.exportKnobs).toEqual(DEFAULT_EXPORT_KNOBS);
@@ -40,28 +38,21 @@ describe("useOutputPrefsStore", () => {
     expect(useOutputPrefsStore.getState().recordingPacing).toBe(DEFAULT_RECORDING_PACING);
   });
 
-  it("stores the delivery policy independently from the legacy preset", () => {
-    useOutputPrefsStore.getState().setRecordingDeliveryPolicy("strict");
-    expect(useOutputPrefsStore.getState().recordingDeliveryPolicy).toBe("strict");
+  it("stores the recorder policy independently from the legacy preset", () => {
+    useOutputPrefsStore.getState().setRecordingPolicyPreference("strict_local");
+    expect(useOutputPrefsStore.getState().recordingPolicyPreference).toBe("strict_local");
     expect(useOutputPrefsStore.getState().activePreset).toBe("Standard");
   });
 
-  it("keeps Dev V3 session-only and clears a persisted Strict selection", () => {
-    useOutputPrefsStore.getState().setRecordingDeliveryPolicy("strict");
-    useOutputPrefsStore.getState().setRecordingV3DevelopmentMode(true);
-    expect(useOutputPrefsStore.getState()).toMatchObject({
-      recordingDeliveryPolicy: "best_effort",
-      recordingV3DevelopmentMode: true,
-    });
-
+  it("hydrates a persisted Strict Certified selection", () => {
     useOutputPrefsStore.getState().hydrate({
       activePreset: "Standard",
-      recordingDeliveryPolicy: "strict",
+      recordingPolicyPreference: "strict_certified",
       recordingKnobs: PRESET_BUNDLES.Standard,
       recordingPacing: DEFAULT_RECORDING_PACING,
       exportKnobs: DEFAULT_EXPORT_KNOBS,
     });
-    expect(useOutputPrefsStore.getState().recordingV3DevelopmentMode).toBe(false);
+    expect(useOutputPrefsStore.getState().recordingPolicyPreference).toBe("strict_certified");
   });
 
   it("applyPreset('Lossless') swaps recordingKnobs to the Lossless bundle", () => {

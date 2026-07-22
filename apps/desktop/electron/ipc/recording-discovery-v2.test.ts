@@ -103,7 +103,7 @@ describe("recording bundle discovery", () => {
       status: "completed",
       created_at: new Date(0).toISOString(),
       delivery_policy: "strict",
-      recording_mode: "certified",
+      recording_mode: "strict_certified",
       certification_profile: {
         manifest_id: "manifest-2026-07",
         profile_id: "mac17-2-m5-browser-1080p60",
@@ -177,35 +177,66 @@ describe("recording bundle discovery", () => {
       certification_profile: manifest.certification_profile,
       guarantee_boundary: "electron_offscreen_delivery",
       source_scope_verified: true,
-      recording_mode: "certified",
+      recording_mode: "strict_certified",
       source_frame_count: 600,
       quality_verdict: "passed",
       validation: { status: "valid" },
     });
     expect(probe).not.toHaveBeenCalled();
 
-    const developmentManifest: RecordingBundleV3 = {
+    const legacyDevelopmentManifest = {
       ...manifest,
       delivery_policy: "development",
       recording_mode: "uncertified_development",
       certification_profile: null,
+      capture_contract: {
+        ...manifest.capture_contract,
+        dimensions: {
+          logical_width: 960,
+          logical_height: 540,
+          capture_dpr: 1,
+          physical_width: 960,
+          physical_height: 540,
+          requested_output_width: 960,
+          requested_output_height: 540,
+        },
+      },
+      evidence: { ...manifest.evidence, certification_quality_path: null },
     };
-    await fs.writeFile(path.join(bundle, "manifest.json"), JSON.stringify(developmentManifest));
+    const legacyDevelopmentText = JSON.stringify(legacyDevelopmentManifest);
+    const manifestPath = path.join(bundle, "manifest.json");
+    await fs.writeFile(manifestPath, legacyDevelopmentText);
     await expect(discoverProjectRecordings(root, probe)).resolves.toEqual([
       expect.objectContaining({
-        recording_mode: "uncertified_development",
+        recording_mode: "strict_local",
         certification_profile: null,
         source_scope_verified: true,
       }),
     ]);
+    await expect(fs.readFile(manifestPath, "utf8")).resolves.toBe(legacyDevelopmentText);
 
-    const failedManifest: RecordingBundleV3 = {
-      ...developmentManifest,
+    const legacyCertifiedManifest = { ...manifest, recording_mode: "certified" };
+    const legacyCertifiedText = JSON.stringify(legacyCertifiedManifest);
+    await fs.writeFile(manifestPath, legacyCertifiedText);
+    await expect(discoverProjectRecordings(root, probe)).resolves.toEqual([
+      expect.objectContaining({
+        recording_mode: "strict_certified",
+        certification_profile: manifest.certification_profile,
+        source_scope_verified: true,
+      }),
+    ]);
+    await expect(fs.readFile(manifestPath, "utf8")).resolves.toBe(legacyCertifiedText);
+
+    const failedManifest = {
+      ...manifest,
       status: "quality_failed",
+      recording_mode: "strict_local",
+      certification_profile: null,
       proxy: null,
+      evidence: { ...manifest.evidence, certification_quality_path: null },
       failure_codes: ["artifact_verification_failed"],
-    };
-    await fs.writeFile(path.join(bundle, "manifest.json"), JSON.stringify(failedManifest));
+    } satisfies RecordingBundleV3;
+    await fs.writeFile(manifestPath, JSON.stringify(failedManifest));
     await expect(discoverProjectRecordings(root, probe)).resolves.toEqual([]);
   });
 });

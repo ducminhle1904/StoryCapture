@@ -6,7 +6,7 @@ import { Store } from "@tauri-apps/plugin-store";
 
 export const STORE_FILE = "output-prefs.json";
 export const STORE_KEY = "output-prefs.v1";
-export const LATEST_VERSION = 3 as const;
+export const LATEST_VERSION = 4 as const;
 
 let cached: Promise<Store> | null = null;
 

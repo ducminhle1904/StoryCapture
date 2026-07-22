@@ -18,11 +18,11 @@ describe("migrate", () => {
   it("returns a valid shape unchanged", () => {
     const input: PersistShape = {
       activePreset: "Lossless",
-      recordingDeliveryPolicy: "strict",
+      recordingPolicyPreference: "strict_local",
       recordingKnobs: PRESET_BUNDLES.Lossless,
       recordingPacing: DEFAULT_RECORDING_PACING,
       exportKnobs: DEFAULT_EXPORT_KNOBS,
-      version: 3,
+      version: 4,
     };
     expect(migrate(input)).toEqual(input);
   });
@@ -39,8 +39,8 @@ describe("migrate", () => {
     expect(out.recordingPacing).toBe("normal");
     expect(out.recordingKnobs).toEqual(PRESET_BUNDLES.Standard);
     expect(out.exportKnobs).toEqual(SEED.exportKnobs);
-    expect(out.recordingDeliveryPolicy).toBe("best_effort");
-    expect(out.version).toBe(3);
+    expect(out.recordingPolicyPreference).toBe("best_effort");
+    expect(out.version).toBe(4);
   });
 
   it("rejects unsupported quality values in custom recording knobs", () => {
@@ -57,23 +57,28 @@ describe("migrate", () => {
     expect(out.recordingPacing).toBe(DEFAULT_RECORDING_PACING);
   });
 
-  it("bumps version from 0 to 3 and defaults legacy policy to best-effort", () => {
+  it("bumps version from 0 to 4 and defaults legacy policy to best-effort", () => {
     const out = migrate({
       activePreset: "Standard",
       recordingKnobs: PRESET_BUNDLES.Standard,
       exportKnobs: DEFAULT_EXPORT_KNOBS,
       version: 0,
     } as unknown);
-    expect(out.version).toBe(3);
-    expect(out.recordingDeliveryPolicy).toBe("best_effort");
+    expect(out.version).toBe(4);
+    expect(out.recordingPolicyPreference).toBe("best_effort");
   });
 
-  it("preserves a valid strict policy and rejects malformed values", () => {
-    expect(migrate({ recordingDeliveryPolicy: "strict" }).recordingDeliveryPolicy).toBe("strict");
-    expect(migrate({ recordingDeliveryPolicy: "unsafe" }).recordingDeliveryPolicy).toBe(
+  it("migrates legacy Strict to Certified and preserves new policy values", () => {
+    expect(migrate({ recordingDeliveryPolicy: "strict" }).recordingPolicyPreference).toBe(
+      "strict_certified",
+    );
+    expect(migrate({ recordingPolicyPreference: "strict_local" }).recordingPolicyPreference).toBe(
+      "strict_local",
+    );
+    expect(migrate({ recordingDeliveryPolicy: "unsafe" }).recordingPolicyPreference).toBe(
       "best_effort",
     );
-    expect(migrate({ recordingDeliveryPolicy: "development" }).recordingDeliveryPolicy).toBe(
+    expect(migrate({ recordingDeliveryPolicy: "development" }).recordingPolicyPreference).toBe(
       "best_effort",
     );
   });

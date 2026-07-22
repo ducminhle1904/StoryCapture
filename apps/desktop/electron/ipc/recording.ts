@@ -8,7 +8,6 @@ import {
   queryStrictBrowserRecordingV3,
   reattachStrictBrowserRecordingV3,
 } from "./recording-strict-browser-lifecycle";
-import { probeRecordingV3DevelopmentEnvironment } from "./recording-v3-runtime-preflight";
 import type { InvokeHandlers } from "./types";
 
 function startArgs(raw: unknown): StartRecordingArgs {
@@ -34,7 +33,8 @@ function recordingV3EnvironmentArgs(): StartRecordingArgs {
     height: 540,
     fps: 60,
     contract_version: 3,
-    intent: "strict",
+    enforcement_mode: "strict",
+    certification_mode: "certified",
     delivery_policy: "strict",
     include_cursor: false,
     capture_contract: {
@@ -72,7 +72,6 @@ export const recordingHandlers = {
   },
   recording_v3_environment: () =>
     probeStrictBrowserRecordingV3Capability(recordingV3EnvironmentArgs(), ""),
-  recording_v3_development_environment: () => probeRecordingV3DevelopmentEnvironment(),
   recording_v3_query: (raw) => {
     const projectFolder = String((raw as { projectFolder?: unknown } | null)?.projectFolder ?? "");
     if (!projectFolder) throw new Error("projectFolder required");

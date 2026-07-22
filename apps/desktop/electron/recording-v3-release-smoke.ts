@@ -6,7 +6,8 @@ import { probeRecordingV3RuntimeCapability } from "./ipc/recording-v3-runtime-pr
 
 const RELEASE_REQUEST: RecordingPreflightV3Request = {
   version: 3,
-  intent: "strict",
+  enforcement_mode: "strict",
+  certification_mode: "certified",
   target_class: "browser",
   requested_fps: { numerator: 60, denominator: 1 },
   dimensions: {
@@ -41,7 +42,9 @@ export async function runRecordingV3ReleaseSmoke(resultPath: string): Promise<bo
       url: fixtureUrl.href,
     });
     const passed =
-      preflight.strict_eligible &&
+      preflight.certification_eligible &&
+      preflight.eligible &&
+      preflight.recording_mode === "strict_certified" &&
       preflight.failure_codes.length === 0 &&
       preflight.matched_profile?.stage === "certified";
     await writeResultAtomic(resultPath, { schema_version: 1, passed, preflight });

@@ -10,8 +10,8 @@ import { exportFfmpegPath } from "../export-binaries";
 import {
   recordingV3ModeForExportGraph,
   recordingV3ModeFromExportGraph,
-  registerUncertifiedDevelopmentExport,
-  suffixUncertifiedDevelopmentBaseName,
+  registerRecordingV3Export,
+  suffixStrictLocalBaseName,
 } from "../recording-v3-export-provenance";
 import { clampFps } from "./capture-preview";
 import { sourceHasAudio, verifyExportArtifact } from "./export-artifact-verification";
@@ -100,8 +100,8 @@ export {
 
 function exportBaseName(args: ExportRunArgs, recordingMode: RecordingV3Mode | null): string {
   const requested = slugify(args.base_name || args.story_id || "export") || "export";
-  return recordingMode === "uncertified_development"
-    ? suffixUncertifiedDevelopmentBaseName(requested)
+  return recordingMode === "strict_local"
+    ? suffixStrictLocalBaseName(requested)
     : requested;
 }
 
@@ -362,9 +362,12 @@ async function executeExportRenderJob(queued: QueuedExportRenderJob): Promise<vo
     setJobPhase(session, "verifying", 99, 100);
     await commitExportOutput(args.outputReservation);
     session.outputReservation = null;
-    if (args.recordingMode === "uncertified_development") {
+    if (args.recordingMode) {
       try {
-        await registerUncertifiedDevelopmentExport(args.outputReservation.finalPath);
+        await registerRecordingV3Export(
+          args.outputReservation.finalPath,
+          args.recordingMode,
+        );
       } catch (error) {
         await fs.unlink(args.outputReservation.finalPath).catch(() => undefined);
         throw error;

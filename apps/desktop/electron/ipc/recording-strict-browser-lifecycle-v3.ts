@@ -7,7 +7,6 @@ import {
   type RecordingPreflightV3Dto,
   type RecordingPreflightV3Request,
   type RecordingResultV3,
-  type RecordingV3Qualification,
   RECORDING_V3_STRICT_DIMENSIONS,
   readRecordingCaptureContractV3,
   recordingV3FailureMessage,
@@ -23,6 +22,7 @@ import { ffmpegExecutablePath } from "./export-binaries";
 import { channelIdFrom, closeChannel, sendChannel } from "./legacy/shared";
 import { recordEngineLog } from "./recording-observability";
 import { RecordingPauseGate } from "./recording-pause-gate";
+import { recordingV3QualificationFromPreflight } from "./recording-v3-capability";
 import { BrowserCaptureBackendV3 } from "./recording-v3-browser-backend";
 import { RecordingV3BundleWriter } from "./recording-v3-bundle-writer";
 import { RecordingV3Engine, RecordingV3EngineError } from "./recording-v3-engine";
@@ -33,7 +33,6 @@ import {
   type RecordingV3NativeSession,
   recordingV3NativeAddonPathForRuntime,
 } from "./recording-v3-native-addon";
-import { isRecordingV3DevelopmentEnabled } from "./recording-v3-development-gate";
 import { probeRecordingV3RuntimeCapability } from "./recording-v3-runtime-preflight";
 import {
   type RecordingV3CoordinatorSession,
@@ -81,10 +80,14 @@ export interface StrictBrowserSessionV3 extends RecordingV3CoordinatorSession {
 const registry = new RecordingV3HostSessionRegistry<StrictBrowserSessionV3>();
 
 export function recordingV3Request(args: StartRecordingArgs): RecordingPreflightV3Request {
+  if (!isRecordingV3Request(args)) {
+    throw new Error("Recording V3 requires an explicit Strict Local or Strict Certified policy");
+  }
   const captureContract = readRecordingCaptureContractV3(args.capture_contract);
   return {
     version: 3,
-    intent: args.intent === "development" ? "development" : "strict",
+    enforcement_mode: "strict",
+    certification_mode: args.certification_mode,
     target_class: args.target.kind === "author_preview" ? "browser" : "display",
     requested_fps: { numerator: 60, denominator: 1 },
     dimensions: captureContract?.dimensions ?? RECORDING_V3_STRICT_DIMENSIONS,
@@ -93,18 +96,12 @@ export function recordingV3Request(args: StartRecordingArgs): RecordingPreflight
   };
 }
 
-export function isStrictRecordingV3Request(args: StartRecordingArgs): boolean {
-  return (
-    args.contract_version === 3 && args.intent === "strict" && args.delivery_policy === "strict"
-  );
-}
-
 export function isRecordingV3Request(args: StartRecordingArgs): boolean {
   return (
-    isStrictRecordingV3Request(args) ||
-    (args.contract_version === 3 &&
-      args.intent === "development" &&
-      args.delivery_policy === "development")
+    args.contract_version === 3 &&
+    args.enforcement_mode === "strict" &&
+    (args.certification_mode === "local" || args.certification_mode === "certified") &&
+    args.delivery_policy === "strict"
   );
 }
 
@@ -127,8 +124,9 @@ export async function probeBrowserRecordingV3Capability(
   if (startContractMatches) return preflight;
   return {
     ...preflight,
-    strict_eligible: false,
-    development_eligible: false,
+    runtime_eligible: false,
+    certification_eligible: false,
+    eligible: false,
     failure_codes: [...new Set(["contract_mismatch" as const, ...preflight.failure_codes])],
   };
 }
@@ -241,35 +239,24 @@ export async function startBrowserRecordingV3(
   url: string,
 ): Promise<{ id: string }> {
   if (!isRecordingV3Request(args))
-    throw new Error("Recording V3 requires explicit Strict or development intent");
-  const development = args.intent === "development";
-  if (development && !isRecordingV3DevelopmentEnabled(app)) {
-    throw new Error("Uncertified Recording V3 development mode is not enabled");
-  }
+    throw new Error("Recording V3 requires an explicit Strict Local or Strict Certified policy");
+  const local = args.certification_mode === "local";
   if (args.target.kind !== "author_preview" || !url || url === "about:blank") {
     throw new Error(recordingV3FailureMessage("target_unsupported"));
   }
 
   const eventChannelId = channelIdFrom(onEvent);
   const request = recordingV3Request(args);
-  const dimensionValidation = validateRecordingV3Dimensions(request.intent, request.dimensions);
+  const dimensionValidation = validateRecordingV3Dimensions(
+    request.certification_mode,
+    request.dimensions,
+  );
   const preflight = await probeStrictBrowserRecordingV3Capability(args, url);
   sendChannel(sender, eventChannelId, { type: "preflight", result: preflight });
-  const eligible = development ? preflight.development_eligible : preflight.strict_eligible;
-  const qualification: RecordingV3Qualification | null = development
-    ? preflight.matched_profile === null && preflight.manifest_id === null
-      ? { mode: "uncertified_development" }
-      : null
-    : preflight.matched_profile && preflight.manifest_id
-      ? {
-          mode: "certified",
-          manifestId: preflight.manifest_id,
-          profile: preflight.matched_profile,
-        }
-      : null;
-  if (!eligible || !qualification) {
+  const qualification = recordingV3QualificationFromPreflight(preflight);
+  if (!preflight.eligible || !qualification) {
     closeChannel(sender, eventChannelId);
-    const code = preflight.failure_codes[0] ?? (development ? "contract_mismatch" : "profile_mismatch");
+    const code = preflight.failure_codes[0] ?? (local ? "contract_mismatch" : "profile_mismatch");
     const detail = code === "contract_mismatch" ? dimensionValidation.detail : null;
     throw new Error(
       `${recordingV3FailureMessage(code)}${detail ? ` ${detail}` : ""} (${preflight.failure_codes.join(", ")})`,
@@ -279,7 +266,7 @@ export async function startBrowserRecordingV3(
   const id = randomUUID();
   const exportsDir = path.join(args.project_folder, "exports");
   const name = `recording-${new Date().toISOString().replaceAll(/[:.]/g, "-")}${
-    development ? "-uncertified-dev" : ""
+    local ? "-strict-local" : ""
   }`;
   const bundleWriter = await RecordingV3BundleWriter.create({
     exportsDir,

@@ -82,14 +82,14 @@ export interface ComputeGraphInput {
   };
 }
 
-export function graphHasUncertifiedDevelopmentSource(
+export function graphHasStrictLocalSource(
   graph: Pick<ExportCompositionGraphV5, "video">,
 ): boolean {
   return graph.video.some(
     (node) =>
       node.type === "source" &&
       node.recording_source?.version === 3 &&
-      node.recording_source.recording_mode === "uncertified_development",
+      node.recording_source.recording_mode === "strict_local",
   );
 }
 

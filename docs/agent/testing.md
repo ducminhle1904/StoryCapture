@@ -22,12 +22,13 @@
   display/window capture or a sustained release soak.
 - Recording V3 native addon protocol gate:
   `pnpm --dir apps/desktop run native:build:recording-v3`.
-- Recording V3 uncertified-development E2E:
-  `pnpm --dir apps/desktop run test:e2e:recording-v3-development-flow`. Run it
-  after changes to viewport/dimension contracts, the dev gate, preflight, V3
-  lifecycle, bundle discovery, export provenance, or upload guard. The command
+- Recording V3 Strict Local E2E:
+  `pnpm --dir apps/desktop run test:e2e:recording-v3-strict-local-flow`. Run it
+  after changes to viewport/dimension contracts, preflight, V3 lifecycle,
+  bundle discovery, export provenance, or upload admission. The command
   performs a fresh native addon build and requires macOS ARM64 plus
-  screen-capture permission.
+  screen-capture permission. The old
+  `test:e2e:recording-v3-development-flow` command is a one-release alias only.
 - Recording V3 packaged production proof:
   `pnpm --dir apps/desktop run test:e2e:recording-v3-production-probe`.
 - Recording V3 sustained gates are
@@ -125,8 +126,10 @@
   `recording-v3-{contract,capability,browser-backend,engine,native-addon,session-registry,bundle-writer}.test.*`,
   `recording-v3-runtime-preflight.test.ts`, `recording-master*.test.ts`,
   `recording-v3-certification-{manifest,quality,scripts}.test.ts`, discovery,
-  and `recording-view-lifecycle.test.tsx`; then run desktop typecheck and the
-  packaged production proof when native/probe/package behavior changed.
+  export provenance, output-preference persistence, settings, and
+  `recording-view-lifecycle.test.tsx`; then run desktop typecheck, the Strict
+  Local flow, and the packaged production proof when native/probe/package
+  behavior changed.
 - Browser Strict/data-plane changes: focus browser backend/lifecycle,
   frame-ring, master pipeline/bundle, cadence, quality, discovery, retention,
   and recorder lifecycle/contract tests before the full desktop suite.

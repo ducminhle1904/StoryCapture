@@ -143,7 +143,9 @@ export async function verifyRecordingV3Release(argv = process.argv.slice(2)) {
   const cleanLaunch = JSON.parse(await fs.readFile(cleanLaunchPath, "utf8"));
   if (
     cleanLaunch.passed !== true ||
-    cleanLaunch.preflight?.strict_eligible !== true ||
+    cleanLaunch.preflight?.certification_eligible !== true ||
+    cleanLaunch.preflight?.eligible !== true ||
+    cleanLaunch.preflight?.recording_mode !== "strict_certified" ||
     cleanLaunch.preflight?.failure_codes?.length !== 0 ||
     cleanLaunch.preflight?.manifest_id !== signedManifest.payload.manifest_id ||
     cleanLaunch.preflight?.matched_profile?.profile_id !== profile.profile_id

@@ -108,9 +108,9 @@ function JobRowBase({ job, progress, onCancel }: JobRowProps) {
           Saved to {job.output_path}
         </div>
       ) : null}
-      {job.recording_mode === "uncertified_development" ? (
+      {job.recording_mode === "strict_local" ? (
         <div className="text-[10px] font-medium text-amber-400">
-          Uncertified Development — upload and sharing are disabled
+          Strict Local — runtime-verified; upload and sharing are disabled
         </div>
       ) : null}
       {job.status === "failed" ? (

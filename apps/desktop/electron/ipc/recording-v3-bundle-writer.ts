@@ -14,7 +14,10 @@ import type {
   RecordingResultV3,
   RecordingV3Qualification,
 } from "@storycapture/shared-types/recording-v3";
-import { validateRecordingV3Dimensions } from "@storycapture/shared-types/recording-v3";
+import {
+  readRecordingCertifiedProfileV3,
+  validateRecordingV3Dimensions,
+} from "@storycapture/shared-types/recording-v3";
 import type { RecordingActions } from "./action-timeline";
 import { RecordingBundleWorkspace, recordingBundleArtifact } from "./recording-bundle";
 import { type RecordingV3EngineResult, verifyRecordingV3Artifact } from "./recording-v3-engine";
@@ -49,24 +52,24 @@ function profileReference(
 function bundleProvenance(qualification: RecordingV3Qualification):
   | {
       delivery_policy: "strict";
-      recording_mode: "certified";
+      recording_mode: "strict_certified";
       certification_profile: RecordingCertificationProfileReferenceV3;
     }
   | {
-      delivery_policy: "development";
-      recording_mode: "uncertified_development";
+      delivery_policy: "strict";
+      recording_mode: "strict_local";
       certification_profile: null;
     } {
-  if (qualification.mode === "uncertified_development") {
+  if (qualification.mode === "strict_local") {
     return {
-      delivery_policy: "development",
-      recording_mode: "uncertified_development",
+      delivery_policy: "strict",
+      recording_mode: "strict_local",
       certification_profile: null,
     };
   }
   return {
     delivery_policy: "strict",
-    recording_mode: "certified",
+    recording_mode: "strict_certified",
     certification_profile: profileReference(qualification.profile, qualification.manifestId),
   };
 }
@@ -156,9 +159,27 @@ export class RecordingV3BundleWriter {
   }
 
   static async create(options: RecordingV3BundleWriterOptions): Promise<RecordingV3BundleWriter> {
-    const intent = options.qualification.mode === "certified" ? "strict" : "development";
-    const validation = validateRecordingV3Dimensions(intent, options.captureContract.dimensions);
+    const certificationMode =
+      options.qualification.mode === "strict_certified" ? "certified" : "local";
+    const validation = validateRecordingV3Dimensions(
+      certificationMode,
+      options.captureContract.dimensions,
+    );
     if (!validation.valid) throw new Error(validation.detail ?? "Recording V3 dimensions are invalid");
+    if (options.qualification.mode === "strict_certified") {
+      const profile = readRecordingCertifiedProfileV3(options.qualification.profile);
+      if (!options.qualification.manifestId.trim() || !profile) {
+        throw new Error("Strict Certified requires a valid manifest and certification profile");
+      }
+      if (
+        profile.output_width !== options.captureContract.dimensions.requested_output_width ||
+        profile.output_height !== options.captureContract.dimensions.requested_output_height ||
+        profile.exact_fps.numerator !== options.captureContract.exact_fps.numerator ||
+        profile.exact_fps.denominator !== options.captureContract.exact_fps.denominator
+      ) {
+        throw new Error("Strict Certified profile does not match the capture contract");
+      }
+    }
     if (
       options.width !== options.captureContract.dimensions.requested_output_width ||
       options.height !== options.captureContract.dimensions.requested_output_height
@@ -238,7 +259,7 @@ export class RecordingV3BundleWriter {
       created_at: new Date().toISOString(),
       recording_mode: this.options.qualification.mode,
       profile_id:
-        this.options.qualification.mode === "certified"
+        this.options.qualification.mode === "strict_certified"
           ? this.options.qualification.profile.profile_id
           : null,
       native_stats: input.engineResult.stats,

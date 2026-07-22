@@ -24,10 +24,10 @@
 - Reproducible install check: `pnpm install --frozen-lockfile`.
 - Root dev: `pnpm dev`.
 - Desktop dev: `pnpm --dir apps/desktop dev`.
-- Uncertified local Recording V3 dev (macOS ARM64 only):
-  `pnpm --dir apps/desktop run dev:recording-v3`. This builds the V3 addon,
-  sets the development-only enable flag for the generated dev app, and prints
-  the required warning; ordinary `pnpm dev` does not expose `Dev V3`.
+- Strict Local Recording V3 dev (macOS ARM64 only):
+  `pnpm --dir apps/desktop run dev:recording-v3`. This builds the V3 addon and
+  starts the Electron development runtime without a certification profile or
+  environment opt-in. It retains all common Strict runtime gates.
 - Web dev: `pnpm --dir apps/web dev`.
 
 ## Build, Typecheck, Lint, Format
@@ -47,12 +47,13 @@
 - Native capture helper build: `pnpm --dir apps/desktop native:build`.
 - Recording V3 native addon protocol build/probe:
   `pnpm --dir apps/desktop run native:build:recording-v3`.
-- Uncertified local Recording V3 lifecycle proof:
-  `pnpm --dir apps/desktop run test:e2e:recording-v3-development-flow`. It
-  builds the addon from source, launches the guarded dev app against a
+- Strict Local Recording V3 lifecycle proof:
+  `pnpm --dir apps/desktop run test:e2e:recording-v3-strict-local-flow`. It
+  builds the addon from source, launches the dev app against a
   responsive wide browser fixture, and verifies source viewport/dimension
   fidelity, capture, bundle discovery, local export provenance, and upload
-  rejection.
+  rejection. `test:e2e:recording-v3-development-flow` is retained temporarily
+  as a one-release alias.
 - Verify helpers in an existing unpacked package:
   `pnpm --dir apps/desktop native:verify:packaged`.
 - Build an unpacked package and run the native helper signature/protocol gate:

@@ -8,8 +8,12 @@ import type {
   RecordingFailureCodeV3,
   RecordingPreflightV3Dto,
   RecordingPreflightV3Request,
+  RecordingV3Qualification,
 } from "@storycapture/shared-types/recording-v3";
-import { validateRecordingV3Dimensions } from "@storycapture/shared-types/recording-v3";
+import {
+  recordingV3ModeForCertificationMode,
+  validateRecordingV3Dimensions,
+} from "@storycapture/shared-types/recording-v3";
 import {
   RECORDING_V3_BROWSER_BACKEND_ID,
   RECORDING_V3_BROWSER_BACKEND_VERSION,
@@ -29,16 +33,36 @@ export interface RecordingV3CapabilityFacts {
   storageEligible: boolean;
   nativeProbePassed: boolean;
   permissionsGranted: boolean;
-  failureCodes?: readonly RecordingFailureCodeV3[];
+  runtimeFailureCodes?: readonly RecordingFailureCodeV3[];
+  certificationFailureCodes?: readonly RecordingFailureCodeV3[];
+}
+
+export function recordingV3QualificationFromPreflight(
+  preflight: RecordingPreflightV3Dto,
+): RecordingV3Qualification | null {
+  if (!preflight.eligible) return null;
+  if (preflight.recording_mode === "strict_local") {
+    return preflight.manifest_id === null && preflight.matched_profile === null
+      ? { mode: "strict_local" }
+      : null;
+  }
+  return preflight.manifest_id && preflight.matched_profile
+    ? {
+        mode: "strict_certified",
+        manifestId: preflight.manifest_id,
+        profile: preflight.matched_profile,
+      }
+    : null;
 }
 
 export function evaluateRecordingV3Capability(
   request: RecordingPreflightV3Request,
   facts: RecordingV3CapabilityFacts,
 ): RecordingPreflightV3Dto {
-  const failureCodes = [...new Set(facts.failureCodes ?? [])];
+  const runtimeFailureCodes = [...new Set(facts.runtimeFailureCodes ?? [])];
+  const certificationFailureCodes = [...new Set(facts.certificationFailureCodes ?? [])];
   const fail = (code: RecordingFailureCodeV3) => {
-    if (!failureCodes.includes(code)) failureCodes.push(code);
+    if (!runtimeFailureCodes.includes(code)) runtimeFailureCodes.push(code);
   };
 
   if (request.target_class !== "browser") fail("target_unsupported");
@@ -47,13 +71,13 @@ export function evaluateRecordingV3Capability(
     request.requested_fps.numerator !== 60 ||
     request.requested_fps.denominator !== 1 ||
     request.cursor_policy !== "sidecar_reconstructed" ||
-    !validateRecordingV3Dimensions(request.intent, request.dimensions).valid
+    !validateRecordingV3Dimensions(request.certification_mode, request.dimensions).valid
   ) {
     fail("contract_mismatch");
   }
   if (
     !facts.nativeProbePassed &&
-    !failureCodes.some((code) =>
+    !runtimeFailureCodes.some((code) =>
       ["addon_load_failed", "addon_protocol_mismatch", "addon_hash_mismatch"].includes(code),
     )
   ) {
@@ -70,22 +94,32 @@ export function evaluateRecordingV3Capability(
     fail("runtime_integrity_failed");
   }
   if (
-    request.intent === "strict" &&
-    !facts.matchedProfile &&
-    !failureCodes.some((code) => code.startsWith("manifest_"))
+    (!facts.manifestId || !facts.matchedProfile) &&
+    !certificationFailureCodes.some((code) => code.startsWith("manifest_")) &&
+    !certificationFailureCodes.includes("profile_mismatch")
   ) {
-    fail("profile_mismatch");
-  }
-  if (request.intent === "development" && (facts.manifestId !== null || facts.matchedProfile)) {
-    fail("contract_mismatch");
+    certificationFailureCodes.push("profile_mismatch");
   }
 
-  const commonEligible = failureCodes.length === 0;
+  const runtimeEligible = runtimeFailureCodes.length === 0;
+  const certificationEligible =
+    runtimeEligible &&
+    certificationFailureCodes.length === 0 &&
+    facts.manifestId !== null &&
+    facts.matchedProfile !== null;
+  const eligible =
+    request.certification_mode === "local" ? runtimeEligible : certificationEligible;
+  const failureCodes =
+    request.certification_mode === "local"
+      ? runtimeFailureCodes
+      : [...new Set([...runtimeFailureCodes, ...certificationFailureCodes])];
+  const attachCertification = request.certification_mode === "certified";
 
   return {
     version: 3,
-    intent: request.intent,
-    recording_mode: request.intent === "strict" ? "certified" : "uncertified_development",
+    enforcement_mode: request.enforcement_mode,
+    certification_mode: request.certification_mode,
+    recording_mode: recordingV3ModeForCertificationMode(request.certification_mode),
     backend_id: RECORDING_V3_BROWSER_BACKEND_ID,
     backend_version: RECORDING_V3_BROWSER_BACKEND_VERSION,
     addon_protocol_version: facts.addonProtocolVersion,
@@ -94,15 +128,15 @@ export function evaluateRecordingV3Capability(
     hardware_model: facts.hardwareModel,
     hardware_chip: facts.hardwareChip,
     os_build: facts.osBuild,
-    manifest_id: facts.manifestId,
-    matched_profile: facts.matchedProfile,
+    manifest_id: attachCertification ? facts.manifestId : null,
+    matched_profile: attachCertification ? facts.matchedProfile : null,
     source_rate: facts.sourceRate,
     storage: facts.storage,
     native_probe_passed: facts.nativeProbePassed,
     permissions_granted: facts.permissionsGranted,
-    strict_eligible:
-      request.intent === "strict" && commonEligible && facts.matchedProfile !== null,
-    development_eligible: request.intent === "development" && commonEligible,
+    runtime_eligible: runtimeEligible,
+    certification_eligible: certificationEligible,
+    eligible,
     failure_codes: failureCodes,
   };
 }

@@ -20,7 +20,6 @@ import {
   readRecordingPreflightV3Request,
   readRecordingQualityEvidenceV3,
   readRecordingResult,
-  readRecordingV3DevelopmentEnvironmentDto,
   readSignedRecordingCertificationManifestV3,
   recordingCertificationManifestValidAt,
   recordingCertifiedProfileEnabledAt,
@@ -45,13 +44,13 @@ const DIMENSIONS = {
   requested_output_height: 1080,
 } as const;
 
-function developmentDimensions(
+function localDimensions(
   width: number,
   height: number,
   overrides: Partial<RecordingDimensionsV2> = {},
 ): RecordingDimensionsV2 {
   return {
-    ...recordingV3DimensionsForViewport("development", { width, height }),
+    ...recordingV3DimensionsForViewport("local", { width, height }),
     ...overrides,
   };
 }
@@ -183,7 +182,7 @@ function bundleV3(): RecordingBundleV3 {
     status: "completed",
     created_at: "2026-07-21T00:00:00.000Z",
     delivery_policy: "strict",
-    recording_mode: "certified",
+    recording_mode: "strict_certified",
     certification_profile: {
       manifest_id: "manifest-2026-07",
       profile_id: profile().profile_id,
@@ -230,12 +229,16 @@ function bundleV3(): RecordingBundleV3 {
   };
 }
 
-function developmentBundleV3(): RecordingBundleV3 {
+function localBundleV3(): RecordingBundleV3 {
   return {
     ...bundleV3(),
-    delivery_policy: "development",
-    recording_mode: "uncertified_development",
+    delivery_policy: "strict",
+    recording_mode: "strict_local",
     certification_profile: null,
+    capture_contract: {
+      ...bundleV3().capture_contract,
+      dimensions: localDimensions(1280, 800),
+    },
     evidence: {
       ...bundleV3().evidence,
       certification_quality_path: null,
@@ -388,14 +391,14 @@ describe("Recording V3 contract", () => {
 
   it("parses V3 bundle/export/result and keeps V2 normalization explicitly unverified", () => {
     expect(readRecordingBundle(bundleV3())).toEqual(bundleV3());
-    expect(readRecordingBundle(developmentBundleV3())).toEqual(developmentBundleV3());
+    expect(readRecordingBundle(localBundleV3())).toEqual(localBundleV3());
     expect(readRecordingBundle({ ...bundleV3(), audio: [{}] })).toBeNull();
     expect(readRecordingBundle({ ...bundleV3(), schema_version: 4 })).toBeNull();
 
     const { recording_mode: _legacyMode, ...legacyStrictBundle } = bundleV3();
     expect(readRecordingBundle(legacyStrictBundle)).toEqual({
       ...legacyStrictBundle,
-      recording_mode: "certified",
+      recording_mode: "strict_certified",
     });
     expect(
       readRecordingBundle({
@@ -406,25 +409,30 @@ describe("Recording V3 contract", () => {
     ).toMatchObject({
       status: "quality_failed",
       delivery_policy: "strict",
-      recording_mode: "certified",
+      recording_mode: "strict_certified",
       certification_profile: null,
     });
+    const legacyDevelopmentBundle = {
+      ...localBundleV3(),
+      delivery_policy: "development",
+      recording_mode: "uncertified_development",
+    } as const;
     expect(
       readRecordingBundle({
-        ...developmentBundleV3(),
+        ...legacyDevelopmentBundle,
         status: "quality_failed",
         proxy: null,
       }),
     ).toMatchObject({
       status: "quality_failed",
-      delivery_policy: "development",
-      recording_mode: "uncertified_development",
+      delivery_policy: "strict",
+      recording_mode: "strict_local",
       certification_profile: null,
     });
     expect(
       readRecordingBundle({
-        ...developmentBundleV3(),
-        recording_mode: "certified",
+        ...localBundleV3(),
+        certification_profile: bundleV3().certification_profile,
       }),
     ).toBeNull();
     expect(
@@ -444,7 +452,7 @@ describe("Recording V3 contract", () => {
       source_version: 3,
       guarantee_boundary: "electron_offscreen_delivery",
       source_scope_verified: true,
-      recording_mode: "certified",
+      recording_mode: "strict_certified",
       certification_profile_id: profile().profile_id,
     });
 
@@ -463,28 +471,34 @@ describe("Recording V3 contract", () => {
       quality_verdict: "passed",
       guarantee_boundary: "electron_offscreen_delivery",
       source_scope_verified: true,
-      recording_mode: "certified",
+      recording_mode: "strict_certified",
       certification_profile_id: profile().profile_id,
     } as const;
     expect(readExportRecordingSource(sourceV3)).toEqual(sourceV3);
     expect(normalizeExportRecordingSource(sourceV3)).toMatchObject({
       source_version: 3,
       source_scope_verified: true,
-      recording_mode: "certified",
+      recording_mode: "strict_certified",
     });
 
-    const developmentSourceV3 = {
+    const localSourceV3 = {
       ...sourceV3,
-      recording_mode: "uncertified_development",
+      recording_mode: "strict_local",
       certification_profile_id: null,
     } as const;
-    expect(readExportRecordingSource(developmentSourceV3)).toEqual(developmentSourceV3);
+    expect(readExportRecordingSource(localSourceV3)).toEqual(localSourceV3);
+    expect(
+      readExportRecordingSource({
+        ...localSourceV3,
+        recording_mode: "uncertified_development",
+      }),
+    ).toMatchObject({ recording_mode: "strict_local" });
 
     const result = {
       version: 3,
       status: "completed",
       delivery_policy: "strict",
-      recording_mode: "certified",
+      recording_mode: "strict_certified",
       guarantee_boundary: "electron_offscreen_delivery",
       certification_profile: bundleV3().certification_profile,
       bundle_path: "/bundle",
@@ -505,23 +519,34 @@ describe("Recording V3 contract", () => {
       result,
     });
 
-    const developmentResult = {
+    const localResult = {
       ...result,
-      delivery_policy: "development",
-      recording_mode: "uncertified_development",
+      delivery_policy: "strict",
+      recording_mode: "strict_local",
       certification_profile: null,
     } as const;
-    expect(readRecordingResult(developmentResult)).toEqual(developmentResult);
-    expect(readRecordingResult({ ...developmentResult, output_width: 0 })).toBeNull();
+    expect(readRecordingResult(localResult)).toEqual(localResult);
+    expect(readRecordingResult({ ...localResult, output_width: 0 })).toBeNull();
     expect(
-      readRecordingResult({ ...developmentResult, recording_mode: "certified" }),
+      readRecordingResult({ ...localResult, recording_mode: "strict_certified" }),
     ).toBeNull();
+    expect(
+      readRecordingResult({
+        ...localResult,
+        delivery_policy: "development",
+        recording_mode: "uncertified_development",
+      }),
+    ).toMatchObject({ delivery_policy: "strict", recording_mode: "strict_local" });
   });
 
-  it("validates exact Strict and bounded Development dimensions", () => {
-    const requestFor = (intent: "strict" | "development", dimensions: RecordingDimensionsV2) => ({
+  it("validates exact Certified and bounded Local dimensions", () => {
+    const requestFor = (
+      certificationMode: "local" | "certified",
+      dimensions: RecordingDimensionsV2,
+    ) => ({
       version: 3 as const,
-      intent,
+      enforcement_mode: "strict" as const,
+      certification_mode: certificationMode,
       target_class: "browser" as const,
       requested_fps: FPS,
       dimensions,
@@ -529,11 +554,11 @@ describe("Recording V3 contract", () => {
       audio_roles: [],
     });
 
-    expect(validateRecordingV3Dimensions("strict", DIMENSIONS)).toEqual({
+    expect(validateRecordingV3Dimensions("certified", DIMENSIONS)).toEqual({
       valid: true,
       detail: null,
     });
-    expect(readRecordingPreflightV3Request(requestFor("strict", DIMENSIONS))).not.toBeNull();
+    expect(readRecordingPreflightV3Request(requestFor("certified", DIMENSIONS))).not.toBeNull();
 
     for (const [width, height] of [
       [960, 540],
@@ -542,41 +567,42 @@ describe("Recording V3 contract", () => {
       [1440, 900],
       [1920, 1080],
     ]) {
-      const dimensions = developmentDimensions(width, height);
-      expect(validateRecordingV3Dimensions("development", dimensions)).toEqual({
+      const dimensions = localDimensions(width, height);
+      expect(validateRecordingV3Dimensions("local", dimensions)).toEqual({
         valid: true,
         detail: null,
       });
-      expect(readRecordingPreflightV3Request(requestFor("development", dimensions))).not.toBeNull();
+      expect(readRecordingPreflightV3Request(requestFor("local", dimensions))).not.toBeNull();
     }
 
-    const invalidDevelopmentDimensions = [
-      developmentDimensions(1279, 720),
-      developmentDimensions(318, 240),
-      developmentDimensions(1922, 1080),
-      developmentDimensions(320, 238),
-      developmentDimensions(1920, 1082),
-      developmentDimensions(1280, 800, { capture_dpr: 2 }),
-      developmentDimensions(1280, 800, { physical_width: 1278 }),
-      developmentDimensions(1280, 800, { requested_output_height: 720 }),
+    const invalidLocalDimensions = [
+      localDimensions(1279, 720),
+      localDimensions(318, 240),
+      localDimensions(1922, 1080),
+      localDimensions(320, 238),
+      localDimensions(1920, 1082),
+      localDimensions(1280, 800, { capture_dpr: 2 }),
+      localDimensions(1280, 800, { physical_width: 1278 }),
+      localDimensions(1280, 800, { requested_output_height: 720 }),
     ];
-    for (const dimensions of invalidDevelopmentDimensions) {
-      const validation = validateRecordingV3Dimensions("development", dimensions);
+    for (const dimensions of invalidLocalDimensions) {
+      const validation = validateRecordingV3Dimensions("local", dimensions);
       expect(validation.valid).toBe(false);
       expect(validation.detail).toContain("received");
-      expect(readRecordingPreflightV3Request(requestFor("development", dimensions))).toBeNull();
+      expect(readRecordingPreflightV3Request(requestFor("local", dimensions))).toBeNull();
     }
 
-    expect(validateRecordingV3Dimensions("strict", developmentDimensions(1280, 720)).valid).toBe(
+    expect(validateRecordingV3Dimensions("certified", localDimensions(1280, 720)).valid).toBe(
       false,
     );
-    expect(validateRecordingV3Dimensions("development", DIMENSIONS).valid).toBe(false);
+    expect(validateRecordingV3Dimensions("local", DIMENSIONS).valid).toBe(false);
   });
 
-  it("uses intent-only preflight requests and rejects unknown future info versions", () => {
+  it("validates Local and Certified preflight invariants and rejects legacy requests", () => {
     const request = {
       version: 3,
-      intent: "strict",
+      enforcement_mode: "strict",
+      certification_mode: "certified",
       target_class: "browser",
       requested_fps: FPS,
       dimensions: DIMENSIONS,
@@ -587,36 +613,23 @@ describe("Recording V3 contract", () => {
     expect(
       readRecordingPreflightV3Request({
         ...request,
-        intent: "development",
-        dimensions: developmentDimensions(1280, 800),
+        certification_mode: "local",
+        dimensions: localDimensions(1280, 800),
       }),
     ).toEqual({
       ...request,
-      intent: "development",
-      dimensions: developmentDimensions(1280, 800),
+      certification_mode: "local",
+      dimensions: localDimensions(1280, 800),
     });
-    expect(readRecordingPreflightV3Request({ ...request, intent: "best_effort" })).toBeNull();
-
-    const developmentEnvironment = {
-      version: 3,
-      development_enabled: true,
-      development_available: true,
-      native_probe_passed: true,
-      failure_codes: [],
-    } as const;
-    expect(readRecordingV3DevelopmentEnvironmentDto(developmentEnvironment)).toEqual(
-      developmentEnvironment,
-    );
+    expect(readRecordingPreflightV3Request({ ...request, intent: "strict" })).toBeNull();
     expect(
-      readRecordingV3DevelopmentEnvironmentDto({
-        ...developmentEnvironment,
-        development_enabled: false,
-      }),
+      readRecordingPreflightV3Request({ ...request, certification_mode: "development" }),
     ).toBeNull();
 
     const blocked = {
       version: 3,
-      intent: "strict",
+      enforcement_mode: "strict",
+      certification_mode: "certified",
       backend_id: "electron_offscreen_shared_texture_native_v3",
       backend_version: "3.0.0",
       addon_protocol_version: 1,
@@ -642,31 +655,52 @@ describe("Recording V3 contract", () => {
       },
       native_probe_passed: true,
       permissions_granted: true,
-      strict_eligible: false,
-      development_eligible: false,
-      recording_mode: "certified",
+      runtime_eligible: false,
+      certification_eligible: false,
+      eligible: false,
+      recording_mode: "strict_certified",
       failure_codes: ["unsupported_audio_role"],
     } as const;
     expect(readRecordingPreflightV3Dto(blocked)).toEqual(blocked);
     expect(
-      readRecordingPreflightV3Dto({ ...blocked, strict_eligible: true, failure_codes: [] }),
+      readRecordingPreflightV3Dto({ ...blocked, eligible: true }),
     ).toBeNull();
 
-    const developmentPreflight = {
+    const localPreflight = {
       ...blocked,
-      intent: "development",
-      recording_mode: "uncertified_development",
+      certification_mode: "local",
+      recording_mode: "strict_local",
       manifest_id: null,
       matched_profile: null,
-      development_eligible: true,
+      runtime_eligible: true,
+      certification_eligible: false,
+      eligible: true,
       failure_codes: [],
     } as const;
-    expect(readRecordingPreflightV3Dto(developmentPreflight)).toEqual(developmentPreflight);
+    expect(readRecordingPreflightV3Dto(localPreflight)).toEqual(localPreflight);
+    expect(
+      readRecordingPreflightV3Dto({ ...localPreflight, certification_eligible: true }),
+    ).toEqual({ ...localPreflight, certification_eligible: true });
     expect(
       readRecordingPreflightV3Dto({
-        ...developmentPreflight,
-        strict_eligible: true,
+        ...localPreflight,
+        manifest_id: "manifest-2026-07",
+        matched_profile: profile(),
       }),
+    ).toBeNull();
+
+    const certifiedPreflight = {
+      ...blocked,
+      manifest_id: "manifest-2026-07",
+      matched_profile: profile(),
+      runtime_eligible: true,
+      certification_eligible: true,
+      eligible: true,
+      failure_codes: [],
+    } as const;
+    expect(readRecordingPreflightV3Dto(certifiedPreflight)).toEqual(certifiedPreflight);
+    expect(
+      readRecordingPreflightV3Dto({ ...certifiedPreflight, matched_profile: null }),
     ).toBeNull();
 
     expect(
@@ -694,7 +728,7 @@ describe("Recording V3 contract", () => {
         bundle_path: "/bundle",
       }),
     ).toMatchObject({
-      recording_mode: "uncertified_development",
+      recording_mode: "strict_local",
       certification_profile: null,
     });
 

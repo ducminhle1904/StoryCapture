@@ -4,7 +4,7 @@ import type { App } from "electron";
 import { isPackagedRuntime } from "../runtime";
 import {
   type RecordingFailureCodeV3,
-  RECORDING_V3_DEVELOPMENT_DIMENSION_LIMITS,
+  RECORDING_V3_LOCAL_DIMENSION_LIMITS,
 } from "@storycapture/shared-types/recording-v3";
 
 export const RECORDING_V3_NATIVE_PROTOCOL_VERSION = 3 as const;
@@ -80,7 +80,7 @@ export interface RecordingV3NativeTerminalResult {
 }
 
 export function recordingV3NativeDimensionsSupported(width: number, height: number): boolean {
-  const limits = RECORDING_V3_DEVELOPMENT_DIMENSION_LIMITS;
+  const limits = RECORDING_V3_LOCAL_DIMENSION_LIMITS;
   return (
     Number.isSafeInteger(width) &&
     Number.isSafeInteger(height) &&
@@ -398,7 +398,7 @@ export class RecordingV3NativeBridge {
     if (!recordingV3NativeDimensionsSupported(input.width, input.height)) {
       throw new RecordingV3NativeError(
         "contract_mismatch",
-        `Recording V3 native dimensions must be positive integers within ${RECORDING_V3_DEVELOPMENT_DIMENSION_LIMITS.maximum_width}x${RECORDING_V3_DEVELOPMENT_DIMENSION_LIMITS.maximum_height} and ${RECORDING_V3_DEVELOPMENT_DIMENSION_LIMITS.maximum_physical_pixels} pixels; received ${input.width}x${input.height}`,
+        `Recording V3 native dimensions must be positive integers within ${RECORDING_V3_LOCAL_DIMENSION_LIMITS.maximum_width}x${RECORDING_V3_LOCAL_DIMENSION_LIMITS.maximum_height} and ${RECORDING_V3_LOCAL_DIMENSION_LIMITS.maximum_physical_pixels} pixels; received ${input.width}x${input.height}`,
       );
     }
     return new RecordingV3NativeSession(nativeCall(() => this.addon.start(input)));

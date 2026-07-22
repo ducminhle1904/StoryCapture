@@ -3,10 +3,7 @@ import { recordingV3FailureMessage } from "@storycapture/shared-types/recording-
 import { ScSegmented, ScSlider, ScSwitch } from "@storycapture/ui";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import {
-  probeRecordingV3DevelopmentEnvironment,
-  probeRecordingV3Environment,
-} from "@/ipc/encode";
+import { probeRecordingV3Environment } from "@/ipc/encode";
 import { useAppSettingsStore } from "@/state/app-settings";
 import { useOutputPrefsStore } from "@/state/output-prefs";
 import { SettingsCard, SettingsPanel, SettingsRow } from "../settings-row";
@@ -31,13 +28,11 @@ export function RenderCategory() {
   const settings = useAppSettingsStore((s) => s.settings);
   const patchRender = useAppSettingsStore((s) => s.patchRender);
   const recordingKnobs = useOutputPrefsStore((s) => s.recordingKnobs);
-  const recordingDeliveryPolicy = useOutputPrefsStore((s) => s.recordingDeliveryPolicy);
-  const recordingV3DevelopmentMode = useOutputPrefsStore((s) => s.recordingV3DevelopmentMode);
+  const recordingPolicyPreference = useOutputPrefsStore((s) => s.recordingPolicyPreference);
   const exportKnobs = useOutputPrefsStore((s) => s.exportKnobs);
   const setRecordingKnob = useOutputPrefsStore((s) => s.setRecordingKnob);
-  const setRecordingDeliveryPolicy = useOutputPrefsStore((s) => s.setRecordingDeliveryPolicy);
-  const setRecordingV3DevelopmentMode = useOutputPrefsStore(
-    (s) => s.setRecordingV3DevelopmentMode,
+  const setRecordingPolicyPreference = useOutputPrefsStore(
+    (s) => s.setRecordingPolicyPreference,
   );
   const setExportKnob = useOutputPrefsStore((s) => s.setExportKnob);
 
@@ -46,14 +41,9 @@ export function RenderCategory() {
   const hwOn = exportKnobs.hwEncoder === "auto";
   const savedParallelRenders = settings?.render.parallel_renders ?? 2;
   const [parallelDraft, setParallelDraft] = useState(savedParallelRenders);
-  const [strictEnvironmentReason, setStrictEnvironmentReason] = useState<string | null>(
+  const [certifiedEnvironmentReason, setCertifiedEnvironmentReason] = useState<string | null>(
     "Checking the certified Recording V3 environment…",
   );
-  const [developmentEnvironment, setDevelopmentEnvironment] = useState<{
-    enabled: boolean;
-    available: boolean;
-    reason: string | null;
-  } | null>(null);
 
   useEffect(() => {
     setParallelDraft(savedParallelRenders);
@@ -65,9 +55,12 @@ export function RenderCategory() {
       .then((preflight) => {
         if (cancelled) return;
         const environmentFailures = preflight.failure_codes.filter(
-          (code) => code !== "runtime_integrity_failed",
+          (code) =>
+            code !== "source_metadata_missing" &&
+            code !== "source_metadata_invalid" &&
+            code !== "runtime_integrity_failed",
         );
-        setStrictEnvironmentReason(
+        setCertifiedEnvironmentReason(
           environmentFailures.length > 0
             ? environmentFailures.map(recordingV3FailureMessage).join(" ")
             : null,
@@ -75,34 +68,10 @@ export function RenderCategory() {
       })
       .catch((error) => {
         if (!cancelled) {
-          setStrictEnvironmentReason(
-            `Strict environment check failed: ${error instanceof Error ? error.message : String(error)}`,
+          setCertifiedEnvironmentReason(
+            `Strict Certified environment check failed: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void probeRecordingV3DevelopmentEnvironment()
-      .then((environment) => {
-        if (cancelled) return;
-        setDevelopmentEnvironment({
-          enabled: environment.development_enabled,
-          available: environment.development_available,
-          reason:
-            environment.failure_codes.length > 0
-              ? environment.failure_codes.map(recordingV3FailureMessage).join(" ")
-              : environment.development_available
-                ? null
-                : "The common Recording V3 runtime checks did not pass.",
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setDevelopmentEnvironment(null);
       });
     return () => {
       cancelled = true;
@@ -129,45 +98,36 @@ export function RenderCategory() {
         <SettingsRow
           label="Recording policy"
           hint={
-            strictEnvironmentReason ??
-            "Strict publishes only verified 1080p60 browser takes; Standard completes with truthful degraded evidence."
+            recordingPolicyPreference === "strict_local"
+              ? "Strict Local enforces the full runtime contract and keeps artifacts local-only."
+              : (certifiedEnvironmentReason ??
+                "Strict Certified requires an exact signed release profile; Standard keeps best-effort behavior.")
           }
           control={
             <ScSegmented
               size="sm"
-              value={recordingV3DevelopmentMode ? "development" : recordingDeliveryPolicy}
-              onValueChange={(value) => {
-                if (value === "development") {
-                  setRecordingV3DevelopmentMode(true);
-                  return;
-                }
-                setRecordingDeliveryPolicy(value === "strict" ? "strict" : "best_effort");
-              }}
+              value={recordingPolicyPreference}
+              onValueChange={(value) =>
+                setRecordingPolicyPreference(
+                  value as "best_effort" | "strict_local" | "strict_certified",
+                )
+              }
               options={[
                 { value: "best_effort", label: "Standard" },
+                { value: "strict_local", label: "Strict Local" },
                 {
-                  value: "strict",
-                  label: "Strict",
-                  disabled: strictEnvironmentReason !== null,
-                  title: strictEnvironmentReason ?? undefined,
+                  value: "strict_certified",
+                  label: "Strict Certified",
+                  disabled: certifiedEnvironmentReason !== null,
+                  title: certifiedEnvironmentReason ?? undefined,
                 },
-                ...(developmentEnvironment?.enabled
-                  ? [
-                      {
-                        value: "development",
-                        label: "Dev V3",
-                        disabled: !developmentEnvironment.available,
-                        title: developmentEnvironment.reason ?? undefined,
-                      },
-                    ]
-                  : []),
               ]}
             />
           }
         />
-        {recordingV3DevelopmentMode && (
+        {recordingPolicyPreference === "strict_local" && (
           <div className="border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-2 text-xs font-medium text-[var(--color-warning)]">
-            Uncertified Development — not a Strict-certified recording
+            Strict Local — runtime-verified, not release-certified
           </div>
         )}
         <SettingsRow

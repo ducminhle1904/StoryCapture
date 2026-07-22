@@ -29,7 +29,7 @@ export const RECORDING_V3_STRICT_DIMENSIONS = {
   requested_output_width: 1920,
   requested_output_height: 1080,
 } as const satisfies RecordingDimensionsV2;
-export const RECORDING_V3_DEVELOPMENT_DIMENSION_LIMITS = {
+export const RECORDING_V3_LOCAL_DIMENSION_LIMITS = {
   minimum_width: 320,
   maximum_width: 1920,
   minimum_height: 240,
@@ -43,9 +43,18 @@ export type RecordingSourceOrdinalKindV3 = typeof RECORDING_SOURCE_ORDINAL_KIND_
 export type RecordingCursorPolicyV3 = typeof RECORDING_CURSOR_POLICY_V3;
 export type RecordingMeasurementScopeV3 = "runtime_integrity" | "certification_fixture";
 export type RecordingAudioRoleV3 = "microphone" | "system";
-export type RecordingV3Intent = "strict" | "development";
-export type RecordingV3DeliveryPolicy = "strict" | "development";
-export type RecordingV3Mode = "certified" | "uncertified_development";
+export type RecordingV3EnforcementMode = "strict";
+export type RecordingV3CertificationMode = "local" | "certified";
+export type RecordingV3DeliveryPolicy = "strict";
+export type RecordingV3Mode = "strict_local" | "strict_certified";
+export type LegacyRecordingV3Intent = "strict" | "development";
+export type LegacyRecordingV3DeliveryPolicy = "strict" | "development";
+export type LegacyRecordingV3Mode = "certified" | "uncertified_development";
+
+export interface LegacyRecordingV3Provenance {
+  delivery_policy: LegacyRecordingV3DeliveryPolicy;
+  recording_mode?: LegacyRecordingV3Mode;
+}
 
 export interface RecordingV3DimensionValidation {
   valid: boolean;
@@ -93,13 +102,13 @@ export const RECORDING_V3_FAILURE_MESSAGES: Readonly<Record<RecordingFailureCode
   unverified_guarantee_boundary: "The capture source cannot prove the Strict guarantee boundary.",
   source_epoch_violation: "The browser source epoch changed unexpectedly.",
   active_segment_violation: "The active recording segment changed unexpectedly.",
-  native_lease_overflow: "The native texture lease queue exceeded its certified bound.",
-  native_backpressure: "The native encoder could not sustain the certified frame rate.",
-  native_deadline_missed: "The native frame path missed its certified deadline.",
+  native_lease_overflow: "The native texture lease queue exceeded its Strict bound.",
+  native_backpressure: "The native encoder could not sustain the Strict frame rate.",
+  native_deadline_missed: "The native frame path missed its Strict deadline.",
   native_texture_lost: "The native frame path lost a browser texture.",
   native_addon_crashed: "The native Recording V3 engine stopped unexpectedly.",
   native_encoder_exit_nonzero: "The lossless native encoder exited unsuccessfully.",
-  addon_load_failed: "The certified native Recording V3 engine is unavailable.",
+  addon_load_failed: "The native Recording V3 engine is unavailable.",
   addon_protocol_mismatch: "The native Recording V3 engine protocol is not supported.",
   addon_hash_mismatch: "The native Recording V3 engine does not match the certified binary.",
   manifest_missing: "This build does not include a Recording V3 certification manifest.",
@@ -116,7 +125,7 @@ export const RECORDING_V3_FAILURE_MESSAGES: Readonly<Record<RecordingFailureCode
   target_lost: "The authoritative browser recording target was lost.",
   artifact_verification_failed: "The recorded master failed full artifact verification.",
   runtime_integrity_failed: "Runtime evidence did not satisfy the Strict Recording V3 contract.",
-  contract_mismatch: "The Recording V3 request does not match the certified contract.",
+  contract_mismatch: "The Recording V3 request does not match the selected Strict contract.",
 };
 
 export function recordingV3FailureMessage(code: RecordingFailureCodeV3): string {
@@ -183,7 +192,8 @@ export interface RecordingCaptureContractV3 {
 
 export interface RecordingPreflightV3Request {
   version: typeof RECORDING_CONTRACT_VERSION_V3;
-  intent: RecordingV3Intent;
+  enforcement_mode: RecordingV3EnforcementMode;
+  certification_mode: RecordingV3CertificationMode;
   target_class: RecordingTargetClass;
   requested_fps: RecordingRational;
   dimensions: RecordingDimensionsV2;
@@ -193,7 +203,8 @@ export interface RecordingPreflightV3Request {
 
 export interface RecordingPreflightV3Dto {
   version: typeof RECORDING_CONTRACT_VERSION_V3;
-  intent: RecordingV3Intent;
+  enforcement_mode: RecordingV3EnforcementMode;
+  certification_mode: RecordingV3CertificationMode;
   recording_mode: RecordingV3Mode;
   backend_id: string;
   backend_version: string;
@@ -209,16 +220,9 @@ export interface RecordingPreflightV3Dto {
   storage: RecordingStorageEstimateV2;
   native_probe_passed: boolean;
   permissions_granted: boolean;
-  strict_eligible: boolean;
-  development_eligible: boolean;
-  failure_codes: RecordingFailureCodeV3[];
-}
-
-export interface RecordingV3DevelopmentEnvironmentDto {
-  version: typeof RECORDING_CONTRACT_VERSION_V3;
-  development_enabled: boolean;
-  development_available: boolean;
-  native_probe_passed: boolean;
+  runtime_eligible: boolean;
+  certification_eligible: boolean;
+  eligible: boolean;
   failure_codes: RecordingFailureCodeV3[];
 }
 
@@ -300,12 +304,12 @@ export interface RecordingCertificationProfileReferenceV3 {
 }
 
 export type RecordingV3Qualification =
+  | { mode: "strict_local" }
   | {
-      mode: "certified";
+      mode: "strict_certified";
       manifestId: string;
       profile: RecordingCertifiedProfileV3;
-    }
-  | { mode: "uncertified_development" };
+    };
 
 export interface RecordingResultV3Base {
   version: typeof RECORDING_CONTRACT_VERSION_V3;
@@ -330,15 +334,15 @@ export type RecordingResultV3 =
   | (RecordingResultV3Base & {
       status: "completed";
       delivery_policy: "strict";
-      recording_mode: "certified";
+      recording_mode: "strict_certified";
       certification_profile: RecordingCertificationProfileReferenceV3;
       output_path: string;
       diagnostic_bundle_path: null;
     })
   | (RecordingResultV3Base & {
       status: "completed";
-      delivery_policy: "development";
-      recording_mode: "uncertified_development";
+      delivery_policy: "strict";
+      recording_mode: "strict_local";
       certification_profile: null;
       output_path: string;
       diagnostic_bundle_path: null;
@@ -346,14 +350,14 @@ export type RecordingResultV3 =
   | (RecordingResultV3Base & {
       status: "quality_failed";
       delivery_policy: "strict";
-      recording_mode: "certified";
+      recording_mode: "strict_certified";
       output_path: null;
       diagnostic_bundle_path: string;
     })
   | (RecordingResultV3Base & {
       status: "quality_failed";
-      delivery_policy: "development";
-      recording_mode: "uncertified_development";
+      delivery_policy: "strict";
+      recording_mode: "strict_local";
       certification_profile: null;
       output_path: null;
       diagnostic_bundle_path: string;
@@ -452,19 +456,19 @@ export type RecordingBundleV3 = RecordingBundleV3Base &
     | {
         status: "completed";
         delivery_policy: "strict";
-        recording_mode: "certified";
+        recording_mode: "strict_certified";
         certification_profile: RecordingCertificationProfileReferenceV3;
       }
     | {
         status: "quality_failed";
         delivery_policy: "strict";
-        recording_mode: "certified";
+        recording_mode: "strict_certified";
         certification_profile: RecordingCertificationProfileReferenceV3 | null;
       }
     | {
         status: "completed" | "quality_failed";
-        delivery_policy: "development";
-        recording_mode: "uncertified_development";
+        delivery_policy: "strict";
+        recording_mode: "strict_local";
         certification_profile: null;
       }
   );
@@ -641,11 +645,11 @@ function formatRecordingV3Dimensions(dimensions: RecordingDimensionsV2): string 
 }
 
 export function recordingV3DimensionsForViewport(
-  intent: RecordingV3Intent,
+  certificationMode: RecordingV3CertificationMode,
   viewport: { width: number; height: number },
 ): RecordingDimensionsV2 {
   const captureDpr =
-    intent === "strict" ? RECORDING_V3_STRICT_DIMENSIONS.capture_dpr : 1;
+    certificationMode === "certified" ? RECORDING_V3_STRICT_DIMENSIONS.capture_dpr : 1;
   const physicalWidth = viewport.width * captureDpr;
   const physicalHeight = viewport.height * captureDpr;
   return {
@@ -660,7 +664,7 @@ export function recordingV3DimensionsForViewport(
 }
 
 export function validateRecordingV3Dimensions(
-  intent: RecordingV3Intent,
+  certificationMode: RecordingV3CertificationMode,
   dimensions: RecordingDimensionsV2,
 ): RecordingV3DimensionValidation {
   const received = formatRecordingV3Dimensions(dimensions);
@@ -671,7 +675,7 @@ export function validateRecordingV3Dimensions(
     };
   }
 
-  if (intent === "strict") {
+  if (certificationMode === "certified") {
     const valid = Object.entries(RECORDING_V3_STRICT_DIMENSIONS).every(
       ([key, value]) => dimensions[key as keyof RecordingDimensionsV2] === value,
     );
@@ -683,7 +687,7 @@ export function validateRecordingV3Dimensions(
         };
   }
 
-  const limits = RECORDING_V3_DEVELOPMENT_DIMENSION_LIMITS;
+  const limits = RECORDING_V3_LOCAL_DIMENSION_LIMITS;
   const logicalDimensionsAreEven =
     dimensions.logical_width % 2 === 0 && dimensions.logical_height % 2 === 0;
   const logicalDimensionsAreBounded =
@@ -711,7 +715,7 @@ export function validateRecordingV3Dimensions(
 
   return {
     valid: false,
-    detail: `Dev Recording V3 requires an even viewport from ${limits.minimum_width}×${limits.minimum_height} through ${limits.maximum_width}×${limits.maximum_height} at DPR ${limits.capture_dpr}, matching physical/output dimensions, and at most ${limits.maximum_physical_pixels} physical pixels; received ${received}.`,
+    detail: `Strict Local Recording V3 requires an even viewport from ${limits.minimum_width}×${limits.minimum_height} through ${limits.maximum_width}×${limits.maximum_height} at DPR ${limits.capture_dpr}, matching physical/output dimensions, and at most ${limits.maximum_physical_pixels} physical pixels; received ${received}.`,
   };
 }
 
@@ -756,31 +760,55 @@ function isProfileReference(value: unknown): value is RecordingCertificationProf
   );
 }
 
-function normalizeRecordingMode(
+export function recordingV3ModeForCertificationMode(
+  certificationMode: RecordingV3CertificationMode,
+): RecordingV3Mode {
+  return certificationMode === "local" ? "strict_local" : "strict_certified";
+}
+
+export function recordingV3CertificationModeForMode(
+  recordingMode: RecordingV3Mode,
+): RecordingV3CertificationMode {
+  return recordingMode === "strict_local" ? "local" : "certified";
+}
+
+export function normalizeRecordingV3Provenance(
   deliveryPolicy: unknown,
   recordingMode: unknown,
-): RecordingV3Mode | null {
-  if (recordingMode === undefined && deliveryPolicy === "strict") return "certified";
-  if (recordingMode === "certified" || recordingMode === "uncertified_development") {
-    return recordingMode;
+): Pick<RecordingResultV3Base, "delivery_policy" | "recording_mode"> | null {
+  if (deliveryPolicy === "strict") {
+    if (recordingMode === undefined || recordingMode === "certified") {
+      return { delivery_policy: "strict", recording_mode: "strict_certified" };
+    }
+    if (recordingMode === "strict_local" || recordingMode === "strict_certified") {
+      return { delivery_policy: "strict", recording_mode: recordingMode };
+    }
+  }
+  if (deliveryPolicy === "development" && recordingMode === "uncertified_development") {
+    return { delivery_policy: "strict", recording_mode: "strict_local" };
+  }
+  return null;
+}
+
+export function normalizeRecordingV3Mode(recordingMode: unknown): RecordingV3Mode | null {
+  if (recordingMode === "strict_local" || recordingMode === "uncertified_development") {
+    return "strict_local";
+  }
+  if (recordingMode === "strict_certified" || recordingMode === "certified") {
+    return "strict_certified";
   }
   return null;
 }
 
 function isValidArtifactQualification(
   status: "completed" | "quality_failed",
-  deliveryPolicy: unknown,
   recordingMode: RecordingV3Mode,
   certificationProfile: unknown,
 ): boolean {
-  if (deliveryPolicy === "strict" && recordingMode === "certified") {
+  if (recordingMode === "strict_certified") {
     return status === "quality_failed" || isProfileReference(certificationProfile);
   }
-  return (
-    deliveryPolicy === "development" &&
-    recordingMode === "uncertified_development" &&
-    certificationProfile === null
-  );
+  return recordingMode === "strict_local" && certificationProfile === null;
 }
 
 export function readRecordingCertifiedProfileV3(
@@ -932,7 +960,8 @@ export function readRecordingPreflightV3Request(
   value: unknown,
 ): RecordingPreflightV3Request | null {
   if (!isRecord(value) || value.version !== RECORDING_CONTRACT_VERSION_V3) return null;
-  if (value.intent !== "strict" && value.intent !== "development") return null;
+  if ("intent" in value || value.enforcement_mode !== "strict") return null;
+  if (value.certification_mode !== "local" && value.certification_mode !== "certified") return null;
   if (
     value.target_class !== "browser" &&
     value.target_class !== "display" &&
@@ -940,7 +969,7 @@ export function readRecordingPreflightV3Request(
   )
     return null;
   if (!isExactStrictFrameRate(value.requested_fps) || !isDimensions(value.dimensions)) return null;
-  if (!validateRecordingV3Dimensions(value.intent, value.dimensions).valid) return null;
+  if (!validateRecordingV3Dimensions(value.certification_mode, value.dimensions).valid) return null;
   if (value.cursor_policy !== RECORDING_CURSOR_POLICY_V3) return null;
   if (
     !Array.isArray(value.audio_roles) ||
@@ -954,15 +983,12 @@ export function readRecordingPreflightV3Request(
 
 export function readRecordingPreflightV3Dto(value: unknown): RecordingPreflightV3Dto | null {
   if (!isRecord(value) || value.version !== RECORDING_CONTRACT_VERSION_V3) return null;
-  if (value.intent !== "strict" && value.intent !== "development") return null;
-  if (value.recording_mode !== "certified" && value.recording_mode !== "uncertified_development")
+  if ("intent" in value || "strict_eligible" in value || "development_eligible" in value)
     return null;
-  if (
-    (value.intent === "strict" && value.recording_mode !== "certified") ||
-    (value.intent === "development" && value.recording_mode !== "uncertified_development")
-  ) {
+  if (value.enforcement_mode !== "strict") return null;
+  if (value.certification_mode !== "local" && value.certification_mode !== "certified") return null;
+  if (value.recording_mode !== recordingV3ModeForCertificationMode(value.certification_mode))
     return null;
-  }
   if (!isNonEmptyString(value.backend_id) || !isNonEmptyString(value.backend_version)) return null;
   if (!isPositiveInteger(value.addon_protocol_version)) return null;
   if (value.platform !== "darwin" && value.platform !== "win32") return null;
@@ -975,62 +1001,42 @@ export function readRecordingPreflightV3Dto(value: unknown): RecordingPreflightV
   if (
     typeof value.native_probe_passed !== "boolean" ||
     typeof value.permissions_granted !== "boolean" ||
-    typeof value.strict_eligible !== "boolean" ||
-    typeof value.development_eligible !== "boolean" ||
+    typeof value.runtime_eligible !== "boolean" ||
+    typeof value.certification_eligible !== "boolean" ||
+    typeof value.eligible !== "boolean" ||
     !isFailureCodes(value.failure_codes)
   ) {
     return null;
   }
+  if (value.runtime_eligible && (!value.native_probe_passed || !value.permissions_granted))
+    return null;
+  if (!value.runtime_eligible && value.certification_eligible) return null;
   if (
-    value.strict_eligible &&
-    (value.intent !== "strict" ||
-      value.development_eligible ||
-      value.matched_profile === null ||
+    value.eligible !==
+    (value.certification_mode === "local"
+      ? value.runtime_eligible
+      : value.certification_eligible)
+  ) {
+    return null;
+  }
+  if (
+    value.certification_mode === "certified" &&
+    value.certification_eligible &&
+    (value.matched_profile === null ||
       value.manifest_id === null ||
-      !value.native_probe_passed ||
-      !value.permissions_granted ||
+      !value.runtime_eligible ||
       value.failure_codes.length > 0)
   ) {
     return null;
   }
   if (
-    value.intent === "development" &&
-    (value.strict_eligible || value.matched_profile !== null || value.manifest_id !== null)
+    value.certification_mode === "local" &&
+    (value.matched_profile !== null || value.manifest_id !== null)
   ) {
     return null;
   }
-  if (value.intent === "strict" && value.development_eligible) return null;
-  if (
-    value.development_eligible &&
-    (value.intent !== "development" ||
-      !value.native_probe_passed ||
-      !value.permissions_granted ||
-      value.failure_codes.length > 0)
-  ) {
-    return null;
-  }
+  if (value.eligible && value.failure_codes.length > 0) return null;
   return value as unknown as RecordingPreflightV3Dto;
-}
-
-export function readRecordingV3DevelopmentEnvironmentDto(
-  value: unknown,
-): RecordingV3DevelopmentEnvironmentDto | null {
-  if (!isRecord(value) || value.version !== RECORDING_CONTRACT_VERSION_V3) return null;
-  if (
-    typeof value.development_enabled !== "boolean" ||
-    typeof value.development_available !== "boolean" ||
-    typeof value.native_probe_passed !== "boolean" ||
-    !isFailureCodes(value.failure_codes)
-  ) {
-    return null;
-  }
-  if (
-    value.development_available &&
-    (!value.development_enabled || !value.native_probe_passed || value.failure_codes.length > 0)
-  ) {
-    return null;
-  }
-  return value as unknown as RecordingV3DevelopmentEnvironmentDto;
 }
 
 export function readRecordingFrameLedgerEntryV3(
@@ -1245,16 +1251,24 @@ export function readRecordingBundleV3(value: unknown): RecordingBundleV3 | null 
   if (!isRecord(value) || value.schema_version !== RECORDING_BUNDLE_SCHEMA_VERSION_V3) return null;
   if (value.status !== "completed" && value.status !== "quality_failed") return null;
   if (!isIsoTimestamp(value.created_at)) return null;
-  const recordingMode = normalizeRecordingMode(value.delivery_policy, value.recording_mode);
-  if (!recordingMode) return null;
-  if (!readRecordingCaptureContractV3(value.capture_contract)) return null;
+  const provenance = normalizeRecordingV3Provenance(value.delivery_policy, value.recording_mode);
+  if (!provenance) return null;
+  const captureContract = readRecordingCaptureContractV3(value.capture_contract);
+  if (!captureContract) return null;
+  if (
+    !validateRecordingV3Dimensions(
+      recordingV3CertificationModeForMode(provenance.recording_mode),
+      captureContract.dimensions,
+    ).valid
+  ) {
+    return null;
+  }
   if (value.certification_profile !== null && !isProfileReference(value.certification_profile))
     return null;
   if (
     !isValidArtifactQualification(
       value.status,
-      value.delivery_policy,
-      recordingMode,
+      provenance.recording_mode,
       value.certification_profile,
     )
   ) {
@@ -1296,7 +1310,7 @@ export function readRecordingBundleV3(value: unknown): RecordingBundleV3 | null 
   if (value.frame_ledger_path !== "evidence/frame-ledger.jsonl") return null;
   if (value.diagnostics_manifest_path !== "diagnostics/manifest.json") return null;
   if (!isFailureCodes(value.failure_codes)) return null;
-  return { ...value, recording_mode: recordingMode } as unknown as RecordingBundleV3;
+  return { ...value, ...provenance } as unknown as RecordingBundleV3;
 }
 
 export function readExportRecordingSourceV3(value: unknown): ExportRecordingSourceV3 | null {
@@ -1310,14 +1324,15 @@ export function readExportRecordingSourceV3(value: unknown): ExportRecordingSour
     value.frame_ledger_path,
   ];
   if (!strings.every(isNonEmptyString)) return null;
-  const recordingMode = normalizeRecordingMode(
-    value.recording_mode === undefined ? "strict" : undefined,
-    value.recording_mode,
-  );
+  const recordingMode =
+    value.recording_mode === undefined
+      ? "strict_certified"
+      : normalizeRecordingV3Mode(value.recording_mode);
   if (!recordingMode) return null;
   if (
-    (recordingMode === "certified" && !isNonEmptyString(value.certification_profile_id)) ||
-    (recordingMode === "uncertified_development" && value.certification_profile_id !== null)
+    (recordingMode === "strict_certified" &&
+      !isNonEmptyString(value.certification_profile_id)) ||
+    (recordingMode === "strict_local" && value.certification_profile_id !== null)
   ) {
     return null;
   }
@@ -1348,14 +1363,15 @@ export function readRecordingInfoV3(value: unknown): RecordingInfoV3 | null {
   if (!isQualityVerdict(value.quality_verdict)) return null;
   if (value.certification_profile !== null && !isProfileReference(value.certification_profile))
     return null;
-  const recordingMode = normalizeRecordingMode(
-    value.recording_mode === undefined ? "strict" : undefined,
-    value.recording_mode,
-  );
+  const recordingMode =
+    value.recording_mode === undefined
+      ? "strict_certified"
+      : normalizeRecordingV3Mode(value.recording_mode);
   if (!recordingMode) return null;
   if (
-    (recordingMode === "certified" && !isProfileReference(value.certification_profile)) ||
-    (recordingMode === "uncertified_development" && value.certification_profile !== null)
+    (recordingMode === "strict_certified" &&
+      !isProfileReference(value.certification_profile)) ||
+    (recordingMode === "strict_local" && value.certification_profile !== null)
   ) {
     return null;
   }
@@ -1383,8 +1399,8 @@ export function readRecordingResultV3(value: unknown): RecordingResultV3 | null 
   if (!isRecord(value) || value.version !== RECORDING_CONTRACT_VERSION_V3) return null;
   if (value.status !== "completed" && value.status !== "quality_failed") return null;
   if (value.guarantee_boundary !== RECORDING_GUARANTEE_BOUNDARY_V3) return null;
-  const recordingMode = normalizeRecordingMode(value.delivery_policy, value.recording_mode);
-  if (!recordingMode) return null;
+  const provenance = normalizeRecordingV3Provenance(value.delivery_policy, value.recording_mode);
+  if (!provenance) return null;
   if (
     !isNonEmptyString(value.bundle_path) ||
     !isFiniteNonNegative(value.duration_ms) ||
@@ -1405,8 +1421,7 @@ export function readRecordingResultV3(value: unknown): RecordingResultV3 | null 
   if (
     !isValidArtifactQualification(
       value.status,
-      value.delivery_policy,
-      recordingMode,
+      provenance.recording_mode,
       value.certification_profile,
     )
   ) {
@@ -1418,7 +1433,7 @@ export function readRecordingResultV3(value: unknown): RecordingResultV3 | null 
   } else {
     if (value.output_path !== null || !isNonEmptyString(value.diagnostic_bundle_path)) return null;
   }
-  return { ...value, recording_mode: recordingMode } as unknown as RecordingResultV3;
+  return { ...value, ...provenance } as unknown as RecordingResultV3;
 }
 
 export function readRecordingEventV3(value: unknown): RecordingEventV3 | null {

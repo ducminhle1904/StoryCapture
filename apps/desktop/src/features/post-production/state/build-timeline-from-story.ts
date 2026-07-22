@@ -224,8 +224,8 @@ function recordingSourceMetadata(recording: RecordingInfo): ExportRecordingSourc
     recording.frame_ledger_path &&
     recording.guarantee_boundary === "electron_offscreen_delivery" &&
     recording.source_scope_verified === true &&
-    ((recording.recording_mode === "certified" && recording.certification_profile) ||
-      (recording.recording_mode === "uncertified_development" &&
+    ((recording.recording_mode === "strict_certified" && recording.certification_profile) ||
+      (recording.recording_mode === "strict_local" &&
         recording.certification_profile == null))
   ) {
     return {

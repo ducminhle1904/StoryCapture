@@ -17,7 +17,7 @@ export async function routeSpecializedRecordingStart(
   sender: WebContents,
   dependencies: RecordingStartRouteDependencies,
 ): Promise<{ handled: false } | { handled: true; result: { id: string } }> {
-  if (args.delivery_policy !== "strict" && args.delivery_policy !== "development") {
+  if (args.delivery_policy !== "strict") {
     return { handled: false };
   }
   const url =

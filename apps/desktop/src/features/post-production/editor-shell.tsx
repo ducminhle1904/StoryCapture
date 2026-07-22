@@ -491,11 +491,11 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const setTracks = useEditorStore((s) => s.setTracks);
   const setDuration = useEditorStore((s) => s.setDuration);
   const tracksVideoLen = useEditorStore((s) => s.tracks.video.length);
-  const hasUncertifiedDevelopmentSource = useEditorStore((s) =>
+  const hasStrictLocalSource = useEditorStore((s) =>
     s.tracks.video.some(
       (clip) =>
         clip.recordingSource?.version === 3 &&
-        clip.recordingSource.recording_mode === "uncertified_development",
+        clip.recordingSource.recording_mode === "strict_local",
     ),
   );
   const tracksCursorLen = useEditorStore((s) => s.tracks.cursor.length);
@@ -893,13 +893,13 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         }}
       />
 
-      {hasUncertifiedDevelopmentSource ? (
+      {hasStrictLocalSource ? (
         <div
           role="status"
           className="mx-3 mt-3 flex items-center gap-2 rounded-[var(--sc-r-lg)] border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-200"
         >
           <TriangleAlert size={14} aria-hidden="true" />
-          Uncertified Development — not a Strict-certified recording
+          Strict Local — runtime-verified, not release-certified
         </div>
       ) : null}
 

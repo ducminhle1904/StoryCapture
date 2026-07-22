@@ -1863,8 +1863,9 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
     quality_preset?: RecordingQualityPreset | null;
     scale_algo?: RecordingScaleAlgo | null;
     contract_version?: 2 | 3;
-    intent?: "strict" | "development";
-    delivery_policy?: "strict" | "development" | "best_effort";
+    enforcement_mode?: StartRecordingArgs["enforcement_mode"];
+    certification_mode?: StartRecordingArgs["certification_mode"];
+    delivery_policy?: StartRecordingArgs["delivery_policy"];
     certified_tier?: StartRecordingArgs["certified_tier"];
     capture_contract?: StartRecordingArgs["capture_contract"];
   };

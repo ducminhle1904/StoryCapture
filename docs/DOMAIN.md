@@ -142,16 +142,19 @@ Main files live under `apps/desktop/src/features/editor`.
 
 ## Automation And Recording
 
-The Electron host owns automation and capture behavior. Recording has two
+The Electron host owns automation and capture behavior. Recording has three
 explicit policies:
 
 - **Standard** is `best_effort` and preserves the legacy recording path. It can
   complete on uncertified hardware, but its result and UI must remain visibly
   degraded rather than claiming Strict quality.
-- **Strict** requires exact nominal `60/1`, a certified platform/hardware/
-  backend tuple, successful throughput/storage/readiness preflight, zero cadence
-  loss, and exact decoded FFV1 master-frame identity. Any runtime violation ends
-  as `quality_failed`; it never silently falls back to Standard.
+- **Strict Local** enforces the V3 runtime contract without requiring a signed
+  certification profile. It is available in development and packaged builds,
+  produces local-only artifacts, and never silently falls back to Standard.
+- **Strict Certified** enforces the same V3 runtime contract and additionally
+  requires an exact signed platform/hardware/backend profile. Any runtime or
+  certification violation blocks admission or ends as `quality_failed`; it
+  never falls back to Strict Local or Standard.
 
 - Automation is BrowserWindow-based in the Electron host. It can launch an
   offscreen browser window or attach to an author preview stream.
@@ -160,24 +163,30 @@ explicit policies:
   Capture adapters/helpers. The native adapters are implemented but are not yet
   registered in the production Strict lifecycle; the current certification
   catalog is deliberately empty.
-- Strict V3 is a separate browser-only, video-only contract for exact
+- Strict Certified V3 is a browser-only, video-only contract for exact
   960x540 logical / 1920x1080 physical output at 60/1 with reconstructed cursor
-  sidecars. Uncertified Development V3 instead derives validated DPR-1
-  physical/output dimensions from the even `.story` viewport under the limits
-  owned by `packages/shared-types/src/recording-v3.ts`; this flexibility never
-  changes the certified Strict profile. V3 uses Electron shared-texture
-  metadata, a bounded native macOS lease/FFV1 pipeline, signed exact-runtime
-  profiles, and never copies full frames through JavaScript. Display/window,
-  audio, Windows, other Macs, and mismatched runtime hashes fail admission.
-- Strict V3 bundles contain a lossless master, optional verified proxy, cadence and
-  runtime-quality evidence, JSONL frame ledger, action/cursor sidecars, a
-  diagnostic manifest, and an exact certification-profile reference. A
+  sidecars. Strict Local derives validated DPR-1 physical/output dimensions
+  from the even `.story` viewport under the limits owned by
+  `packages/shared-types/src/recording-v3.ts`; this flexibility never changes
+  the signed Certified profile. Both modes use Electron shared-texture
+  metadata and a bounded native macOS lease/FFV1 pipeline without copying full
+  frames through JavaScript; Strict Certified additionally binds a signed
+  exact-runtime profile. Display/window, audio, Windows, other Macs, and
+  mismatched Certified runtime hashes fail admission.
+- Recording V3 bundles contain a lossless master, optional verified proxy,
+  cadence and runtime-quality evidence, JSONL frame ledger, action/cursor
+  sidecars, and a diagnostic manifest. Strict Certified includes an exact
+  certification-profile reference; Strict Local always keeps it `null`. A
   `quality_failed` bundle is retained only for diagnostics and never published.
 - Source/dev builds intentionally have no trusted V3 signer key or signed
-  manifest/evidence. Strict V3 becomes eligible only in a protected
+  manifest/evidence. Strict Certified becomes eligible only in a protected
   signed/notarized package whose clean-launch preflight matches exactly one
-  unexpired profile. Uncertified Development bundles instead keep their
-  certification profile `null`.
+  unexpired profile; this does not block Strict Local.
+- New V3 artifacts use `strict_local` or `strict_certified` with
+  `delivery_policy: "strict"`. Readers normalize legacy `certified` and
+  `uncertified_development` manifests in memory without rewriting their bytes.
+  Strict Local exports use `-strict-local`, remain locally editable, and cannot
+  be uploaded or shared.
 - Strict writes a lossless FFV1/BGRA Matroska master, an H.264 editing proxy,
   PCM WAV audio sidecars, action timing, cadence/quality evidence, and an exact
   per-frame sequence ledger. Its bundle layout is

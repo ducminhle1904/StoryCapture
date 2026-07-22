@@ -16,7 +16,7 @@ const identity = JSON.parse(
 const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 if (process.platform !== "darwin" || process.arch !== "arm64") {
-  throw new Error("Recording V3 development flow requires macOS on Apple silicon.");
+  throw new Error("Recording V3 Strict Local flow requires macOS on Apple silicon.");
 }
 
 function waitForServer(url, timeoutMs = 60_000) {
@@ -45,8 +45,8 @@ function waitForServer(url, timeoutMs = 60_000) {
 }
 
 const { executablePath } = await prepareDevElectronApp();
-const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-v3-development-e2e-"));
-const reportPath = path.join(temporaryRoot, "development-flow-report.json");
+const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-v3-strict-local-e2e-"));
+const reportPath = path.join(temporaryRoot, "strict-local-flow-report.json");
 const vite = spawn(
   pnpmCommand,
   ["exec", "vite", "--host", "127.0.0.1", "--strictPort"],
@@ -59,7 +59,7 @@ try {
     executablePath,
     [
       desktopRoot,
-      `--storycapture-recording-v3-development-flow-result=${reportPath}`,
+      `--storycapture-recording-v3-strict-local-flow-result=${reportPath}`,
     ],
     {
       cwd: desktopRoot,
@@ -68,7 +68,6 @@ try {
         ...process.env,
         [identity.devAppEnv]: "1",
         [identity.devServerUrlEnv]: identity.defaultDevServerUrl,
-        STORYCAPTURE_ENABLE_UNCERTIFIED_RECORDING_V3: "1",
       },
     },
   );
@@ -85,7 +84,7 @@ try {
         electron.kill("SIGKILL");
         reject(
           new Error(
-            `Recording V3 development flow exceeded 5 minutes; report: ${reportPath}`,
+            `Recording V3 Strict Local flow exceeded 5 minutes; report: ${reportPath}`,
           ),
         );
       }, 5_000);
@@ -102,17 +101,17 @@ try {
   try {
     report = JSON.parse(await fs.readFile(reportPath, "utf8"));
   } catch (error) {
-    throw new Error(`Recording V3 development flow did not produce ${reportPath}`, {
+    throw new Error(`Recording V3 Strict Local flow did not produce ${reportPath}`, {
       cause: error,
     });
   }
   if (exitCode !== 0 || report.passed !== true) {
     throw new Error(
-      `Recording V3 development flow failed (${report.error ?? `exit ${exitCode}`}); report: ${reportPath}`,
+      `Recording V3 Strict Local flow failed (${report.error ?? `exit ${exitCode}`}); report: ${reportPath}`,
     );
   }
   process.stdout.write(
-    `Recording V3 development flow passed: ${report.result.cadence_evidence.source_presentations} source frames, ${report.export_path}\n`,
+    `Recording V3 Strict Local flow passed: ${report.result.cadence_evidence.source_presentations} source frames, ${report.export_path}\n`,
   );
 } finally {
   vite.kill("SIGTERM");

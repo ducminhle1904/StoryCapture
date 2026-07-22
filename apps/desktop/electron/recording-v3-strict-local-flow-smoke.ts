@@ -17,7 +17,7 @@ import {
   assertRecordingV3UploadAllowed,
   initializeRecordingV3ExportProvenance,
   recordingV3ModeForUploadPath,
-  UNCERTIFIED_DEVELOPMENT_UPLOAD_ERROR,
+  STRICT_LOCAL_UPLOAD_ERROR,
 } from "./ipc/recording-v3-export-provenance";
 import {
   acknowledgeStrictBrowserRecordingV3,
@@ -36,11 +36,11 @@ import { initializeExportOutputLifecycle } from "./ipc/legacy/export-output-life
 import { renderSessions } from "./ipc/legacy/shared";
 import { isDevRuntime } from "./runtime";
 
-const DEVELOPMENT_VIEWPORT = { width: 1280, height: 800 } as const;
+const STRICT_LOCAL_VIEWPORT = { width: 1280, height: 800 } as const;
 const EXPORT_VIEWPORT = { width: 1920, height: 1080 } as const;
-const DEVELOPMENT_DIMENSIONS = recordingV3DimensionsForViewport(
-  "development",
-  DEVELOPMENT_VIEWPORT,
+const STRICT_LOCAL_DIMENSIONS = recordingV3DimensionsForViewport(
+  "local",
+  STRICT_LOCAL_VIEWPORT,
 );
 
 interface ResponsiveTargetState {
@@ -58,7 +58,7 @@ function captureContract() {
     source_ordinal_kind: "electron_frame_count" as const,
     target_class: "browser" as const,
     exact_fps: { numerator: 60, denominator: 1 },
-    dimensions: { ...DEVELOPMENT_DIMENSIONS },
+    dimensions: { ...STRICT_LOCAL_DIMENSIONS },
     cursor_policy: "sidecar_reconstructed" as const,
     audio_roles: [] as [],
   };
@@ -67,13 +67,14 @@ function captureContract() {
 function startArgs(projectFolder: string): StartRecordingArgs {
   return {
     project_folder: projectFolder,
-    target: { kind: "author_preview", stream_id: "recording-v3-development-flow" },
-    width: DEVELOPMENT_VIEWPORT.width,
-    height: DEVELOPMENT_VIEWPORT.height,
+    target: { kind: "author_preview", stream_id: "recording-v3-strict-local-flow" },
+    width: STRICT_LOCAL_VIEWPORT.width,
+    height: STRICT_LOCAL_VIEWPORT.height,
     fps: 60,
     contract_version: 3,
-    intent: "development",
-    delivery_policy: "development",
+    enforcement_mode: "strict",
+    certification_mode: "local",
+    delivery_policy: "strict",
     capture_contract: captureContract(),
     include_cursor: false,
     first_frame_timeout_ms: 10_000n,
@@ -89,7 +90,7 @@ async function responsiveTargetState(contents: WebContents): Promise<ResponsiveT
       innerWidth,
       innerHeight,
       visible: Boolean(target && rect && rect.width > 0 && rect.height > 0 && style?.display !== "none" && style?.visibility !== "hidden"),
-      clicked: Boolean(window.__storyCaptureDevelopmentWideFixture?.clicked),
+      clicked: Boolean(window.__storyCaptureStrictLocalWideFixture?.clicked),
       rect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : { x: 0, y: 0, width: 0, height: 0 },
     };
   })()`)) as ResponsiveTargetState;
@@ -148,16 +149,16 @@ async function waitForExport(jobId: string): Promise<NonNullable<ReturnType<type
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error(`development export ${jobId} timed out`);
+  throw new Error(`Strict Local export ${jobId} timed out`);
 }
 
-export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Promise<boolean> {
+export async function runRecordingV3StrictLocalFlowSmoke(resultPath: string): Promise<boolean> {
   const temporaryRoot = path.dirname(resultPath);
-  const projectFolder = path.join(temporaryRoot, "development-project");
+  const projectFolder = path.join(temporaryRoot, "strict-local-project");
   const runtimeStateRoot = path.join(temporaryRoot, "runtime-state");
   const outputFolder = path.join(projectFolder, "local-exports");
   const fixtureUrl = pathToFileURL(
-    path.join(app.getAppPath(), "fixtures", "recording-v3-development-wide", "index.html"),
+    path.join(app.getAppPath(), "fixtures", "recording-v3-strict-local-wide", "index.html"),
   );
   const senderWindow = new BrowserWindow({ show: false });
   let sessionId: string | null = null;
@@ -173,20 +174,22 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
     phase = "responsive_breakpoint";
     const narrowTarget = await inspectNarrowResponsiveTarget(fixtureUrl.href);
     if (narrowTarget.innerWidth !== 960 || narrowTarget.visible) {
-      throw new Error("development fixture target was not hidden at the 960px breakpoint");
+      throw new Error("Strict Local fixture target was not hidden at the 960px breakpoint");
     }
     phase = "source_preflight";
     const preflight = await probeBrowserRecordingV3Capability(args, fixtureUrl.href);
     if (
-      !preflight.development_eligible ||
-      preflight.strict_eligible ||
-      preflight.recording_mode !== "uncertified_development" ||
+      !preflight.runtime_eligible ||
+      !preflight.eligible ||
+      preflight.enforcement_mode !== "strict" ||
+      preflight.certification_mode !== "local" ||
+      preflight.recording_mode !== "strict_local" ||
       preflight.matched_profile !== null ||
       preflight.manifest_id !== null ||
       preflight.source_rate.measured_fps?.numerator !== 60 ||
       preflight.source_rate.measured_fps.denominator !== 1
     ) {
-      throw new Error(`development preflight failed: ${preflight.failure_codes.join(", ")}`);
+      throw new Error(`Strict Local preflight failed: ${preflight.failure_codes.join(", ")}`);
     }
 
     phase = "recording_start";
@@ -198,20 +201,20 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
     );
     sessionId = started.id;
     const recordingContents = strictBrowserRecordingV3Contents(sessionId);
-    if (!recordingContents) throw new Error("development recording contents were unavailable");
+    if (!recordingContents) throw new Error("Strict Local recording contents were unavailable");
     const wideTargetBefore = await responsiveTargetState(recordingContents);
     if (
-      wideTargetBefore.innerWidth !== DEVELOPMENT_VIEWPORT.width ||
-      wideTargetBefore.innerHeight !== DEVELOPMENT_VIEWPORT.height ||
+      wideTargetBefore.innerWidth !== STRICT_LOCAL_VIEWPORT.width ||
+      wideTargetBefore.innerHeight !== STRICT_LOCAL_VIEWPORT.height ||
       !wideTargetBefore.visible ||
       wideTargetBefore.clicked
     ) {
-      throw new Error("development recording did not expose the desktop-only target");
+      throw new Error("Strict Local recording did not expose the desktop-only target");
     }
     const actionTimeMs = Math.max(0, strictBrowserRecordingV3ClockMs(sessionId) ?? 0);
     const wideTargetAfter = await clickResponsiveTarget(recordingContents);
     if (!wideTargetAfter.clicked) {
-      throw new Error("development recording could not click the desktop-only target");
+      throw new Error("Strict Local recording could not click the desktop-only target");
     }
     const center = {
       x: wideTargetBefore.rect.x + wideTargetBefore.rect.width / 2,
@@ -243,31 +246,31 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
         },
       ])
     ) {
-      throw new Error("development recording could not persist the responsive action");
+      throw new Error("Strict Local recording could not persist the responsive action");
     }
     phase = "recording_steady";
     await new Promise((resolve) => setTimeout(resolve, 1_200));
     phase = "recording_pause";
     if (!(await pauseStrictBrowserRecordingV3(sessionId))) {
-      throw new Error("development recording could not pause");
+      throw new Error("Strict Local recording could not pause");
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
     phase = "recording_resume";
     if (!(await resumeStrictBrowserRecordingV3(sessionId))) {
-      throw new Error("development recording could not resume");
+      throw new Error("Strict Local recording could not resume");
     }
     await new Promise((resolve) => setTimeout(resolve, 1_200));
     phase = "recording_stop";
     const result = await stopStrictBrowserRecordingV3(sessionId);
     if (!result || result.status !== "completed") {
-      throw new Error("development recording did not complete");
+      throw new Error("Strict Local recording did not complete");
     }
     if (
-      result.delivery_policy !== "development" ||
-      result.recording_mode !== "uncertified_development" ||
+      result.delivery_policy !== "strict" ||
+      result.recording_mode !== "strict_local" ||
       result.certification_profile !== null
     ) {
-      throw new Error("development recording result lost its provenance");
+      throw new Error("Strict Local recording result lost its provenance");
     }
 
     phase = "bundle_validation";
@@ -279,26 +282,26 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
       !manifest ||
       manifest.schema_version !== 3 ||
       manifest.status !== "completed" ||
-      manifest.recording_mode !== "uncertified_development" ||
+      manifest.recording_mode !== "strict_local" ||
       manifest.certification_profile !== null ||
       !manifest.proxy ||
-      manifest.capture_contract.dimensions.logical_width !== DEVELOPMENT_VIEWPORT.width ||
-      manifest.capture_contract.dimensions.logical_height !== DEVELOPMENT_VIEWPORT.height ||
+      manifest.capture_contract.dimensions.logical_width !== STRICT_LOCAL_VIEWPORT.width ||
+      manifest.capture_contract.dimensions.logical_height !== STRICT_LOCAL_VIEWPORT.height ||
       manifest.capture_contract.dimensions.capture_dpr !== 1 ||
-      manifest.capture_contract.dimensions.physical_width !== DEVELOPMENT_VIEWPORT.width ||
-      manifest.capture_contract.dimensions.physical_height !== DEVELOPMENT_VIEWPORT.height ||
-      manifest.capture_contract.dimensions.requested_output_width !== DEVELOPMENT_VIEWPORT.width ||
-      manifest.capture_contract.dimensions.requested_output_height !== DEVELOPMENT_VIEWPORT.height ||
+      manifest.capture_contract.dimensions.physical_width !== STRICT_LOCAL_VIEWPORT.width ||
+      manifest.capture_contract.dimensions.physical_height !== STRICT_LOCAL_VIEWPORT.height ||
+      manifest.capture_contract.dimensions.requested_output_width !== STRICT_LOCAL_VIEWPORT.width ||
+      manifest.capture_contract.dimensions.requested_output_height !== STRICT_LOCAL_VIEWPORT.height ||
       manifest.sidecars.actions_path !== "sidecars/actions.json" ||
       manifest.sidecars.cursor_path !== "sidecars/cursor.json" ||
       result.cadence_evidence.native_commits <= 0 ||
       result.cadence_evidence.native_commits !==
         result.cadence_evidence.artifact_decoded_frames
     ) {
-      throw new Error("development bundle manifest failed validation");
+      throw new Error("Strict Local bundle manifest failed validation");
     }
     if (!result.master_path || !result.proxy_path) {
-      throw new Error("development recording result omitted master or proxy paths");
+      throw new Error("Strict Local recording result omitted master or proxy paths");
     }
     const [masterProbe, proxyProbe] = await Promise.all([
       probeRecording(result.master_path, { verifiedFullDecode: true }),
@@ -306,13 +309,13 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
     ]);
     if (
       masterProbe.status !== "valid" ||
-      masterProbe.width !== DEVELOPMENT_VIEWPORT.width ||
-      masterProbe.height !== DEVELOPMENT_VIEWPORT.height ||
+      masterProbe.width !== STRICT_LOCAL_VIEWPORT.width ||
+      masterProbe.height !== STRICT_LOCAL_VIEWPORT.height ||
       proxyProbe.status !== "valid" ||
-      proxyProbe.width !== DEVELOPMENT_VIEWPORT.width ||
-      proxyProbe.height !== DEVELOPMENT_VIEWPORT.height
+      proxyProbe.width !== STRICT_LOCAL_VIEWPORT.width ||
+      proxyProbe.height !== STRICT_LOCAL_VIEWPORT.height
     ) {
-      throw new Error("development master or proxy dimensions were invalid");
+      throw new Error("Strict Local master or proxy dimensions were invalid");
     }
 
     phase = "discovery";
@@ -326,7 +329,7 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
     if (
       !recording ||
       recording.version !== 3 ||
-      recording.recording_mode !== "uncertified_development" ||
+      recording.recording_mode !== "strict_local" ||
       recording.certification_profile !== null ||
       !recording.bundle_path ||
       !recording.master_path ||
@@ -336,10 +339,10 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
       !recording.frame_ledger_path ||
       !recording.exact_source_fps ||
       !recording.source_frame_count ||
-      recording.width !== DEVELOPMENT_VIEWPORT.width ||
-      recording.height !== DEVELOPMENT_VIEWPORT.height
+      recording.width !== STRICT_LOCAL_VIEWPORT.width ||
+      recording.height !== STRICT_LOCAL_VIEWPORT.height
     ) {
-      throw new Error("packaged-compatible discovery lost development provenance");
+      throw new Error("packaged-compatible discovery lost Strict Local provenance");
     }
     const recordingSource = readExportRecordingSource({
       version: 3,
@@ -360,7 +363,7 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
       certification_profile_id: null,
     });
     if (!recordingSource || recordingSource.version !== 3) {
-      throw new Error("development export source failed validation");
+      throw new Error("Strict Local export source failed validation");
     }
 
     const durationMs = Math.max(1_000, recording.duration_ms ?? 1_000);
@@ -373,8 +376,8 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
       video: [
         {
           type: "source",
-          id: "development-source",
-          clip_id: "development-clip",
+          id: "strict-local-source",
+          clip_id: "strict-local-clip",
           path: recording.proxy_path,
           pts_offset_ms: 0,
           timeline_start_ms: 0,
@@ -388,7 +391,7 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
     };
     phase = "local_export";
     const exported = await exportRun({
-      story_id: "recording-v3-development-flow",
+      story_id: "recording-v3-strict-local-flow",
       graph_json: JSON.stringify(graph),
       outputs: [
         {
@@ -401,22 +404,22 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
         },
       ],
       output_folder: outputFolder,
-      base_name: "development-flow",
+      base_name: "strict-local-flow",
       preset_id: null,
       priority: 0,
     });
     const exportSession = await waitForExport(exported.job_ids[0]!);
     if (
       exportSession.job.status !== "completed" ||
-      exportSession.job.recording_mode !== "uncertified_development" ||
+      exportSession.job.recording_mode !== "strict_local" ||
       !exportSession.job.output_path
     ) {
-      throw new Error(`development local export failed: ${exportSession.job.error ?? "unknown"}`);
+      throw new Error(`Strict Local export failed: ${exportSession.job.error ?? "unknown"}`);
     }
     const outputPath = exportSession.job.output_path;
-    const suffixCount = (path.basename(outputPath).match(/-uncertified-dev/g) ?? []).length;
+    const suffixCount = (path.basename(outputPath).match(/-strict-local/g) ?? []).length;
     if (suffixCount !== 1 || !(await fs.stat(outputPath)).isFile()) {
-      throw new Error("development export filename or artifact was invalid");
+      throw new Error("Strict Local export filename or artifact was invalid");
     }
     const exportProbe = await probeRecording(outputPath, { verifiedFullDecode: true });
     if (
@@ -424,7 +427,7 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
       exportProbe.width !== EXPORT_VIEWPORT.width ||
       exportProbe.height !== EXPORT_VIEWPORT.height
     ) {
-      throw new Error("development export dimensions were invalid");
+      throw new Error("Strict Local export dimensions were invalid");
     }
 
     phase = "upload_guard_reopen";
@@ -435,10 +438,10 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
       await assertRecordingV3UploadAllowed(outputPath, null);
     } catch (error) {
       uploadRejected =
-        error instanceof Error && error.message === UNCERTIFIED_DEVELOPMENT_UPLOAD_ERROR;
+        error instanceof Error && error.message === STRICT_LOCAL_UPLOAD_ERROR;
     }
-    if (persistedMode !== "uncertified_development" || !uploadRejected) {
-      throw new Error("development export upload guard did not survive registry reopen");
+    if (persistedMode !== "strict_local" || !uploadRejected) {
+      throw new Error("Strict Local export upload guard did not survive registry reopen");
     }
 
     const addonPath = recordingV3NativeAddonPathForRuntime({
@@ -449,14 +452,14 @@ export async function runRecordingV3DevelopmentFlowSmoke(resultPath: string): Pr
     const passed =
       isDevRuntime(app) &&
       addonPath.includes(path.join("native", "macos-recording-v3", ".build")) &&
-      result.recording_mode === "uncertified_development";
+      result.recording_mode === "strict_local";
     await writeResultAtomic(resultPath, {
       schema_version: 1,
       passed,
       addon_path: addonPath,
       preflight,
       result,
-      dimensions: DEVELOPMENT_DIMENSIONS,
+      dimensions: STRICT_LOCAL_DIMENSIONS,
       export_dimensions: EXPORT_VIEWPORT,
       narrow_target: narrowTarget,
       wide_target_before: wideTargetBefore,
