@@ -35,6 +35,7 @@ import {
   RecordingV3NativeError,
   recordingV3NativeAddonPathForRuntime,
 } from "./recording-v3-native-addon";
+import { RecordingV3FramePump } from "./recording-v3-frame-pump";
 
 const SOURCE_PROBE_FRAMES = 60;
 const SOURCE_PROBE_TIMEOUT_MS = 8_000;
@@ -131,10 +132,16 @@ async function probeBrowserSourceV3(
   let metadataFailure: RecordingFailureCodeV3 | null = null;
   let receivedTexture = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  const pump = new RecordingV3FramePump(window.webContents);
   try {
     window.webContents.setFrameRate(60);
     await new Promise<void>((resolve, reject) => {
+      let settled = false;
       const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        accepting = false;
+        pump.stop();
         if (timer) clearTimeout(timer);
         window.webContents.off("paint", onPaint);
         if (error) reject(error);
@@ -144,6 +151,7 @@ async function probeBrowserSourceV3(
         const texture = (event as Electron.Event & { texture?: Electron.OffscreenSharedTexture })
           .texture;
         if (!texture) return;
+        let requestNext = false;
         try {
           if (!accepting) return;
           receivedTexture = true;
@@ -162,9 +170,17 @@ async function probeBrowserSourceV3(
           }
           samples.push({ frameCount: Number(frameCount), timestampUs });
           if (samples.length >= SOURCE_PROBE_FRAMES) finish();
-          else window.webContents.invalidate();
+          else requestNext = true;
         } finally {
           texture.release();
+          if (
+            requestNext &&
+            accepting &&
+            !metadataFailure &&
+            samples.length < SOURCE_PROBE_FRAMES
+          ) {
+            pump.requestNext();
+          }
         }
       };
       window.webContents.on("paint", onPaint);
@@ -177,7 +193,7 @@ async function probeBrowserSourceV3(
         .loadURL(url)
         .then(() => {
           accepting = true;
-          window.webContents.invalidate();
+          pump.start();
         })
         .catch((error) => finish(error));
     });
@@ -192,6 +208,7 @@ async function probeBrowserSourceV3(
       failureCodes: [metadataFailure ?? (receivedTexture ? "source_metadata_invalid" : "source_metadata_missing")],
     };
   } finally {
+    pump.stop();
     if (timer) clearTimeout(timer);
     if (!window.isDestroyed()) window.destroy();
   }

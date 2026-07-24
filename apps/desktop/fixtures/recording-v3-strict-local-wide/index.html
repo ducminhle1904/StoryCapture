@@ -56,8 +56,13 @@
         const canvas = document.getElementById("motion");
         const context = canvas.getContext("2d", { alpha: false });
         const target = document.getElementById("desktop-target");
+        const mode = new URLSearchParams(window.location.search).get("mode") === "static"
+          ? "static"
+          : "motion";
         const state = {
           clicked: false,
+          drawCount: 0,
+          mode,
           ordinal: 0,
         };
 
@@ -74,6 +79,7 @@
         });
 
         const draw = () => {
+          state.drawCount += 1;
           const { width, height } = canvas;
           const x = 48 + (state.ordinal % Math.max(1, width - 144));
           context.fillStyle = "#10151d";
@@ -85,12 +91,15 @@
           context.fillRect(x, 112, 96, 20);
           context.fillStyle = state.clicked ? "#84cc16" : "#f59e0b";
           context.fillRect(48, height - 96, Math.max(32, (state.ordinal * 7) % (width - 96)), 16);
-          state.ordinal += 1;
-          requestAnimationFrame(draw);
+          if (mode === "motion") {
+            state.ordinal += 1;
+            requestAnimationFrame(draw);
+          }
         };
 
         window.__storyCaptureStrictLocalWideFixture = state;
-        requestAnimationFrame(draw);
+        if (mode === "motion") requestAnimationFrame(draw);
+        else draw();
       })();
     </script>
   </body>

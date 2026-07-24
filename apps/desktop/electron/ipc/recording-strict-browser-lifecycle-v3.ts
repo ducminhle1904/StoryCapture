@@ -26,6 +26,7 @@ import { recordingV3QualificationFromPreflight } from "./recording-v3-capability
 import { BrowserCaptureBackendV3 } from "./recording-v3-browser-backend";
 import { RecordingV3BundleWriter } from "./recording-v3-bundle-writer";
 import { RecordingV3Engine, RecordingV3EngineError } from "./recording-v3-engine";
+import { RecordingV3FramePump } from "./recording-v3-frame-pump";
 import {
   loadRecordingV3NativeAddon,
   RecordingV3NativeBridge,
@@ -50,6 +51,7 @@ export interface StrictBrowserSessionV3 extends RecordingV3CoordinatorSession {
   native: RecordingV3NativeSession;
   engine: RecordingV3Engine;
   backend: BrowserCaptureBackendV3;
+  framePump: RecordingV3FramePump;
   bundleWriter: RecordingV3BundleWriter;
   actionEvents: ActionTimelineEvent[];
   cursorMotionPreset: ActionCursorTiming["motion_preset"] | undefined;
@@ -170,6 +172,7 @@ async function failSession(session: StrictBrowserSessionV3, error: unknown): Pro
     rejectBoundary?.(failure.error);
     clearInterval(session.heartbeat);
     session.acceptingFrames = false;
+    session.framePump.stop();
     session.pauseGate.cancel();
     detachSurface(session);
     try {
@@ -324,6 +327,7 @@ export async function startBrowserRecordingV3(
         backgroundThrottling: false,
       },
     });
+    const framePump = new RecordingV3FramePump(window.webContents);
     let heartbeatSeq = 0;
     const placeholderHeartbeat = setInterval(() => undefined, 60_000);
     placeholderHeartbeat.unref?.();
@@ -340,6 +344,7 @@ export async function startBrowserRecordingV3(
       native,
       engine,
       backend,
+      framePump,
       bundleWriter,
       actionEvents: [],
       cursorMotionPreset: undefined,
@@ -383,14 +388,19 @@ export async function startBrowserRecordingV3(
             activeSession.boundaryKind === "pause"
               ? activeSession.engine.preparePause()
               : activeSession.engine.prepareStop();
-          if (readiness === "frame_required") return;
-          activeSession.acceptingFrames = false;
-          activeSession.window.webContents.stopPainting();
-          const resolve = activeSession.boundaryFrameResolve;
-          activeSession.boundaryFrameResolve = null;
-          activeSession.boundaryFrameReject = null;
-          activeSession.boundaryKind = null;
-          resolve();
+          if (readiness !== "frame_required") {
+            activeSession.acceptingFrames = false;
+            activeSession.framePump.stop();
+            const resolve = activeSession.boundaryFrameResolve;
+            activeSession.boundaryFrameResolve = null;
+            activeSession.boundaryFrameReject = null;
+            activeSession.boundaryKind = null;
+            resolve();
+            return;
+          }
+        }
+        if (activeSession.acceptingFrames && !activeSession.terminalizing) {
+          activeSession.framePump.requestNext();
         }
       } catch (error) {
         void failSession(activeSession, error).catch(() => undefined);
@@ -429,7 +439,7 @@ export async function startBrowserRecordingV3(
     activeSession.sourceReady = true;
     send(activeSession, { type: "readiness", state: "source_ready" });
     activeSession.acceptingFrames = true;
-    window.webContents.invalidate();
+    activeSession.framePump.start();
     await waitForNativeCommits(activeSession, 1);
     send(activeSession, { type: "readiness", state: "first_frame_committed" });
     return { id };
@@ -512,7 +522,7 @@ export async function requireStrictBrowserRecordingV3Readiness(
   }
   const current = session.native.getStats().nativeCommits;
   const minimum = state === "first_frame_committed" ? Math.max(1, current) : current + 1;
-  if (state === "pre_input_frame_committed") session.window.webContents.invalidate();
+  if (state === "pre_input_frame_committed") session.framePump.requestNext();
   await waitForNativeCommits(session, minimum);
   if (state === "pre_input_frame_committed") {
     send(session, { type: "readiness", state });
@@ -529,7 +539,7 @@ async function reconcileRecordingV3Boundary(
       kind === "pause" ? session.engine.preparePause() : session.engine.prepareStop();
     if (readiness === "ready") {
       session.acceptingFrames = false;
-      session.window.webContents.stopPainting();
+      session.framePump.stop();
       return;
     }
     if (Date.now() >= reconciliationDeadline) {
@@ -543,7 +553,7 @@ async function reconcileRecordingV3Boundary(
     }
     if (readiness === "clock_pending") {
       session.acceptingFrames = false;
-      session.window.webContents.stopPainting();
+      session.framePump.stop();
       await new Promise((resolve) => setTimeout(resolve, 1));
       continue;
     }
@@ -569,8 +579,8 @@ async function reconcileRecordingV3Boundary(
       session.boundaryFrameReject = reject;
       session.boundaryKind = kind;
       session.acceptingFrames = true;
-      session.window.webContents.startPainting();
-      session.window.webContents.invalidate();
+      session.framePump.start();
+      session.framePump.requestNext();
     }).catch((error) => failSession(session, error));
   }
 }
@@ -597,10 +607,9 @@ export async function resumeStrictBrowserRecordingV3(id: string): Promise<boolea
   return session.transitionQueue.run(async () => {
     session.engine.resume();
     session.pauseGate.resume();
-    session.window.webContents.startPainting();
     session.acceptingFrames = true;
     registry.updateLifecycle(id, "recording");
-    session.window.webContents.invalidate();
+    session.framePump.start();
     return true;
   });
 }
@@ -639,8 +648,8 @@ async function stopSession(session: StrictBrowserSessionV3): Promise<RecordingRe
   session.boundaryFrameReject = null;
   session.boundaryKind = null;
   session.pauseGate.cancel();
+  session.framePump.stop();
   detachSurface(session);
-  session.window.webContents.stopPainting();
   send(session, { type: "verifying", progress: 0 });
   try {
     const engineResult = session.engine.stop();

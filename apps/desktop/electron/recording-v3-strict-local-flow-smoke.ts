@@ -7,7 +7,11 @@ import {
   readRecordingInfo,
   readRecordingBundle,
 } from "@storycapture/shared-types/recording-v2";
-import { recordingV3DimensionsForViewport } from "@storycapture/shared-types/recording-v3";
+import {
+  type RecordingResultV3,
+  readRecordingResultV3,
+  recordingV3DimensionsForViewport,
+} from "@storycapture/shared-types/recording-v3";
 import { app, BrowserWindow, type WebContents } from "electron";
 
 import { discoverProjectRecordings } from "./ipc/recording-discovery";
@@ -49,6 +53,12 @@ interface ResponsiveTargetState {
   visible: boolean;
   clicked: boolean;
   rect: { x: number; y: number; width: number; height: number };
+}
+
+interface StaticFixtureState {
+  drawCount: number;
+  mode: "motion" | "static";
+  ordinal: number;
 }
 
 function captureContract() {
@@ -133,6 +143,52 @@ async function clickResponsiveTarget(contents: WebContents): Promise<ResponsiveT
   throw new Error("Responsive Recording V3 target did not receive the click within 2 seconds");
 }
 
+async function staticFixtureState(contents: WebContents): Promise<StaticFixtureState> {
+  return (await contents.executeJavaScript(`(() => ({
+    drawCount: Number(window.__storyCaptureStrictLocalWideFixture?.drawCount ?? 0),
+    mode: window.__storyCaptureStrictLocalWideFixture?.mode,
+    ordinal: Number(window.__storyCaptureStrictLocalWideFixture?.ordinal ?? 0),
+  }))()`)) as StaticFixtureState;
+}
+
+function assertStrictLocalResult(result: RecordingResultV3, label: string): RecordingResultV3 {
+  const validated = readRecordingResultV3(result);
+  if (
+    !validated ||
+    validated.status !== "completed" ||
+    validated.delivery_policy !== "strict" ||
+    validated.recording_mode !== "strict_local" ||
+    validated.certification_profile !== null ||
+    validated.cadence_evidence.source_fps?.numerator !== 60 ||
+    validated.cadence_evidence.source_fps.denominator !== 1 ||
+    validated.cadence_evidence.expected_slots <= 0
+  ) {
+    throw new Error(`${label} recording failed strict cadence validation`);
+  }
+  return validated;
+}
+
+async function probeStrictLocalArtifacts(result: RecordingResultV3, label: string) {
+  if (!result.master_path || !result.proxy_path) {
+    throw new Error(`${label} recording omitted master or proxy paths`);
+  }
+  const [masterProbe, proxyProbe] = await Promise.all([
+    probeRecording(result.master_path, { verifiedFullDecode: true }),
+    probeRecording(result.proxy_path, { verifiedFullDecode: true }),
+  ]);
+  if (
+    masterProbe.status !== "valid" ||
+    masterProbe.width !== STRICT_LOCAL_VIEWPORT.width ||
+    masterProbe.height !== STRICT_LOCAL_VIEWPORT.height ||
+    proxyProbe.status !== "valid" ||
+    proxyProbe.width !== STRICT_LOCAL_VIEWPORT.width ||
+    proxyProbe.height !== STRICT_LOCAL_VIEWPORT.height
+  ) {
+    throw new Error(`${label} master or proxy dimensions were invalid`);
+  }
+  return { masterProbe, proxyProbe };
+}
+
 async function writeResultAtomic(filePath: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   const temporaryPath = `${filePath}.${process.pid}.tmp`;
@@ -155,21 +211,82 @@ async function waitForExport(jobId: string): Promise<NonNullable<ReturnType<type
 export async function runRecordingV3StrictLocalFlowSmoke(resultPath: string): Promise<boolean> {
   const temporaryRoot = path.dirname(resultPath);
   const projectFolder = path.join(temporaryRoot, "strict-local-project");
+  const staticProjectFolder = path.join(temporaryRoot, "strict-local-static-project");
   const runtimeStateRoot = path.join(temporaryRoot, "runtime-state");
   const outputFolder = path.join(projectFolder, "local-exports");
   const fixtureUrl = pathToFileURL(
     path.join(app.getAppPath(), "fixtures", "recording-v3-strict-local-wide", "index.html"),
   );
+  const staticFixtureUrl = new URL(fixtureUrl);
+  staticFixtureUrl.searchParams.set("mode", "static");
   const senderWindow = new BrowserWindow({ show: false });
   let sessionId: string | null = null;
+  let staticEvidence: Record<string, unknown> | null = null;
   let phase = "initialization";
   try {
     await Promise.all([
       fs.mkdir(projectFolder, { recursive: true }),
+      fs.mkdir(staticProjectFolder, { recursive: true }),
       fs.mkdir(runtimeStateRoot, { recursive: true }),
     ]);
     await initializeExportOutputLifecycle(runtimeStateRoot);
     initializeRecordingV3ExportProvenance(runtimeStateRoot);
+    const staticArgs = startArgs(staticProjectFolder);
+    phase = "static_source_preflight";
+    const staticPreflight = await probeBrowserRecordingV3Capability(
+      staticArgs,
+      staticFixtureUrl.href,
+    );
+    if (
+      !staticPreflight.runtime_eligible ||
+      !staticPreflight.eligible ||
+      staticPreflight.recording_mode !== "strict_local" ||
+      staticPreflight.source_rate.measured_fps?.numerator !== 60 ||
+      staticPreflight.source_rate.measured_fps.denominator !== 1 ||
+      staticPreflight.source_rate.source_presentations !== 60 ||
+      staticPreflight.source_rate.sequence_gaps !== 0 ||
+      staticPreflight.source_rate.stale_reuses !== 0
+    ) {
+      throw new Error(
+        `Static Strict Local preflight failed: ${staticPreflight.failure_codes.join(", ")} ${JSON.stringify(staticPreflight.source_rate)}`,
+      );
+    }
+
+    phase = "static_recording_start";
+    const staticStarted = await startBrowserRecordingV3(
+      staticArgs,
+      null,
+      senderWindow.webContents,
+      staticFixtureUrl.href,
+    );
+    sessionId = staticStarted.id;
+    const staticContents = strictBrowserRecordingV3Contents(sessionId);
+    if (!staticContents) throw new Error("Static Strict Local recording contents were unavailable");
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const drawState = await staticFixtureState(staticContents);
+    if (drawState.mode !== "static" || drawState.drawCount !== 1 || drawState.ordinal !== 0) {
+      throw new Error(
+        `Static Strict Local fixture drew ${drawState.drawCount} times in ${drawState.mode} mode`,
+      );
+    }
+
+    phase = "static_recording_stop";
+    const staticStoppedResult = await stopStrictBrowserRecordingV3(sessionId);
+    if (!staticStoppedResult)
+      throw new Error("Static Strict Local recording did not return a result");
+    const staticResult = assertStrictLocalResult(staticStoppedResult, "Static Strict Local");
+    const { masterProbe: staticMasterProbe, proxyProbe: staticProxyProbe } =
+      await probeStrictLocalArtifacts(staticResult, "Static Strict Local");
+    staticEvidence = {
+      preflight: staticPreflight,
+      result: staticResult,
+      draw_state: drawState,
+      master_probe: staticMasterProbe,
+      proxy_probe: staticProxyProbe,
+    };
+    acknowledgeStrictBrowserRecordingV3(sessionId);
+    sessionId = null;
+
     const args = startArgs(projectFolder);
     phase = "responsive_breakpoint";
     const narrowTarget = await inspectNarrowResponsiveTarget(fixtureUrl.href);
@@ -261,17 +378,11 @@ export async function runRecordingV3StrictLocalFlowSmoke(resultPath: string): Pr
     }
     await new Promise((resolve) => setTimeout(resolve, 1_200));
     phase = "recording_stop";
-    const result = await stopStrictBrowserRecordingV3(sessionId);
-    if (!result || result.status !== "completed") {
+    const stoppedResult = await stopStrictBrowserRecordingV3(sessionId);
+    if (!stoppedResult) {
       throw new Error("Strict Local recording did not complete");
     }
-    if (
-      result.delivery_policy !== "strict" ||
-      result.recording_mode !== "strict_local" ||
-      result.certification_profile !== null
-    ) {
-      throw new Error("Strict Local recording result lost its provenance");
-    }
+    const result = assertStrictLocalResult(stoppedResult, "Strict Local");
 
     phase = "bundle_validation";
     const rawManifest = JSON.parse(
@@ -300,23 +411,7 @@ export async function runRecordingV3StrictLocalFlowSmoke(resultPath: string): Pr
     ) {
       throw new Error("Strict Local bundle manifest failed validation");
     }
-    if (!result.master_path || !result.proxy_path) {
-      throw new Error("Strict Local recording result omitted master or proxy paths");
-    }
-    const [masterProbe, proxyProbe] = await Promise.all([
-      probeRecording(result.master_path, { verifiedFullDecode: true }),
-      probeRecording(result.proxy_path, { verifiedFullDecode: true }),
-    ]);
-    if (
-      masterProbe.status !== "valid" ||
-      masterProbe.width !== STRICT_LOCAL_VIEWPORT.width ||
-      masterProbe.height !== STRICT_LOCAL_VIEWPORT.height ||
-      proxyProbe.status !== "valid" ||
-      proxyProbe.width !== STRICT_LOCAL_VIEWPORT.width ||
-      proxyProbe.height !== STRICT_LOCAL_VIEWPORT.height
-    ) {
-      throw new Error("Strict Local master or proxy dimensions were invalid");
-    }
+    const { masterProbe, proxyProbe } = await probeStrictLocalArtifacts(result, "Strict Local");
 
     phase = "discovery";
     const discovered = await discoverProjectRecordings(path.join(projectFolder, "exports"));
@@ -474,6 +569,7 @@ export async function runRecordingV3StrictLocalFlowSmoke(resultPath: string): Pr
       export_probe: exportProbe,
       persisted_upload_mode: persistedMode,
       upload_rejected: uploadRejected,
+      static: staticEvidence,
     });
     return passed;
   } catch (error) {
