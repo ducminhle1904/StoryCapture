@@ -25,8 +25,30 @@ struct CaptureOptions {
   CursorPolicy cursor_policy{CursorPolicy::include};
   std::uint32_t requested_width{};
   std::uint32_t requested_height{};
+  std::wstring output_path;
+  bool native_mp4{};
   bool microphone_audio{};
   bool system_audio{};
+};
+
+struct NativeCaptureEvidence {
+  std::wstring artifact_path;
+  std::wstring encoder_id;
+  std::uint32_t width{};
+  std::uint32_t height{};
+  std::uint64_t source_frames{};
+  std::uint64_t output_frames{};
+  std::uint64_t held_frames{};
+  std::uint64_t encoder_dropped_frames{};
+  std::uint64_t backpressure_events{};
+  std::uint64_t unresolved_backpressure_events{};
+  std::uint64_t pts_gaps{};
+  std::uint64_t pts_duplicates{};
+  std::uint64_t pts_non_monotonic{};
+  bool initial_surface_received{};
+  std::int64_t started_monotonic_us{};
+  std::int64_t ended_monotonic_us{};
+  std::int64_t finalized_duration_us{};
 };
 
 struct CommittedFrame {

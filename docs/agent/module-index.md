@@ -93,26 +93,30 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/electron/ipc/legacy-command.ts`.
 - Renderer IPC facades: `apps/desktop/src/ipc/*.ts`.
 
-### Recording V2
+### Strict Recording V3 And V2 Compatibility
 
-- Public contract: `packages/shared-types/src/recording-v2.ts`.
-- Strict admission and lifecycle:
-  `apps/desktop/electron/ipc/recording-certification-catalog.ts`,
-  `apps/desktop/electron/ipc/capture-backend-v2-guard.ts`, and
+- Production contract: `packages/shared-types/src/recording-v3.ts`.
+- Admission and lifecycle:
+  `apps/desktop/electron/ipc/recording-native-preflight.ts`,
+  `apps/desktop/electron/ipc/recording-native-browser-surface.ts`,
+  `apps/desktop/electron/ipc/recording-native-platform-session.ts`, and
   `apps/desktop/electron/ipc/recording-strict-browser-lifecycle.ts`.
-- Capture backends:
-  `apps/desktop/electron/ipc/browser-capture-backend-v2.ts`,
-  `apps/desktop/electron/ipc/macos-screen-capture-backend.ts`, and
-  `apps/desktop/electron/ipc/windows-capture-backend.ts`; platform protocol and
-  helper sources live in `windows-capture-protocol.ts` and
-  `apps/desktop/native/{macos-screen-capture,windows-capture}/`.
-- Frame/master data plane:
-  `apps/desktop/electron/ipc/recording-frame-ring.ts`,
-  `apps/desktop/electron/ipc/recording-master.ts`,
-  `apps/desktop/electron/ipc/recording-master-pipeline.ts`,
+- Native backends and protocols:
+  `apps/desktop/electron/ipc/macos-screen-capture-backend.ts`,
+  `apps/desktop/electron/ipc/windows-capture-backend.ts`,
+  `apps/desktop/electron/ipc/windows-capture-protocol.ts`, and
+  `apps/desktop/native/{macos-screen-capture,windows-capture}/`. The native MP4
+  writers live in `NativeMasterWriter.swift` and `native_mp4_writer.{hpp,cpp}`.
+- Bundle and verification data plane:
+  `apps/desktop/electron/ipc/recording-native-master-bundle.ts`,
   `apps/desktop/electron/ipc/recording-bundle.ts`,
-  `apps/desktop/electron/ipc/recording-cadence-verifier.ts`, and
-  `apps/desktop/electron/ipc/recording-quality-verifier.ts`.
+  `apps/desktop/electron/ipc/recording-cadence-verifier.ts`,
+  `apps/desktop/electron/ipc/recording-quality-verifier.ts`, and
+  `apps/desktop/electron/ipc/recording-discovery.ts`.
+- V2 compatibility only: `packages/shared-types/src/recording-v2.ts`,
+  `recording-certification-catalog.ts`, `capture-backend-v2-guard.ts`,
+  `browser-capture-backend-v2.ts`, `recording-frame-ring.ts`, and
+  `recording-master-pipeline.ts`.
 - Discovery, retention, and diagnostics:
   `apps/desktop/electron/ipc/recording-discovery.ts`,
   `apps/desktop/electron/ipc/recording-evidence-retention.ts`,
@@ -226,7 +230,10 @@ Use this for task routing after reading the short root guide.
 
 - Shared package exports: `packages/shared-types/src/index.ts`.
 - IPC compatibility surface: `packages/shared-types/src/ipc.ts`.
-- Recording V2 policy, backend, evidence, bundle, result, and export-source
+- Recording V3 preflight, cadence, quality, bundle, result, event, and V2/V3
+  reader contracts: `packages/shared-types/src/recording-v3.ts`, exported as
+  `@storycapture/shared-types/recording-v3`.
+- Recording V2 policy, backend, evidence, bundle, result, and compatibility
   contracts: `packages/shared-types/src/recording-v2.ts`, exported as
   `@storycapture/shared-types/recording-v2`.
 - Public `WebAccountInfo` is defined by `packages/shared-types/src/ipc.ts` and

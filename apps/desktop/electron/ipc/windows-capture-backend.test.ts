@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   resolveWindowsCaptureHelperPath,
   WindowsGraphicsCaptureBackend,
+  WindowsNativeMp4CaptureSession,
   windowsCertificationMatches,
 } from "./windows-capture-backend";
 import type {
@@ -15,6 +16,9 @@ import type {
   WindowsCaptureHelperTransport,
   WindowsCaptureProbeResult,
   WindowsCaptureRingDescriptor,
+  WindowsNativeCaptureHelperCommand,
+  WindowsNativeCaptureHelperEvent,
+  WindowsNativeCaptureHelperTransport,
   WindowsNativeFrameSink,
 } from "./windows-capture-protocol";
 
@@ -158,6 +162,111 @@ class FakeNativeSink implements WindowsNativeFrameSink {
 
   async close(): Promise<void> {
     this.closed = true;
+  }
+}
+
+class FakeNativeMp4Transport implements WindowsNativeCaptureHelperTransport {
+  readonly commands: WindowsNativeCaptureHelperCommand[] = [];
+  private readonly listeners = new Set<(event: WindowsNativeCaptureHelperEvent) => void>();
+  private pendingStartedSessionId: string | null = null;
+
+  constructor(private readonly deferStarted = false) {}
+
+  async start(): Promise<void> {
+    this.emit({
+      version: 3,
+      type: "hello",
+      backend_id: "windows-graphics-capture",
+      backend_version: "1.0.0",
+      process_id: 123,
+    });
+  }
+
+  async send(command: WindowsNativeCaptureHelperCommand): Promise<void> {
+    this.commands.push(command);
+    if (command.type === "capabilities") {
+      this.emit({
+        version: 3,
+        type: "capabilities",
+        capabilities: {
+          backend_id: "windows-graphics-capture",
+          backend_version: "1.0.0",
+          platform: "win32",
+          arch: "x64",
+          target_classes: ["display", "window"],
+          codec: "h264",
+          pixel_format: "nv12",
+          exact_fps: { numerator: 60, denominator: 1 },
+          hardware_accelerated: true,
+          supports_pause_resume: true,
+          keeps_surfaces_native: true,
+          encoder_id: "hardware-h264",
+          gpu_identity: null,
+          adapter_luid: null,
+        },
+      });
+    } else if (command.type === "start") {
+      if (this.deferStarted) this.pendingStartedSessionId = command.session_id;
+      else this.emit({ version: 3, type: "started", session_id: command.session_id });
+    } else if (command.type === "pause" || command.type === "resume") {
+      this.emit({
+        version: 3,
+        type: `${command.type}d` as "paused" | "resumed",
+        session_id: command.session_id,
+      });
+    } else if (command.type === "stop") {
+      this.emit({
+        version: 3,
+        type: "finalized",
+        session_id: command.session_id,
+        evidence: {
+          artifact_path: "/tmp/master.mp4",
+          codec: "h264",
+          pixel_format: "nv12",
+          width: 1_920,
+          height: 1_080,
+          exact_fps: { numerator: 60, denominator: 1 },
+          source_frames: 3,
+          output_frames: 6,
+          held_frames: 3,
+          encoder_dropped_frames: 0,
+          backpressure_events: 0,
+          unresolved_backpressure_events: 0,
+          pts_gaps: 0,
+          pts_duplicates: 0,
+          pts_non_monotonic: 0,
+          initial_surface_received: true,
+          started_monotonic_us: 1,
+          ended_monotonic_us: 100_001,
+          finalized_duration_us: 100_000,
+          encoder_id: "hardware-h264",
+          hardware_accelerated: true,
+          finalized: true,
+          failure_codes: [],
+        },
+      });
+    }
+  }
+
+  onEvent(listener: (event: WindowsNativeCaptureHelperEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  onExit(): () => void {
+    return () => undefined;
+  }
+
+  async close(): Promise<void> {}
+
+  releaseStarted(): void {
+    if (!this.pendingStartedSessionId) throw new Error("no pending native start");
+    this.emit({ version: 3, type: "started", session_id: this.pendingStartedSessionId });
+    this.pendingStartedSessionId = null;
+  }
+
+  private emit(event: WindowsNativeCaptureHelperEvent): void {
+    for (const listener of this.listeners) listener(event);
   }
 }
 
@@ -344,5 +453,69 @@ describe("Windows Graphics Capture backend", () => {
         arch: "arm64",
       }),
     ).toBe("C:\\StoryCapture\\app/native/windows-capture/bin/arm64/storycapture-wgc.exe");
+  });
+});
+
+describe("Windows native MP4 capture session", () => {
+  it("does not resolve start before the helper confirms the first encoded surface", async () => {
+    const transport = new FakeNativeMp4Transport(true);
+    const session = new WindowsNativeMp4CaptureSession({ transport, platform: "win32" });
+    await session.capabilities();
+    const start = session.start({
+      session_id: "session-ready",
+      output_path: "/tmp/master.mp4",
+      target: { kind: "display", device_path: "\\\\?\\DISPLAY#TEST" },
+      cursor_policy: "include",
+      dynamic_size_policy: "fail",
+      requested_width: 1_920,
+      requested_height: 1_080,
+      requested_fps: { numerator: 60, denominator: 1 },
+    });
+    await Promise.resolve();
+    expect(session.state).toBe("starting");
+    transport.releaseStarted();
+    await start;
+    expect(session.state).toBe("capturing");
+  });
+
+  it("runs capability, exact HWND start, pause/resume, and stop-finalize", async () => {
+    const transport = new FakeNativeMp4Transport();
+    const session = new WindowsNativeMp4CaptureSession({ transport, platform: "win32" });
+    await expect(session.capabilities()).resolves.toMatchObject({
+      codec: "h264",
+      hardware_accelerated: true,
+      keeps_surfaces_native: true,
+    });
+    await session.start({
+      session_id: "session-3",
+      output_path: "/tmp/master.mp4",
+      target: {
+        kind: "window",
+        hwnd: "0x123",
+        process_id: 42,
+        executable_path: "C:\\StoryCapture\\StoryCapture.exe",
+        class_name: "Chrome_WidgetWin_1",
+      },
+      cursor_policy: "include",
+      dynamic_size_policy: "fail",
+      requested_width: 1_920,
+      requested_height: 1_080,
+      requested_fps: { numerator: 60, denominator: 1 },
+    });
+    await session.pause();
+    await session.resume();
+    await expect(session.stop()).resolves.toMatchObject({
+      artifact_path: "/tmp/master.mp4",
+      output_frames: 6,
+      held_frames: 3,
+      finalized: true,
+    });
+    expect(transport.commands.map((command) => command.type)).toEqual([
+      "capabilities",
+      "start",
+      "pause",
+      "resume",
+      "stop",
+    ]);
   });
 });

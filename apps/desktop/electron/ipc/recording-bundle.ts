@@ -1,10 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type {
-  RecordingBundleArtifactV2,
-  RecordingBundleV2,
-} from "@storycapture/shared-types/recording-v2";
+import type { RecordingBundleArtifactV2 } from "@storycapture/shared-types/recording-v2";
+import { type RecordingBundle, readRecordingBundle } from "@storycapture/shared-types/recording-v3";
 import type { RecordingFrameLedgerEntry } from "./recording-frame-ring";
 
 const GIB = 1024 ** 3;
@@ -175,9 +173,11 @@ export class RecordingBundleWorkspace {
     await fs.rename(temp, destination);
   }
 
-  async commit(manifest: RecordingBundleV2): Promise<string> {
+  async commit(manifest: RecordingBundle): Promise<string> {
     if (this.committed) throw new Error("recording bundle workspace is already committed");
-    await this.writeJson("manifest.json", manifest);
+    const validatedManifest = readRecordingBundle(manifest);
+    if (!validatedManifest) throw new Error("recording bundle manifest is invalid");
+    await this.writeJson("manifest.json", validatedManifest);
     await fs.rename(this.stagingPath, this.finalPath);
     this.committed = true;
     activeRecordingStagingPaths.delete(this.stagingPath);

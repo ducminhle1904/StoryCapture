@@ -2,7 +2,9 @@ import type { RecordingPreflightV2Request } from "@storycapture/shared-types/rec
 import { describe, expect, it } from "vitest";
 import {
   encodeWindowsCaptureCommand,
+  encodeWindowsNativeCaptureCommand,
   parseWindowsCaptureEvent,
+  parseWindowsNativeCaptureEvent,
   validateWindowsCaptureTarget,
   WINDOWS_CAPTURE_RING_CAPACITY,
   type WindowsCaptureProbeResult,
@@ -176,6 +178,82 @@ describe("Windows capture helper protocol", () => {
     });
     expect(line.endsWith("\n")).toBe(true);
     expect(JSON.parse(line)).toEqual({ version: 2, type: "pause", session_id: "session-1" });
+  });
+
+  it("validates the V3 hardware capability and finalized-artifact protocol", () => {
+    expect(
+      parseWindowsNativeCaptureEvent(
+        JSON.stringify({
+          version: 3,
+          type: "capabilities",
+          capabilities: {
+            backend_id: "windows-graphics-capture",
+            backend_version: "1.0.0",
+            platform: "win32",
+            arch: "x64",
+            target_classes: ["display", "window"],
+            codec: "h264",
+            pixel_format: "nv12",
+            exact_fps: { numerator: 60, denominator: 1 },
+            hardware_accelerated: true,
+            supports_pause_resume: true,
+            keeps_surfaces_native: true,
+            encoder_id: "Intel Quick Sync H.264 Encoder MFT",
+            gpu_identity: null,
+            adapter_luid: null,
+          },
+        }),
+      ),
+    ).toMatchObject({ type: "capabilities", capabilities: { hardware_accelerated: true } });
+
+    const finalized = {
+      version: 3,
+      type: "finalized",
+      session_id: "session-3",
+      evidence: {
+        artifact_path: "C:\\capture\\master.mp4",
+        codec: "h264",
+        pixel_format: "nv12",
+        width: 1_920,
+        height: 1_080,
+        exact_fps: { numerator: 60, denominator: 1 },
+        source_frames: 3,
+        output_frames: 6,
+        held_frames: 3,
+        encoder_dropped_frames: 0,
+        backpressure_events: 0,
+        unresolved_backpressure_events: 0,
+        pts_gaps: 0,
+        pts_duplicates: 0,
+        pts_non_monotonic: 0,
+        initial_surface_received: true,
+        started_monotonic_us: 10,
+        ended_monotonic_us: 100_010,
+        finalized_duration_us: 100_000,
+        encoder_id: "Intel Quick Sync H.264 Encoder MFT",
+        hardware_accelerated: true,
+        finalized: true,
+        failure_codes: [],
+      },
+    };
+    expect(parseWindowsNativeCaptureEvent(JSON.stringify(finalized))).toMatchObject({
+      type: "finalized",
+      evidence: { output_frames: 6, held_frames: 3 },
+    });
+    expect(() =>
+      parseWindowsNativeCaptureEvent(
+        JSON.stringify({ ...finalized, evidence: { ...finalized.evidence, pixels: "forbidden" } }),
+      ),
+    ).toThrow(/evidence/);
+    expect(
+      JSON.parse(
+        encodeWindowsNativeCaptureCommand({
+          version: 3,
+          type: "stop",
+          session_id: "session-3",
+        }),
+      ),
+    ).toEqual({ version: 3, type: "stop", session_id: "session-3" });
   });
 
   it("requires exact 60/1, certification, 1.5x throughput, and native dimensions", () => {

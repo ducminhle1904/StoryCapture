@@ -12,6 +12,7 @@
 #include <string>
 #include <thread>
 
+#include <mfapi.h>
 #include <winrt/base.h>
 
 #include "capture_session.hpp"
@@ -119,6 +120,87 @@ void emit_lifecycle(EventWriter& writer, std::wstring_view type, std::wstring_vi
   writer.emit(std::move(event));
 }
 
+void emit_native_capabilities(EventWriter& writer) {
+  winrt::check_hresult(MFStartup(MF_VERSION, MFSTARTUP_FULL));
+  std::wstring encoder;
+  try {
+    encoder = require_hardware_h264_encoder();
+  } catch (...) {
+    MFShutdown();
+    throw;
+  }
+  MFShutdown();
+  JsonObject capabilities;
+  set_string(capabilities, L"backend_id", L"windows-graphics-capture");
+  set_string(capabilities, L"backend_version", L"1.0.0");
+  set_string(capabilities, L"platform", L"win32");
+#if defined(_M_ARM64)
+  set_string(capabilities, L"arch", L"arm64");
+#else
+  set_string(capabilities, L"arch", L"x64");
+#endif
+  winrt::Windows::Data::Json::JsonArray target_classes;
+  target_classes.Append(JsonValue::CreateStringValue(L"display"));
+  target_classes.Append(JsonValue::CreateStringValue(L"window"));
+  capabilities.SetNamedValue(L"target_classes", target_classes);
+  set_string(capabilities, L"codec", L"h264");
+  set_string(capabilities, L"pixel_format", L"nv12");
+  JsonObject fps;
+  set_number(fps, L"numerator", 60);
+  set_number(fps, L"denominator", 1);
+  capabilities.SetNamedValue(L"exact_fps", fps);
+  set_bool(capabilities, L"hardware_accelerated", true);
+  set_bool(capabilities, L"supports_pause_resume", true);
+  set_bool(capabilities, L"keeps_surfaces_native", true);
+  set_string(capabilities, L"encoder_id", encoder);
+  capabilities.SetNamedValue(L"gpu_identity", JsonValue::CreateNullValue());
+  capabilities.SetNamedValue(L"adapter_luid", JsonValue::CreateNullValue());
+  JsonObject event;
+  set_string(event, L"type", L"capabilities");
+  event.SetNamedValue(L"capabilities", capabilities);
+  writer.emit(std::move(event));
+}
+
+void emit_native_evidence(EventWriter& writer, std::wstring_view session_id,
+                          const NativeCaptureEvidence& evidence) {
+  JsonObject value;
+  set_string(value, L"artifact_path", evidence.artifact_path);
+  set_string(value, L"codec", L"h264");
+  set_string(value, L"pixel_format", L"nv12");
+  set_number(value, L"width", evidence.width);
+  set_number(value, L"height", evidence.height);
+  JsonObject fps;
+  set_number(fps, L"numerator", 60);
+  set_number(fps, L"denominator", 1);
+  value.SetNamedValue(L"exact_fps", fps);
+  set_number(value, L"source_frames", static_cast<double>(evidence.source_frames));
+  set_number(value, L"output_frames", static_cast<double>(evidence.output_frames));
+  set_number(value, L"held_frames", static_cast<double>(evidence.held_frames));
+  set_number(value, L"encoder_dropped_frames",
+             static_cast<double>(evidence.encoder_dropped_frames));
+  set_number(value, L"backpressure_events", static_cast<double>(evidence.backpressure_events));
+  set_number(value, L"unresolved_backpressure_events",
+             static_cast<double>(evidence.unresolved_backpressure_events));
+  set_number(value, L"pts_gaps", static_cast<double>(evidence.pts_gaps));
+  set_number(value, L"pts_duplicates", static_cast<double>(evidence.pts_duplicates));
+  set_number(value, L"pts_non_monotonic", static_cast<double>(evidence.pts_non_monotonic));
+  set_bool(value, L"initial_surface_received", evidence.initial_surface_received);
+  set_number(value, L"started_monotonic_us",
+             static_cast<double>(evidence.started_monotonic_us));
+  set_number(value, L"ended_monotonic_us", static_cast<double>(evidence.ended_monotonic_us));
+  set_number(value, L"finalized_duration_us",
+             static_cast<double>(evidence.finalized_duration_us));
+  set_string(value, L"encoder_id", evidence.encoder_id);
+  set_bool(value, L"hardware_accelerated", true);
+  set_bool(value, L"finalized", true);
+  value.SetNamedValue(L"failure_codes", winrt::Windows::Data::Json::JsonArray{});
+  JsonObject event;
+  set_string(event, L"type", L"finalized");
+  set_string(event, L"session_id", session_id);
+  event.SetNamedValue(L"evidence", value);
+  writer.emit(std::move(event));
+}
+
 }  // namespace
 
 int run_stdio() {
@@ -201,9 +283,83 @@ int run_stdio() {
   return 0;
 }
 
+int run_stdio_v3() {
+  _setmode(_fileno(stdin), _O_U8TEXT);
+  _setmode(_fileno(stdout), _O_U8TEXT);
+  winrt::init_apartment(winrt::apartment_type::multi_threaded);
+  EventWriter writer(3);
+  emit_hello(writer);
+  std::unique_ptr<CaptureSession> active;
+  std::wstring active_session_id;
+
+  std::wstring line;
+  while (std::getline(std::wcin, line)) {
+    if (line.empty()) continue;
+    try {
+      const auto command = parse_command(line, 3);
+      const auto type = required_string(command, L"type");
+      if (type == L"capabilities") {
+        if (active) throw ProtocolError("contract_mismatch", "cannot probe an active session");
+        emit_native_capabilities(writer);
+        continue;
+      }
+      if (type == L"start") {
+        if (active) throw ProtocolError("contract_mismatch", "capture session is already active");
+        auto options = parse_native_options(command);
+        active_session_id = options.session_id;
+        active = std::make_unique<CaptureSession>(std::move(options), writer, false);
+        try {
+          active->start();
+          active->wait_for_initial_surface(std::chrono::seconds(5));
+        } catch (...) {
+          try {
+            active->stop();
+          } catch (...) {
+          }
+          active.reset();
+          throw;
+        }
+        emit_lifecycle(writer, L"started", active_session_id);
+        continue;
+      }
+      if (type == L"shutdown") break;
+      const auto command_session_id = required_string(command, L"session_id");
+      if (!active || command_session_id != active_session_id) {
+        throw ProtocolError("contract_mismatch", "capture session identity mismatch");
+      }
+      if (type == L"pause") {
+        active->pause();
+        emit_lifecycle(writer, L"paused", active_session_id);
+      } else if (type == L"resume") {
+        active->resume();
+        emit_lifecycle(writer, L"resumed", active_session_id);
+      } else if (type == L"stop") {
+        active->stop();
+        const auto evidence = active->finalize_native_mp4();
+        emit_native_evidence(writer, active_session_id, evidence);
+        active.reset();
+        active_session_id.clear();
+      } else {
+        throw ProtocolError("contract_mismatch", "unknown helper command");
+      }
+    } catch (const ProtocolError& error) {
+      writer.failure(active_session_id, widen(error.failure_code()), widen(error.what()));
+    } catch (const winrt::hresult_error& error) {
+      const auto code = error.code() == E_ACCESSDENIED ? L"permission_denied" : L"backend_unavailable";
+      writer.failure(active_session_id, code, error.message().c_str());
+    } catch (const std::exception& error) {
+      writer.failure(active_session_id, L"backend_unavailable", widen(error.what()));
+    }
+  }
+  if (active) active->stop();
+  return 0;
+}
+
 }  // namespace storycapture::wgc
 
 int wmain(int argc, wchar_t** argv) {
-  if (argc != 2 || std::wstring_view(argv[1]) != L"--stdio-v2") return 64;
-  return storycapture::wgc::run_stdio();
+  if (argc != 2) return 64;
+  if (std::wstring_view(argv[1]) == L"--stdio-v2") return storycapture::wgc::run_stdio();
+  if (std::wstring_view(argv[1]) == L"--stdio-v3") return storycapture::wgc::run_stdio_v3();
+  return 64;
 }

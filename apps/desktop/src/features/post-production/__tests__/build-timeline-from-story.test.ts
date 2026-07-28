@@ -273,6 +273,34 @@ describe("buildTimelineFromStory", () => {
     );
   });
 
+  it("uses the V3 H.264 master directly for preview and export", () => {
+    const masterPath = "/take.sc-recording/master/video.mp4";
+    const recording: RecordingInfo = {
+      ...RECORDING,
+      version: 3,
+      path: masterPath,
+      bundle_path: "/take.sc-recording",
+      master_path: masterPath,
+      proxy_path: masterPath,
+      cadence_evidence_path: "/take.sc-recording/evidence/cadence.json",
+      quality_evidence_path: "/take.sc-recording/evidence/quality.json",
+      exact_source_fps: { numerator: 60, denominator: 1 },
+      source_frame_count: 300,
+      quality_verdict: "passed",
+    };
+
+    const out = buildTimelineFromStory({ story: null, recording, trajectory: null });
+
+    expect(out.video[0]).toMatchObject({
+      sourcePath: masterPath,
+      recordingSource: {
+        master_path: masterPath,
+        proxy_path: masterPath,
+        source_frame_count: 300,
+      },
+    });
+  });
+
   it("emits a cursor clip with derived trajectory path when sidecar present", () => {
     const out = buildTimelineFromStory({
       story: null,

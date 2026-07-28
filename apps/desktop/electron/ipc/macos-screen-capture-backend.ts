@@ -18,6 +18,7 @@ import type { RecordingFrameInput } from "./recording-frame-ring";
 
 export const MACOS_SCREEN_CAPTURE_BACKEND_ID = "screen-capture-kit";
 export const MACOS_SCREEN_CAPTURE_BACKEND_VERSION = "2.0.0";
+export const MACOS_NATIVE_MASTER_BACKEND_VERSION = "3.0.0";
 const MACOS_SCREEN_CAPTURE_CAPABILITIES: CaptureBackendV2Capabilities = {
   version: 2,
   backend_id: MACOS_SCREEN_CAPTURE_BACKEND_ID,
@@ -60,6 +61,59 @@ export interface MacScreenCaptureTarget {
   ownerPID?: number;
   ownerBundleID?: string;
   expectedIdentity?: string;
+  mediaSourceID?: string;
+}
+
+export interface MacNativeMasterCapability {
+  backend_id: typeof MACOS_SCREEN_CAPTURE_BACKEND_ID;
+  backend_version: "3.0.0";
+  platform: "darwin";
+  arch: string;
+  supports_native_master: true;
+  supports_hardware_h264: true;
+  supports_cfr_held_frames: true;
+  supports_atomic_finalization: true;
+  encoder: { id: "videotoolbox-h264"; hardware_accelerated: true };
+}
+
+export interface MacNativeMasterStart {
+  sessionId: string;
+  artifactPath: string;
+  outputWidth: number;
+  outputHeight: number;
+  expectedLogicalWidth: number;
+  expectedLogicalHeight: number;
+  fps: { numerator: 60; denominator: 1 };
+  showsCursor?: boolean;
+  dynamicSizePolicy?: "fail_on_change" | "scale_to_contract";
+}
+
+export interface MacNativeMasterResult {
+  artifact_path: string;
+  artifact_bytes: number;
+  source_updates: number;
+  output_frames: number;
+  held_frames: number;
+  encoder_dropped_frames: number;
+  backpressure_events: number;
+  unresolved_backpressure_events: number;
+  width: number;
+  height: number;
+  started_monotonic_us: number;
+  ended_monotonic_us: number;
+  finalized_duration_us: number;
+  pts_gaps: number;
+  pts_duplicates: number;
+  pts_non_monotonic: number;
+  encoder: { id: "videotoolbox-h264"; hardware_accelerated: true };
+  codec: "h264";
+  pixel_format: "nv12";
+  finalized: true;
+  artifact: {
+    finalized: true;
+    full_decode_succeeded: true;
+    decoded_frames: number;
+  };
 }
 
 export interface MacScreenCapturePacket {
@@ -118,7 +172,11 @@ interface HelperProbeData extends Record<string, unknown> {
 export interface MacScreenCaptureHelperTransport {
   request(
     command: "hello" | "probe" | "start" | "pause" | "resume" | "stop" | "shutdown",
-    options?: { sessionID?: string; payload?: Record<string, unknown> },
+    options?: {
+      protocolVersion?: 2 | 3;
+      sessionID?: string;
+      payload?: Record<string, unknown>;
+    },
   ): Promise<HelperResponse>;
   close(): void;
 }
@@ -382,7 +440,11 @@ class MacScreenCaptureHelperProcess implements MacScreenCaptureHelperTransport {
 
   request(
     command: "hello" | "probe" | "start" | "pause" | "resume" | "stop" | "shutdown",
-    options: { sessionID?: string; payload?: Record<string, unknown> } = {},
+    options: {
+      protocolVersion?: 2 | 3;
+      sessionID?: string;
+      payload?: Record<string, unknown>;
+    } = {},
   ): Promise<HelperResponse> {
     if (this.closed) {
       return Promise.reject(
@@ -401,12 +463,12 @@ class MacScreenCaptureHelperProcess implements MacScreenCaptureHelperTransport {
             ),
           );
         },
-        command === "probe" ? 15_000 : 5_000,
+        command === "probe" ? 15_000 : command === "stop" ? 30_000 : 5_000,
       );
       this.pending.set(requestID, { resolve, reject, timeout });
     });
     const commandValue = JSON.stringify({
-      version: 2,
+      version: options.protocolVersion ?? 2,
       request_id: requestID,
       command,
       ...(options.sessionID ? { session_id: options.sessionID } : {}),
@@ -640,4 +702,213 @@ export class MacOSScreenCaptureBackend implements CaptureBackendV2 {
     this.guard.fail(code, message);
     this.options.sink.failed?.(code, message);
   }
+}
+
+export class MacOSNativeMasterBackend {
+  private readonly transport: MacScreenCaptureHelperTransport;
+  private started = false;
+  private stopped = false;
+
+  constructor(
+    private readonly options: {
+      helperPath: string;
+      target: MacScreenCaptureTarget;
+      transportFactory?: MacScreenCaptureBackendOptions["transportFactory"];
+    },
+  ) {
+    const factory =
+      options.transportFactory ??
+      ((helperPath, _onPacket, onFailure) =>
+        new MacScreenCaptureHelperProcess(helperPath, async () => undefined, onFailure));
+    this.transport = factory(
+      options.helperPath,
+      async () => {
+        throw new CaptureBackendV2Error(
+          "contract_mismatch",
+          "V3 native master must not stream raw packets to Node",
+        );
+      },
+      () => undefined,
+    );
+  }
+
+  async probeCapabilities(): Promise<MacNativeMasterCapability> {
+    const response = await this.requestV3("hello");
+    const data = response.data;
+    if (
+      data?.backend_id !== MACOS_SCREEN_CAPTURE_BACKEND_ID ||
+      data.backend_version !== MACOS_NATIVE_MASTER_BACKEND_VERSION ||
+      data.platform !== "darwin" ||
+      typeof data.arch !== "string" ||
+      data.supports_native_master !== true ||
+      data.supports_hardware_h264 !== true ||
+      data.supports_cfr_held_frames !== true ||
+      data.supports_atomic_finalization !== true ||
+      !isNativeEncoder(data.encoder)
+    ) {
+      throw new CaptureBackendV2Error(
+        "backend_capability_mismatch",
+        "ScreenCaptureKit helper does not satisfy the V3 native-master contract",
+      );
+    }
+    return data as unknown as MacNativeMasterCapability;
+  }
+
+  async start(input: MacNativeMasterStart): Promise<void> {
+    if (this.started || this.stopped || !input.sessionId || !path.isAbsolute(input.artifactPath)) {
+      throw new CaptureBackendV2Error("contract_mismatch", "invalid native-master start");
+    }
+    if (
+      input.outputWidth <= 0 ||
+      input.outputHeight <= 0 ||
+      input.expectedLogicalWidth <= 0 ||
+      input.expectedLogicalHeight <= 0 ||
+      input.fps.numerator !== 60 ||
+      input.fps.denominator !== 1
+    ) {
+      throw new CaptureBackendV2Error(
+        "contract_mismatch",
+        "invalid native-master dimensions or FPS",
+      );
+    }
+    if (
+      this.options.target.kind === "window" &&
+      (!this.options.target.mediaSourceID ||
+        mediaSourceWindowID(this.options.target.mediaSourceID) !== this.options.target.windowID)
+    ) {
+      throw new CaptureBackendV2Error(
+        "contract_mismatch",
+        "window target must include its exact Electron media source ID",
+      );
+    }
+    await this.requestV3("start", {
+      sessionID: input.sessionId,
+      payload: {
+        target: this.options.target,
+        artifactPath: input.artifactPath,
+        outputWidth: input.outputWidth,
+        outputHeight: input.outputHeight,
+        expectedLogicalWidth: input.expectedLogicalWidth,
+        expectedLogicalHeight: input.expectedLogicalHeight,
+        fpsNumerator: input.fps.numerator,
+        fpsDenominator: input.fps.denominator,
+        showsCursor: input.showsCursor ?? true,
+        dynamicSizePolicy: input.dynamicSizePolicy ?? "fail_on_change",
+      },
+    });
+    this.started = true;
+  }
+
+  async pause(): Promise<void> {
+    this.assertRunning();
+    await this.requestV3("pause");
+  }
+
+  async resume(): Promise<void> {
+    this.assertRunning();
+    await this.requestV3("resume");
+  }
+
+  async stop(): Promise<MacNativeMasterResult> {
+    this.assertRunning();
+    try {
+      const response = await this.requestV3("stop");
+      const result = readNativeMasterResult(response.data);
+      await this.requestV3("shutdown");
+      return result;
+    } finally {
+      this.stopped = true;
+      this.transport.close();
+    }
+  }
+
+  close(): void {
+    this.transport.close();
+  }
+
+  private assertRunning(): void {
+    if (!this.started || this.stopped) {
+      throw new CaptureBackendV2Error("contract_mismatch", "native master is not running");
+    }
+  }
+
+  private async requestV3(
+    command: Parameters<MacScreenCaptureHelperTransport["request"]>[0],
+    options: Omit<
+      NonNullable<Parameters<MacScreenCaptureHelperTransport["request"]>[1]>,
+      "protocolVersion"
+    > = {},
+  ): Promise<HelperResponse> {
+    const response = await this.transport.request(command, { ...options, protocolVersion: 3 });
+    if (response.version !== 3) {
+      throw new CaptureBackendV2Error(
+        "contract_mismatch",
+        "ScreenCaptureKit helper returned the wrong protocol version",
+      );
+    }
+    return response;
+  }
+}
+
+function mediaSourceWindowID(mediaSourceID: string): number | null {
+  const match = /^window:(\d+)(?::|$)/.exec(mediaSourceID);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+function isNativeEncoder(value: unknown): value is MacNativeMasterResult["encoder"] {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    (value as { id?: unknown }).id === "videotoolbox-h264" &&
+    (value as { hardware_accelerated?: unknown }).hardware_accelerated === true
+  );
+}
+
+function readNativeMasterResult(value: unknown): MacNativeMasterResult {
+  const data = value as Partial<MacNativeMasterResult> | undefined;
+  const counts = [
+    data?.artifact_bytes,
+    data?.source_updates,
+    data?.output_frames,
+    data?.held_frames,
+    data?.encoder_dropped_frames,
+    data?.backpressure_events,
+    data?.unresolved_backpressure_events,
+    data?.width,
+    data?.height,
+    data?.started_monotonic_us,
+    data?.ended_monotonic_us,
+    data?.finalized_duration_us,
+    data?.pts_gaps,
+    data?.pts_duplicates,
+    data?.pts_non_monotonic,
+  ];
+  if (
+    typeof data?.artifact_path !== "string" ||
+    !path.isAbsolute(data.artifact_path) ||
+    !counts.every((entry) => Number.isSafeInteger(entry) && (entry ?? -1) >= 0) ||
+    !data.output_frames ||
+    !data.width ||
+    !data.height ||
+    (data.held_frames ?? -1) > (data.output_frames ?? -1) ||
+    (data.ended_monotonic_us ?? -1) <= (data.started_monotonic_us ?? -1) ||
+    !isNativeEncoder(data.encoder) ||
+    data.codec !== "h264" ||
+    data.pixel_format !== "nv12" ||
+    data.finalized !== true ||
+    data.pts_gaps !== 0 ||
+    data.pts_duplicates !== 0 ||
+    data.pts_non_monotonic !== 0 ||
+    data.artifact?.finalized !== true ||
+    data.artifact.full_decode_succeeded !== true ||
+    data.artifact.decoded_frames !== data.output_frames
+  ) {
+    throw new CaptureBackendV2Error(
+      "contract_mismatch",
+      "ScreenCaptureKit helper returned invalid native-master evidence",
+    );
+  }
+  return data as MacNativeMasterResult;
 }

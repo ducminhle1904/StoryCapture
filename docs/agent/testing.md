@@ -15,11 +15,13 @@
   changes.
 - Recording diagnostic tests:
   `pnpm --dir apps/desktop exec vitest run electron/ipc/recording-observability.test.ts electron/ipc/recording-diagnostic-reader.test.ts electron/ipc/recording-spike-trace.test.ts electron/ipc/logs.test.ts`.
-- Recording V2 packaged helper gate:
-  `pnpm --dir apps/desktop run test:e2e:recording-v2-helper`. This builds an
-  unpacked package and verifies the platform helper signature plus the V2 hello
-  protocol. It is separate from `test:e2e:export` and does not certify live
-  display/window capture or a sustained release soak.
+- Recording V3 packaged helper gate:
+  `pnpm --dir apps/desktop run test:e2e:recording-v3-helper`. This builds an
+  unpacked package; macOS verifies codesign plus V2/V3 capability handshakes,
+  while Windows verifies Authenticode/publisher plus V3 native H.264
+  capabilities. `test:e2e:recording-v2-helper` remains a compatibility alias.
+  Neither command certifies live capture, MP4 finalization/full decode, or a
+  sustained release soak.
 - Cursor-sync Electron E2E: `pnpm --dir apps/desktop run test:e2e:cursor-sync`.
 - Smooth document/nested-container scroll Electron E2E:
   `pnpm --dir apps/desktop run test:e2e:scroll`.
@@ -102,20 +104,25 @@
   `apps/desktop/electron/channel-sequence.test.ts`,
   `apps/desktop/electron/ipc/legacy/story-runner.test.ts`, and
   `apps/desktop/src/features/recorder/recording-view-lifecycle.test.tsx`.
-- Recording V2 contract/admission changes: focus the shared contract test,
-  `capture-backend-v2-guard.test.ts`, and
-  `recording-certification-catalog.test.ts`.
-- Browser Strict/data-plane changes: focus browser backend/lifecycle,
-  frame-ring, master pipeline/bundle, cadence, quality, discovery, retention,
-  and recorder lifecycle/contract tests before the full desktop suite.
+- Strict Recording V3 changes: focus `recording-v3-contract.test.ts`,
+  `recording-native-{preflight,browser-surface,platform-session,master-bundle}.test.ts`,
+  cadence/quality/bundle/discovery tests, both native backend/protocol suites,
+  recorder lifecycle, and post-production timeline discovery before the full
+  desktop suite. For V2 compatibility changes, also run the V2 contract,
+  backend guard, certification catalog, browser backend, frame-ring, and master
+  pipeline tests.
 - macOS native capture changes: run the macOS backend tests, native helper
   build/tests when the active Swift toolchain supplies `XCTest`, and the
   packaged helper gate on macOS. The package gate is not a ScreenCaptureKit/TCC
   live-capture certification.
 - Windows native capture changes: run the Windows backend, protocol, and
   packaging tests plus the packaged helper gate on a Windows runner. Live WGC,
-  Authenticode, DPI/multi-monitor, and named-ring behavior require the actual
-  target environment.
+  SDK/driver hardware encoding, Authenticode, and DPI/multi-monitor behavior
+  require the actual target environment.
+- Release acceptance additionally requires real macOS Screen Recording/TCC and
+  Windows WGC takes, 60-second and ten-minute sustained captures (held static
+  frames are valid), and the packaged `wikipedia-navigation` flow. These are
+  environment gates, not replacements for the focused suites above.
 - Project registry/atomic persistence changes: focus
   `apps/desktop/electron/ipc/json-store.test.ts` and
   `apps/desktop/electron/ipc/legacy/projects.test.ts`.

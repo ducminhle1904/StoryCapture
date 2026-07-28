@@ -10,16 +10,20 @@ import type {
   RecordingPreflightV2Request,
   RecordingQualityFailureCode,
 } from "@storycapture/shared-types/recording-v2";
+import type { RecordingV3FailureCode } from "@storycapture/shared-types/recording-v3";
 import { CaptureBackendV2Guard, validateCaptureBackendV2Request } from "./capture-backend-v2-guard";
 import { recordingStoragePreflight } from "./recording-bundle";
 import { recordingCertificationTierMatches } from "./recording-certification-catalog";
 import { measureRecordingMasterThroughput } from "./recording-throughput-probe";
 import {
   encodeWindowsCaptureCommand,
+  encodeWindowsNativeCaptureCommand,
   parseWindowsCaptureEvent,
+  parseWindowsNativeCaptureEvent,
   validateWindowsCaptureTarget,
   WINDOWS_CAPTURE_BACKEND_ID,
   WINDOWS_CAPTURE_BACKEND_VERSION,
+  WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION,
   type WindowsCaptureFrameCommit,
   type WindowsCaptureHelperCommand,
   type WindowsCaptureHelperEvent,
@@ -28,6 +32,13 @@ import {
   WindowsCaptureProtocolError,
   type WindowsCaptureSessionOptions,
   type WindowsCaptureTarget,
+  type WindowsNativeCaptureCapabilities,
+  type WindowsNativeCaptureEvidence,
+  type WindowsNativeCaptureHelperCommand,
+  type WindowsNativeCaptureHelperEvent,
+  type WindowsNativeCaptureHelperTransport,
+  WindowsNativeCaptureProtocolError,
+  type WindowsNativeCaptureStartOptions,
   type WindowsNativeFrameSink,
   windowsProbeToPreflight,
 } from "./windows-capture-protocol";
@@ -610,6 +621,376 @@ export class WindowsGraphicsCaptureBackend implements CaptureBackendV2 {
       throw new WindowsCaptureProtocolError(
         "contract_mismatch",
         "Windows capture session is missing",
+      );
+    }
+    return this.currentSessionId;
+  }
+}
+
+export class SpawnedWindowsNativeCaptureHelper implements WindowsNativeCaptureHelperTransport {
+  private readonly events = new EventEmitter();
+  private child: ChildProcessWithoutNullStreams | null = null;
+  private stderr = "";
+
+  constructor(private readonly executablePath: string) {}
+
+  async start(): Promise<void> {
+    if (this.child) return;
+    const child = spawn(this.executablePath, ["--stdio-v3"], {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    this.child = child;
+    readline.createInterface({ input: child.stdout }).on("line", (line) => {
+      try {
+        this.events.emit("event", parseWindowsNativeCaptureEvent(line));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.events.emit("event", {
+          version: WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION,
+          type: "failure",
+          session_id: null,
+          failure_code: "contract_mismatch",
+          message,
+        } satisfies WindowsNativeCaptureHelperEvent);
+      }
+    });
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      this.stderr = `${this.stderr}${chunk}`.slice(-8_192);
+    });
+    child.once("exit", (code, signal) => {
+      this.child = null;
+      this.events.emit("exit", code, signal);
+    });
+    child.once("error", (error) => {
+      this.events.emit("event", {
+        version: WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION,
+        type: "failure",
+        session_id: null,
+        failure_code: "backend_unavailable",
+        message: `${error.message}${this.stderr ? `: ${this.stderr}` : ""}`,
+      } satisfies WindowsNativeCaptureHelperEvent);
+    });
+  }
+
+  async send(command: WindowsNativeCaptureHelperCommand): Promise<void> {
+    const child = this.child;
+    if (!child?.stdin.writable) {
+      throw new WindowsNativeCaptureProtocolError(
+        "backend_unavailable",
+        "Windows native capture helper is not running",
+      );
+    }
+    await new Promise<void>((resolve, reject) => {
+      child.stdin.write(encodeWindowsNativeCaptureCommand(command), (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+  }
+
+  onEvent(listener: (event: WindowsNativeCaptureHelperEvent) => void): () => void {
+    this.events.on("event", listener);
+    return () => this.events.off("event", listener);
+  }
+
+  onExit(listener: (exitCode: number | null, signal: NodeJS.Signals | null) => void): () => void {
+    this.events.on("exit", listener);
+    return () => this.events.off("exit", listener);
+  }
+
+  async close(): Promise<void> {
+    const child = this.child;
+    if (!child) return;
+    child.stdin.end();
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => {
+        child.kill();
+        resolve();
+      }, 2_000);
+      child.once("exit", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+  }
+}
+
+export interface WindowsNativeMp4CaptureSessionOptions {
+  helperPath?: string;
+  transport?: WindowsNativeCaptureHelperTransport;
+  platform?: NodeJS.Platform;
+  onFailure?: (error: WindowsNativeCaptureProtocolError) => void;
+}
+
+export type WindowsNativeMp4CaptureState =
+  | "idle"
+  | "ready"
+  | "starting"
+  | "capturing"
+  | "paused"
+  | "finalizing"
+  | "stopped"
+  | "failed";
+
+export class WindowsNativeMp4CaptureSession {
+  private readonly transport: WindowsNativeCaptureHelperTransport;
+  private readonly platform: NodeJS.Platform;
+  private stateValue: WindowsNativeMp4CaptureState = "idle";
+  private currentSessionId: string | null = null;
+  private startOptions: WindowsNativeCaptureStartOptions | null = null;
+  private startedTransport = false;
+  private stickyFailure: WindowsNativeCaptureProtocolError | null = null;
+  private readonly removeEventListener: () => void;
+  private readonly removeExitListener: () => void;
+
+  constructor(private readonly options: WindowsNativeMp4CaptureSessionOptions) {
+    if (!options.transport && !options.helperPath) {
+      throw new WindowsNativeCaptureProtocolError(
+        "backend_unavailable",
+        "Windows native capture helper path or transport is required",
+      );
+    }
+    this.platform = options.platform ?? process.platform;
+    this.transport =
+      options.transport ?? new SpawnedWindowsNativeCaptureHelper(options.helperPath as string);
+    this.removeEventListener = this.transport.onEvent((event) => {
+      if (event.type === "failure") this.fail(event.failure_code, event.message);
+    });
+    this.removeExitListener = this.transport.onExit((code, signal) => {
+      if (this.stateValue !== "idle" && this.stateValue !== "stopped") {
+        this.fail(
+          "backend_unavailable",
+          `Windows native capture helper exited unexpectedly (${code ?? signal ?? "unknown"})`,
+        );
+      }
+    });
+  }
+
+  get state(): WindowsNativeMp4CaptureState {
+    return this.stateValue;
+  }
+
+  get failure(): WindowsNativeCaptureProtocolError | null {
+    return this.stickyFailure;
+  }
+
+  async capabilities(): Promise<WindowsNativeCaptureCapabilities> {
+    this.assertPlatform();
+    await this.ensureTransport();
+    const response = this.waitForEvent(
+      (event): event is Extract<WindowsNativeCaptureHelperEvent, { type: "capabilities" }> =>
+        event.type === "capabilities",
+      HELPER_COMMAND_TIMEOUT_MS,
+    );
+    await this.transport.send({
+      version: WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION,
+      type: "capabilities",
+    });
+    const capabilities = (await response).capabilities;
+    this.stateValue = "ready";
+    return capabilities;
+  }
+
+  async start(options: WindowsNativeCaptureStartOptions): Promise<void> {
+    this.assertPlatform();
+    if (this.stateValue !== "ready") {
+      throw new WindowsNativeCaptureProtocolError(
+        "preflight_failed",
+        "Windows native capabilities must be accepted before start",
+      );
+    }
+    validateWindowsCaptureTarget(options.target);
+    if (
+      !options.session_id ||
+      !path.isAbsolute(options.output_path) ||
+      options.requested_width <= 0 ||
+      options.requested_height <= 0 ||
+      options.requested_fps.numerator !== 60 ||
+      options.requested_fps.denominator !== 1
+    ) {
+      throw new WindowsNativeCaptureProtocolError(
+        "contract_mismatch",
+        "invalid Windows native capture start options",
+      );
+    }
+    this.stateValue = "starting";
+    this.currentSessionId = options.session_id;
+    this.startOptions = options;
+    const started = this.waitForSessionEvent("started", options.session_id);
+    await this.transport.send({
+      version: WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION,
+      type: "start",
+      ...options,
+    });
+    await started;
+    this.stateValue = "capturing";
+  }
+
+  async pause(): Promise<void> {
+    this.assertState("capturing");
+    const sessionId = this.requireSession();
+    const paused = this.waitForSessionEvent("paused", sessionId);
+    await this.transport.send({
+      version: WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION,
+      type: "pause",
+      session_id: sessionId,
+    });
+    await paused;
+    this.stateValue = "paused";
+  }
+
+  async resume(): Promise<void> {
+    this.assertState("paused");
+    const sessionId = this.requireSession();
+    const resumed = this.waitForSessionEvent("resumed", sessionId);
+    await this.transport.send({
+      version: WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION,
+      type: "resume",
+      session_id: sessionId,
+    });
+    await resumed;
+    this.stateValue = "capturing";
+  }
+
+  async stop(): Promise<WindowsNativeCaptureEvidence> {
+    if (this.stickyFailure) throw this.stickyFailure;
+    if (this.stateValue !== "capturing" && this.stateValue !== "paused") {
+      throw new WindowsNativeCaptureProtocolError(
+        "contract_mismatch",
+        `Windows native capture session is ${this.stateValue}`,
+      );
+    }
+    const sessionId = this.requireSession();
+    this.stateValue = "finalizing";
+    const finalized = this.waitForEvent(
+      (event): event is Extract<WindowsNativeCaptureHelperEvent, { type: "finalized" }> =>
+        event.type === "finalized" && event.session_id === sessionId,
+      HELPER_COMMAND_TIMEOUT_MS,
+    );
+    await this.transport.send({
+      version: WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION,
+      type: "stop",
+      session_id: sessionId,
+    });
+    const evidence = (await finalized).evidence;
+    const startOptions = this.startOptions;
+    if (
+      !startOptions ||
+      path.normalize(evidence.artifact_path) !== path.normalize(startOptions.output_path) ||
+      evidence.width !== startOptions.requested_width ||
+      evidence.height !== startOptions.requested_height
+    ) {
+      throw this.fail(
+        "contract_mismatch",
+        "Windows native artifact evidence does not match the start contract",
+      );
+    }
+    this.currentSessionId = null;
+    this.startOptions = null;
+    this.stateValue = "stopped";
+    return evidence;
+  }
+
+  async shutdown(): Promise<void> {
+    await this.transport
+      .send({
+        version: WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION,
+        type: "shutdown",
+        session_id: this.currentSessionId,
+      })
+      .catch(() => undefined);
+    await this.transport.close();
+    this.removeEventListener();
+    this.removeExitListener();
+  }
+
+  private async ensureTransport(): Promise<void> {
+    if (this.startedTransport) return;
+    const hello = this.waitForEvent(
+      (event): event is Extract<WindowsNativeCaptureHelperEvent, { type: "hello" }> =>
+        event.type === "hello",
+      HELPER_START_TIMEOUT_MS,
+    );
+    await this.transport.start();
+    await hello;
+    this.startedTransport = true;
+  }
+
+  private waitForSessionEvent<T extends "started" | "paused" | "resumed">(
+    type: T,
+    sessionId: string,
+  ): Promise<Extract<WindowsNativeCaptureHelperEvent, { type: T }>> {
+    return this.waitForEvent(
+      (event): event is Extract<WindowsNativeCaptureHelperEvent, { type: T }> =>
+        event.type === type && event.session_id === sessionId,
+      HELPER_COMMAND_TIMEOUT_MS,
+    );
+  }
+
+  private waitForEvent<T extends WindowsNativeCaptureHelperEvent>(
+    predicate: (event: WindowsNativeCaptureHelperEvent) => event is T,
+    timeoutMs: number,
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const remove = this.transport.onEvent((event) => {
+        if (event.type === "failure") {
+          clearTimeout(timeout);
+          remove();
+          reject(new WindowsNativeCaptureProtocolError(event.failure_code, event.message));
+          return;
+        }
+        if (!predicate(event)) return;
+        clearTimeout(timeout);
+        remove();
+        resolve(event);
+      });
+      const timeout = setTimeout(() => {
+        remove();
+        reject(
+          new WindowsNativeCaptureProtocolError(
+            "verification_timeout",
+            "Windows native helper command timed out",
+          ),
+        );
+      }, timeoutMs);
+    });
+  }
+
+  private fail(code: RecordingV3FailureCode, message: string): WindowsNativeCaptureProtocolError {
+    if (!this.stickyFailure) {
+      this.stickyFailure = new WindowsNativeCaptureProtocolError(code, message);
+      this.stateValue = "failed";
+      this.options.onFailure?.(this.stickyFailure);
+    }
+    return this.stickyFailure;
+  }
+
+  private assertPlatform(): void {
+    if (this.platform !== "win32") {
+      throw new WindowsNativeCaptureProtocolError(
+        "backend_unavailable",
+        "Windows Graphics Capture is available only on Windows",
+      );
+    }
+  }
+
+  private assertState(expected: WindowsNativeMp4CaptureState): void {
+    if (this.stickyFailure) throw this.stickyFailure;
+    if (this.stateValue !== expected) {
+      throw new WindowsNativeCaptureProtocolError(
+        "contract_mismatch",
+        `Windows native capture session is ${this.stateValue}; expected ${expected}`,
+      );
+    }
+  }
+
+  private requireSession(): string {
+    if (!this.currentSessionId) {
+      throw new WindowsNativeCaptureProtocolError(
+        "contract_mismatch",
+        "Windows native capture session is missing",
       );
     }
     return this.currentSessionId;

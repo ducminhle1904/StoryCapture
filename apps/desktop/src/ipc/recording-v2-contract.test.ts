@@ -9,6 +9,7 @@ import {
   readRecordingInfoV2,
   STRICT_RECORDING_FRAME_RATE,
 } from "@storycapture/shared-types/recording-v2";
+import { readRecordingBundle } from "@storycapture/shared-types/recording-v3";
 import { describe, expect, it } from "vitest";
 
 const bundle: RecordingBundleV2 = {
@@ -57,6 +58,7 @@ const bundle: RecordingBundleV2 = {
 describe("recording V2 contracts", () => {
   it("round-trips a JSON-safe V2 bundle", () => {
     expect(readRecordingBundleV2(JSON.parse(JSON.stringify(bundle)))).toEqual(bundle);
+    expect(readRecordingBundle(JSON.parse(JSON.stringify(bundle)))).toEqual(bundle);
   });
 
   it("rejects malformed schema versions and non-60 masters", () => {

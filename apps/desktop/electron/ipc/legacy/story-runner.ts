@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import slugify from "@sindresorhus/slugify";
@@ -50,7 +50,7 @@ import {
   strictBrowserRecordingSession,
 } from "../recording-strict-browser-lifecycle";
 import {
-  setSimulatorTargetValueIncrementalScript,
+  prepareSimulatorTypeTargetScript,
   setSimulatorTargetValueScript,
   simulatorTypeProbeScript,
 } from "../simulator-dom";
@@ -99,12 +99,117 @@ import {
   waitMs,
 } from "./shared";
 
-const FALLBACK_TARGET_VERBS = ["click", "type", "hover", "select", "upload"];
-const CURSOR_INTERACTION_VERBS = ["click", "type", "hover", "select"];
+const FALLBACK_TARGET_VERBS = ["click", "type", "fill", "hover", "select", "upload"];
+const CURSOR_INTERACTION_VERBS = ["click", "type", "fill", "hover", "select"];
 const FRAME_SYNC_FALLBACK_TIMEOUT_MS = 500;
 const MAX_TARGET_DETACH_RETRIES = 2;
 const TARGET_DETACH_RETRY_DELAY_MS = 100;
 const TYPE_PROBE_HASH_SALT = randomUUID();
+
+interface TypeTargetProbe {
+  found: boolean;
+  connected?: boolean;
+  active?: boolean;
+  tag?: string;
+  inputType?: string | null;
+  valueLength?: number;
+  valueHash?: string;
+  selectionStart?: number | null;
+  selectionEnd?: number | null;
+  targetFingerprint?: string;
+  pageOrigin?: string;
+}
+
+function segmentTypeText(value: string): string[] {
+  const Segmenter = Intl.Segmenter;
+  if (Segmenter) {
+    return Array.from(
+      new Segmenter(undefined, { granularity: "grapheme" }).segment(value),
+      (part) => part.segment,
+    );
+  }
+  const graphemes: string[] = [];
+  for (const codePoint of Array.from(value)) {
+    const previous = graphemes.at(-1);
+    if (
+      previous &&
+      (/\p{Mark}/u.test(codePoint) ||
+        /[\uFE00-\uFE0F]/u.test(codePoint) ||
+        previous.endsWith("\u200d"))
+    ) {
+      graphemes[graphemes.length - 1] += codePoint;
+    } else if (codePoint === "\u200d" && previous) {
+      graphemes[graphemes.length - 1] += codePoint;
+    } else {
+      graphemes.push(codePoint);
+    }
+  }
+  return graphemes;
+}
+
+function hashedTypeValue(value: string): string {
+  return createHash("sha256")
+    .update(TYPE_PROBE_HASH_SALT + value)
+    .digest("hex");
+}
+
+function typeTargetFailure(
+  phase: "prepare" | "prefix_verification" | "final_verification",
+  reason: string,
+  probe: TypeTargetProbe | null,
+  expectedValue: string,
+): Error {
+  const error = new Error(`browser-native type failed during ${phase}: ${reason}`) as Error & {
+    phase: string;
+    reason: string;
+    diagnostics: Record<string, unknown>;
+  };
+  error.phase = phase;
+  error.reason = reason;
+  error.diagnostics = {
+    expectedLength: Array.from(expectedValue).length,
+    expectedHash: hashedTypeValue(expectedValue),
+    actualLength: probe?.valueLength ?? null,
+    actualHash: probe?.valueHash ?? null,
+    connected: probe?.connected ?? false,
+    active: probe?.active ?? false,
+    tag: probe?.tag ?? null,
+    inputType: probe?.inputType ?? null,
+    targetFingerprint: probe?.targetFingerprint ?? null,
+    pageOrigin: probe?.pageOrigin ?? null,
+  };
+  return error;
+}
+
+async function probeTypeTarget(
+  contents: WebContents,
+  command: ParsedCommand,
+): Promise<TypeTargetProbe> {
+  return contents.executeJavaScript(
+    simulatorTypeProbeScript(
+      command.target,
+      command.target_nth,
+      targetSelector(command.target),
+      TYPE_PROBE_HASH_SALT,
+    ),
+  );
+}
+
+function verifyTypeValue(
+  probe: TypeTargetProbe,
+  expectedValue: string,
+  phase: "prefix_verification" | "final_verification",
+): void {
+  if (!probe?.found || !probe.connected) {
+    throw typeTargetFailure(phase, "target_detached", probe ?? null, expectedValue);
+  }
+  if (
+    probe.valueLength !== Array.from(expectedValue).length ||
+    probe.valueHash !== hashedTypeValue(expectedValue)
+  ) {
+    throw typeTargetFailure(phase, "value_mismatch", probe, expectedValue);
+  }
+}
 
 function typeProbeEnabled(executionProfile: StoryBrowserExecutionProfile): boolean {
   return (
@@ -185,6 +290,60 @@ async function waitForRecordingDelay(
   if (!pauseGate && durationMs <= 0) return;
   const completed = pauseGate ? await pauseGate.waitForDelay(durationMs) : await waitMs(durationMs);
   if (completed === false) throw new RecordingPauseCancelledError();
+}
+
+async function executeBrowserNativeType(
+  contents: WebContents,
+  command: ParsedCommand,
+  value: string,
+  executionProfile: StoryBrowserExecutionProfile,
+  pauseGate: StoryBrowserRunOptions["pauseGate"],
+): Promise<void> {
+  const graphemes = segmentTypeText(value);
+  let expectedPrefix = "";
+  let prepared = await contents.executeJavaScript(
+    prepareSimulatorTypeTargetScript(
+      command.target,
+      command.target_nth,
+      targetSelector(command.target),
+      null,
+    ),
+  );
+  if (!prepared) throw typeTargetFailure("prepare", "target_not_writable", null, expectedPrefix);
+
+  if (graphemes.length === 0) {
+    contents.sendInputEvent({ type: "keyDown", keyCode: "Backspace" });
+    contents.sendInputEvent({ type: "keyUp", keyCode: "Backspace" });
+  }
+
+  for (const grapheme of graphemes) {
+    if (expectedPrefix) {
+      prepared = await contents.executeJavaScript(
+        prepareSimulatorTypeTargetScript(
+          command.target,
+          command.target_nth,
+          targetSelector(command.target),
+          expectedPrefix.length,
+        ),
+      );
+      if (!prepared) {
+        throw typeTargetFailure("prepare", "target_detached", null, expectedPrefix);
+      }
+    }
+    contents.insertText(grapheme);
+    expectedPrefix += grapheme;
+    await waitForRecordingDelay(pauseGate, executionProfile.typingMode === "incremental" ? 35 : 0);
+    await waitMs(0);
+    verifyTypeValue(
+      await probeTypeTarget(contents, command),
+      expectedPrefix,
+      "prefix_verification",
+    );
+  }
+
+  if (graphemes.length === 0) {
+    verifyTypeValue(await probeTypeTarget(contents, command), value, "final_verification");
+  }
 }
 
 export async function executeParsedCommand(
@@ -298,7 +457,7 @@ export async function executeParsedCommand(
       pointer: command.verb === "click" ? { button: "left", effect: "click" } : null,
     };
   }
-  if ((command.verb === "type" || command.verb === "select") && center) {
+  if ((command.verb === "type" || command.verb === "fill" || command.verb === "select") && center) {
     options.beforeInputSideEffect?.();
     options.onInputSideEffect?.("down");
     contents.sendInputEvent({
@@ -316,26 +475,23 @@ export async function executeParsedCommand(
       button: "left",
       clickCount: 1,
     });
-    const value = command.verb === "type" ? (command.text ?? "") : (command.value ?? "");
-    const valueScript =
-      command.verb === "type" && executionProfile.typingMode === "incremental"
-        ? setSimulatorTargetValueIncrementalScript(
-            command.target,
-            value,
-            command.target_nth,
-            targetSelector(command.target),
-            35,
-          )
-        : setSimulatorTargetValueScript(
-            command.target,
-            value,
-            command.target_nth,
-            targetSelector(command.target),
-          );
+    const value = command.verb === "select" ? (command.value ?? "") : (command.text ?? "");
     const shouldProbeType = command.verb === "type" && typeProbeEnabled(executionProfile);
     if (shouldProbeType) await logTypeProbe(contents, command, "before_write");
     options.onInputSideEffect?.("text_start");
-    const didWrite = await contents.executeJavaScript(valueScript);
+    let didWrite = true;
+    if (command.verb === "type") {
+      await executeBrowserNativeType(contents, command, value, executionProfile, options.pauseGate);
+    } else {
+      didWrite = await contents.executeJavaScript(
+        setSimulatorTargetValueScript(
+          command.target,
+          value,
+          command.target_nth,
+          targetSelector(command.target),
+        ),
+      );
+    }
     options.onInputSideEffect?.("text_end");
     options.onInputSideEffect?.("action");
     if (shouldProbeType) {
@@ -490,7 +646,7 @@ async function resolveCommandTarget(
 }
 
 function commandRequiresEnabledTarget(command: ParsedCommand): boolean {
-  return command.verb === "click" || command.verb === "type" || command.verb === "select";
+  return ["click", "type", "fill", "select"].includes(command.verb);
 }
 
 async function observeReadyCommandTarget(options: StoryBrowserRunOptions, command: ParsedCommand) {
@@ -894,7 +1050,7 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
         cursorStartedClockMs = recordingClockMs();
         options.actionLandmarks?.begin(landmarkEventId, {
           delivery:
-            command.verb === "type" || command.verb === "select"
+            command.verb === "fill" || command.verb === "select"
               ? "virtual_only"
               : "browser_injected",
           point: previousCursor,

@@ -59,8 +59,9 @@ function formatCommand(command: EditableCommand): string {
     case "click":
       line = `click ${formatTargetWithNth(command.target, command.target_nth)}`;
       break;
+    case "fill":
     case "type":
-      line = `type ${formatTargetWithNth(command.target, command.target_nth)} ${quote(command.text)}`;
+      line = `${command.verb} ${formatTargetWithNth(command.target, command.target_nth)} ${quote(command.text)}`;
       break;
     case "scroll":
       line = `scroll ${command.target ? `${formatTargetWithNth(command.target, command.target_nth)} ` : ""}${command.direction} ${command.amount}${command.unit}`;

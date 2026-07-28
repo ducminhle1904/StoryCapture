@@ -66,7 +66,14 @@ CaptureSession::CaptureSession(CaptureOptions options, EventWriter& writer, bool
       k_ring_capacity, size);
   capture_session_ = frame_pool_.CreateCaptureSession(target_.item);
   capture_session_.IsCursorCaptureEnabled(options_.cursor_policy == CursorPolicy::include);
-  if (!probe_only_) {
+  if (options_.native_mp4) {
+    if (target_.width != options_.requested_width || target_.height != options_.requested_height) {
+      throw ProtocolError("backend_capability_mismatch",
+                          "native MP4 dimensions must match the exact WGC surface");
+    }
+    mp4_writer_ = std::make_unique<NativeMp4Writer>(d3d_device_.Get(), options_.output_path,
+                                                    target_.width, target_.height);
+  } else if (!probe_only_) {
     ring_ = std::make_unique<NativeFrameRing>(d3d_device_.Get(), options_.session_id,
                                               options_.ownership_token, target_.width, target_.height);
   }
@@ -78,7 +85,12 @@ CaptureSession::CaptureSession(CaptureOptions options, EventWriter& writer, bool
   observation_.permissions_granted = true;
 }
 
-CaptureSession::~CaptureSession() { stop(); }
+CaptureSession::~CaptureSession() {
+  try {
+    stop();
+  } catch (...) {
+  }
+}
 
 void CaptureSession::start() {
   if (running_.exchange(true)) throw ProtocolError("contract_mismatch", "capture session already started");
@@ -90,10 +102,27 @@ void CaptureSession::start() {
   closed_token_ = target_.item.Closed({this, &CaptureSession::on_target_closed});
   {
     std::scoped_lock lock(mutex_);
-    last_frame_qpc_us_ = qpc_us();
+    started_monotonic_us_ = qpc_us();
+    last_frame_qpc_us_ = started_monotonic_us_;
   }
   capture_session_.StartCapture();
   watchdog_ = std::jthread([this](std::stop_token token) { watchdog(token); });
+}
+
+void CaptureSession::wait_for_initial_surface(std::chrono::milliseconds timeout) {
+  if (!mp4_writer_) {
+    throw ProtocolError("contract_mismatch", "initial-surface readiness requires native MP4");
+  }
+  std::unique_lock lock(mutex_);
+  if (!initial_surface_cv_.wait_for(lock, timeout,
+                                    [this] { return latest_texture_ != nullptr || failed_.load(); })) {
+    throw ProtocolError("initial_surface_missing",
+                        "WGC did not produce the first encoded surface before timeout");
+  }
+  if (failed_) {
+    throw ProtocolError("initial_surface_missing",
+                        "WGC failed before the first surface could be encoded");
+  }
 }
 
 void CaptureSession::pause() {
@@ -123,6 +152,45 @@ void CaptureSession::stop() {
   if (frame_pool_) frame_pool_.Close();
   capture_session_ = nullptr;
   frame_pool_ = nullptr;
+  std::scoped_lock lock(mutex_);
+  ended_monotonic_us_ = qpc_us();
+  if (mp4_writer_ && latest_texture_ && !failed_) {
+    const auto paused_tail = paused_ ? ended_monotonic_us_ - pause_started_qpc_us_ : 0;
+    const auto active_duration_us =
+        ended_monotonic_us_ - started_monotonic_us_ - paused_duration_us_ - paused_tail;
+    const auto expected_frames = std::max<std::uint64_t>(
+        1, static_cast<std::uint64_t>((std::max<std::int64_t>(0, active_duration_us) * 60 +
+                                      999'999) /
+                                     1'000'000));
+    while (output_frame_index_ < expected_frames) {
+      mp4_writer_->write(latest_texture_.Get(), output_frame_index_++);
+      ++held_frames_;
+    }
+  }
+}
+
+NativeCaptureEvidence CaptureSession::finalize_native_mp4() {
+  if (!mp4_writer_) throw ProtocolError("contract_mismatch", "native MP4 writer is not active");
+  if (running_) throw ProtocolError("contract_mismatch", "capture must stop before finalization");
+  if (!latest_texture_ || output_frame_index_ == 0) {
+    throw ProtocolError("initial_surface_missing", "WGC produced no encodable surface");
+  }
+  mp4_writer_->finalize();
+  NativeCaptureEvidence evidence;
+  evidence.artifact_path = mp4_writer_->output_path();
+  evidence.encoder_id = mp4_writer_->encoder_id();
+  evidence.width = target_.width;
+  evidence.height = target_.height;
+  evidence.source_frames = source_frame_index_;
+  evidence.output_frames = output_frame_index_;
+  evidence.held_frames = held_frames_;
+  evidence.encoder_dropped_frames = encoder_dropped_frames_;
+  evidence.initial_surface_received = latest_texture_ != nullptr;
+  evidence.started_monotonic_us = started_monotonic_us_;
+  evidence.ended_monotonic_us = ended_monotonic_us_;
+  evidence.finalized_duration_us =
+      static_cast<std::int64_t>((output_frame_index_ * 1'000'000) / 60);
+  return evidence;
 }
 
 ProbeObservation CaptureSession::observation() const {
@@ -160,12 +228,14 @@ void CaptureSession::on_frame_arrived(
     const auto source_size = frame.ContentSize();
     if (source_size.Width != static_cast<std::int32_t>(target_.width) ||
         source_size.Height != static_cast<std::int32_t>(target_.height)) {
-      JsonObject event;
-      set_string(event, L"type", L"format-changed");
-      set_string(event, L"session_id", options_.session_id);
-      set_number(event, L"width", source_size.Width);
-      set_number(event, L"height", source_size.Height);
-      writer_.emit(std::move(event));
+      if (!options_.native_mp4) {
+        JsonObject event;
+        set_string(event, L"type", L"format-changed");
+        set_string(event, L"session_id", options_.session_id);
+        set_number(event, L"width", source_size.Width);
+        set_number(event, L"height", source_size.Height);
+        writer_.emit(std::move(event));
+      }
       terminal_failure(L"target_changed", L"capture target physical size changed");
       return;
     }
@@ -201,6 +271,38 @@ void CaptureSession::on_frame_arrived(
       return;
     }
     const auto texture = texture_from_surface(frame.Surface());
+    if (mp4_writer_) {
+      const auto desired_frame = static_cast<std::uint64_t>(active_pts_us * 60 / 1'000'000);
+      while (latest_texture_ && output_frame_index_ < desired_frame) {
+        mp4_writer_->write(latest_texture_.Get(), output_frame_index_++);
+        ++held_frames_;
+      }
+      if (!latest_texture_) {
+        mp4_writer_->write(texture.Get(), output_frame_index_++);
+        while (output_frame_index_ <= desired_frame) {
+          mp4_writer_->write(texture.Get(), output_frame_index_++);
+          ++held_frames_;
+        }
+      } else if (output_frame_index_ == desired_frame) {
+        mp4_writer_->write(texture.Get(), output_frame_index_++);
+      }
+      D3D11_TEXTURE2D_DESC descriptor{};
+      texture->GetDesc(&descriptor);
+      descriptor.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+      descriptor.CPUAccessFlags = 0;
+      descriptor.MiscFlags = 0;
+      descriptor.Usage = D3D11_USAGE_DEFAULT;
+      if (!latest_texture_) {
+        winrt::check_hresult(d3d_device_->CreateTexture2D(
+            &descriptor, nullptr, latest_texture_.ReleaseAndGetAddressOf()));
+      }
+      Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
+      d3d_device_->GetImmediateContext(context.ReleaseAndGetAddressOf());
+      context->CopyResource(latest_texture_.Get(), texture.Get());
+      initial_surface_cv_.notify_all();
+      previous_active_pts_us_ = active_pts_us;
+      return;
+    }
     const auto committed = ring_->commit(texture.Get(), source_frame_index_, active_pts_us, duration_us);
     previous_active_pts_us_ = active_pts_us;
 
@@ -231,16 +333,19 @@ void CaptureSession::on_target_closed(
     const winrt::Windows::Graphics::Capture::GraphicsCaptureItem&,
     const winrt::Windows::Foundation::IInspectable&) {
   if (!running_) return;
-  JsonObject event;
-  set_string(event, L"type", L"target-lost");
-  set_string(event, L"session_id", options_.session_id);
-  set_string(event, L"failure_code", L"target_lost");
-  writer_.emit(std::move(event));
+  if (!options_.native_mp4) {
+    JsonObject event;
+    set_string(event, L"type", L"target-lost");
+    set_string(event, L"session_id", options_.session_id);
+    set_string(event, L"failure_code", L"target_lost");
+    writer_.emit(std::move(event));
+  }
   terminal_failure(L"target_lost", L"Windows Graphics Capture target closed");
 }
 
 void CaptureSession::terminal_failure(std::wstring_view code, std::wstring_view message) noexcept {
   if (failed_.exchange(true)) return;
+  initial_surface_cv_.notify_all();
   if (ring_) ring_->fail();
   writer_.failure(options_.session_id, code, message);
 }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -91,6 +92,28 @@ function command(verb: string, label: string): ParsedCommand {
   } as ParsedCommand;
 }
 
+function typeProbe(script: string, value: string, active = true) {
+  const saltLiteral = script.match(
+    /new TextEncoder\(\)\.encode\(((?:"(?:\\.|[^"])*")) \+ value\)/,
+  )?.[1];
+  const salt = saltLiteral ? JSON.parse(saltLiteral) : "";
+  return {
+    found: true,
+    connected: true,
+    active,
+    tag: "input",
+    inputType: "text",
+    valueLength: Array.from(value).length,
+    valueHash: createHash("sha256")
+      .update(salt + value)
+      .digest("hex"),
+    selectionStart: value.length,
+    selectionEnd: value.length,
+    targetFingerprint: "input:nth-of-type(1)",
+    pageOrigin: "http://localhost.test",
+  };
+}
+
 function textOverlay(text: string, durationMs: number): ParsedCommand {
   return {
     verb: "text-overlay",
@@ -103,6 +126,8 @@ function fakeContents(targets: ActionTarget[]) {
   const pendingTargets = [...targets];
   let latestTarget: ActionTarget | null = null;
   const sendInputEvent = vi.fn();
+  let typedValue = "";
+  let replaceOnNextInsert = false;
   const executeJavaScript = vi.fn(async (script: string) => {
     if (script.includes("resolvedTargetGeometry")) {
       latestTarget = pendingTargets.shift() ?? latestTarget;
@@ -113,6 +138,8 @@ function fakeContents(targets: ActionTarget[]) {
       }
       return latestTarget;
     }
+    if (script.includes("crypto.subtle.digest")) return typeProbe(script, typedValue);
+    if (script.includes("focusTypeTarget(resolved, null)")) replaceOnNextInsert = true;
     return true;
   });
   return {
@@ -122,6 +149,10 @@ function fakeContents(targets: ActionTarget[]) {
       getContentBounds: () => ({ width: 1280, height: 800 }),
     }),
     sendInputEvent,
+    insertText: vi.fn((text: string) => {
+      typedValue = replaceOnNextInsert ? text : typedValue + text;
+      replaceOnNextInsert = false;
+    }),
     executeJavaScript,
     capturePage: vi.fn(async () => ({
       isEmpty: () => false,
@@ -133,6 +164,8 @@ function fakeContents(targets: ActionTarget[]) {
 
 function fakeContentsByLabel(targets: Record<string, ActionTarget>) {
   const sendInputEvent = vi.fn();
+  let typedValue = "";
+  let replaceOnNextInsert = false;
   const executeJavaScript = vi.fn(async (script: string) => {
     if (script.includes("resolvedTargetGeometry")) {
       for (const [label, actionTarget] of Object.entries(targets)) {
@@ -146,6 +179,8 @@ function fakeContentsByLabel(targets: Record<string, ActionTarget>) {
         ? { status: "not_ready", reason: "not_found" }
         : null;
     }
+    if (script.includes("crypto.subtle.digest")) return typeProbe(script, typedValue);
+    if (script.includes("focusTypeTarget(resolved, null)")) replaceOnNextInsert = true;
     return true;
   });
   return {
@@ -155,6 +190,10 @@ function fakeContentsByLabel(targets: Record<string, ActionTarget>) {
       getContentBounds: () => ({ width: 1280, height: 800 }),
     }),
     sendInputEvent,
+    insertText: vi.fn((text: string) => {
+      typedValue = replaceOnNextInsert ? text : typedValue + text;
+      replaceOnNextInsert = false;
+    }),
     executeJavaScript,
     capturePage: vi.fn(async () => ({
       isEmpty: () => false,
@@ -164,10 +203,42 @@ function fakeContentsByLabel(targets: Record<string, ActionTarget>) {
   };
 }
 
+function nativeTypeContents(options?: {
+  initialValue?: string;
+  afterInsert?: (value: string, inserted: string, insertionCount: number) => string;
+  detachAfterInsert?: number;
+  inactiveAfterInsert?: boolean;
+}) {
+  const base = fakeContents([]);
+  let value = options?.initialValue ?? "";
+  let replaceOnNextInsert = false;
+  let insertionCount = 0;
+  const executeJavaScript = vi.fn(async (script: string) => {
+    if (script.includes("focusTypeTarget(resolved, null)")) replaceOnNextInsert = true;
+    if (script.includes("focusTypeTarget")) return true;
+    if (script.includes("crypto.subtle.digest")) {
+      if (options?.detachAfterInsert === insertionCount) return { found: false };
+      return typeProbe(script, value, !(options?.inactiveAfterInsert && insertionCount > 0));
+    }
+    return true;
+  });
+  const insertText = vi.fn((text: string) => {
+    insertionCount += 1;
+    value = replaceOnNextInsert ? text : value + text;
+    replaceOnNextInsert = false;
+    value = options?.afterInsert?.(value, text, insertionCount) ?? value;
+  });
+  const sendInputEvent = vi.fn((event: { type: string; keyCode?: string }) => {
+    if (event.type === "keyDown" && event.keyCode === "Backspace") value = "";
+  });
+  return { ...base, executeJavaScript, insertText, sendInputEvent, value: () => value };
+}
+
 describe("story browser cursor pacing", () => {
   it.each([
     ["click", ["down", "up", "action"]],
     ["type", ["down", "up", "text_start", "text_end", "action"]],
+    ["fill", ["down", "up", "text_start", "text_end", "action"]],
     ["select", ["down", "up", "text_start", "text_end", "action"]],
   ] as const)("records %s landmarks at the browser side effects", async (verb, expected) => {
     const actionTarget = target("Control", { x: 240, y: 180 });
@@ -194,6 +265,177 @@ describe("story browser cursor pacing", () => {
     expect(landmarks).toEqual([]);
   });
 
+  it("uses browser-native grapheme insertion and re-resolves a reactive target", async () => {
+    vi.useRealTimers();
+    const contents = nativeTypeContents({ inactiveAfterInsert: true });
+    const inputTarget = target("Search Wikipedia", { x: 240, y: 180 });
+
+    await executeParsedCommand(
+      contents as never,
+      { ...command("type", "Search Wikipedia"), text: "ElectronJS" },
+      "/tmp",
+      {
+        resolvedTarget: inputTarget,
+        executionProfile: {
+          typingMode: "instant",
+          captureRecordingFrames: false,
+          settleDelayForCommand: () => 0,
+        },
+      },
+    );
+
+    expect(contents.value()).toBe("ElectronJS");
+    expect(contents.insertText).toHaveBeenCalledTimes(10);
+    expect(
+      contents.executeJavaScript.mock.calls.filter(([script]) =>
+        script.includes("focusTypeTarget"),
+      ),
+    ).toHaveLength(10);
+  });
+
+  it("clears an existing value when browser-native type text is empty", async () => {
+    vi.useRealTimers();
+    const contents = nativeTypeContents({ initialValue: "existing" });
+
+    await executeParsedCommand(
+      contents as never,
+      { ...command("type", "Search Wikipedia"), text: "" },
+      "/tmp",
+      {
+        resolvedTarget: target("Search Wikipedia", { x: 240, y: 180 }),
+        executionProfile: {
+          typingMode: "instant",
+          captureRecordingFrames: false,
+          settleDelayForCommand: () => 0,
+        },
+      },
+    );
+
+    expect(contents.value()).toBe("");
+    expect(contents.sendInputEvent).toHaveBeenCalledWith({
+      type: "keyDown",
+      keyCode: "Backspace",
+    });
+  });
+
+  it("inserts Unicode text by grapheme instead of code point", async () => {
+    vi.useRealTimers();
+    const contents = nativeTypeContents();
+    const value = "👨‍👩‍👧‍👦é";
+
+    await executeParsedCommand(
+      contents as never,
+      { ...command("type", "Unicode"), text: value },
+      "/tmp",
+      {
+        resolvedTarget: target("Unicode", { x: 240, y: 180 }),
+        executionProfile: {
+          typingMode: "instant",
+          captureRecordingFrames: false,
+          settleDelayForCommand: () => 0,
+        },
+      },
+    );
+
+    expect(contents.insertText.mock.calls.map(([text]) => text)).toEqual(["👨‍👩‍👧‍👦", "é"]);
+    expect(contents.value()).toBe(value);
+  });
+
+  it("fails safely when a typed target detaches", async () => {
+    vi.useRealTimers();
+    const contents = nativeTypeContents({ detachAfterInsert: 1 });
+    const secret = "private-secret";
+
+    const execution = executeParsedCommand(
+      contents as never,
+      { ...command("type", "Secret"), text: secret },
+      "/tmp",
+      {
+        resolvedTarget: target("Secret", { x: 240, y: 180 }),
+        executionProfile: {
+          typingMode: "instant",
+          captureRecordingFrames: false,
+          settleDelayForCommand: () => 0,
+        },
+      },
+    );
+
+    await expect(execution).rejects.toMatchObject({
+      reason: "target_detached",
+      diagnostics: { expectedLength: 1, actualLength: null },
+    });
+    await expect(execution).rejects.not.toThrow(secret);
+  });
+
+  it("rejects controlled overwrites with privacy-safe mismatch diagnostics", async () => {
+    vi.useRealTimers();
+    const secret = "private-secret";
+    const contents = nativeTypeContents({ afterInsert: () => "controlled-value" });
+
+    const execution = executeParsedCommand(
+      contents as never,
+      { ...command("type", "Secret"), text: secret },
+      "/tmp",
+      {
+        resolvedTarget: target("Secret", { x: 240, y: 180 }),
+        executionProfile: {
+          typingMode: "instant",
+          captureRecordingFrames: false,
+          settleDelayForCommand: () => 0,
+        },
+      },
+    );
+
+    await expect(execution).rejects.toMatchObject({
+      reason: "value_mismatch",
+      diagnostics: {
+        expectedLength: 1,
+        actualLength: 16,
+        expectedHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        actualHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
+    });
+    await expect(execution).rejects.not.toThrow(secret);
+  });
+
+  it("does not cap long browser-native type input", async () => {
+    vi.useRealTimers();
+    const contents = nativeTypeContents();
+    const value = "x".repeat(201);
+
+    await executeParsedCommand(
+      contents as never,
+      { ...command("type", "Notes"), text: value },
+      "/tmp",
+      {
+        resolvedTarget: target("Notes", { x: 240, y: 180 }),
+        executionProfile: {
+          typingMode: "instant",
+          captureRecordingFrames: false,
+          settleDelayForCommand: () => 0,
+        },
+      },
+    );
+
+    expect(contents.insertText).toHaveBeenCalledTimes(201);
+    expect(contents.value()).toBe(value);
+  });
+
+  it("keeps fill on the full-value DOM path", async () => {
+    const contents = fakeContents([]);
+    const value = "filled at once";
+
+    await executeParsedCommand(
+      contents as never,
+      { ...command("fill", "Email"), text: value },
+      "/tmp",
+      { resolvedTarget: target("Email", { x: 240, y: 180 }) },
+    );
+
+    expect(contents.insertText).not.toHaveBeenCalled();
+    expect(contents.executeJavaScript).toHaveBeenCalledWith(expect.stringContaining(value));
+  });
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
@@ -212,6 +454,7 @@ describe("story browser cursor pacing", () => {
   it("classifies only user-visible interaction commands as cursor events", () => {
     expect(commandContributesCursorEvent(command("click", "Sign in"))).toBe(true);
     expect(commandContributesCursorEvent(command("type", "Email"))).toBe(true);
+    expect(commandContributesCursorEvent(command("fill", "Email"))).toBe(true);
     expect(commandContributesCursorEvent(command("hover", "Menu"))).toBe(true);
     expect(commandContributesCursorEvent(command("select", "Plan"))).toBe(true);
     expect(commandContributesCursorEvent(command("upload", "Avatar"))).toBe(false);
@@ -472,8 +715,9 @@ describe("story browser cursor pacing", () => {
     const replacement = target("Search Wikipedia", { x: 520, y: 240 });
     let readinessCalls = 0;
     let prepareCalls = 0;
+    const baseContents = fakeContents([]);
     const contents = {
-      ...fakeContents([]),
+      ...baseContents,
       executeJavaScript: vi.fn(async (script: string) => {
         if (script.includes("resolvedTargetReadiness")) {
           readinessCalls += 1;
@@ -486,7 +730,7 @@ describe("story browser cursor pacing", () => {
           prepareCalls += 1;
           return null;
         }
-        return true;
+        return baseContents.executeJavaScript(script);
       }),
     };
     const successes: ActionTarget[] = [];
@@ -779,9 +1023,10 @@ describe("story browser cursor pacing", () => {
     await vi.runAllTimersAsync();
     await expect(run).resolves.toMatchObject({ succeeded: 1, failed: 0 });
     expect(requestFrameCommit).toHaveBeenCalledTimes(1);
+    expect(contents.insertText.mock.calls.map(([text]) => text).join("")).toBe("ElectronJS");
     expect(
       contents.executeJavaScript.mock.calls.some(([script]) => script.includes("ElectronJS")),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("records healthy type landmarks from an explicitly committed frame", async () => {
@@ -794,6 +1039,7 @@ describe("story browser cursor pacing", () => {
       await new Promise<void>((resolve) => setTimeout(resolve, 700));
       actionLandmarks.commitFrame(committed);
       setTimeout(() => actionLandmarks.commitFrame({ frameIndex: 1, ptsUs: 16_667 }), 10);
+      setTimeout(() => actionLandmarks.commitFrame({ frameIndex: 2, ptsUs: 33_333 }), 500);
       return { status: "committed" as const, landmark: committed };
     });
 
@@ -824,9 +1070,14 @@ describe("story browser cursor pacing", () => {
     await vi.runAllTimersAsync();
     await expect(run).resolves.toMatchObject({ succeeded: 1, failed: 0 });
     expect(successfulSteps[0]?.timing?.landmarks).toMatchObject({
+      delivery: "browser_injected",
       cursorPath: { arrival: committed },
-      input: { action: committed, text_start: committed, text_end: committed },
-      presentation: { status: "presented", firstPostInputFrame: { frameIndex: 1 } },
+      input: {
+        action: { frameIndex: 1 },
+        text_start: committed,
+        text_end: { frameIndex: 1 },
+      },
+      presentation: { status: "presented", firstPostInputFrame: { frameIndex: 2 } },
     });
   });
 

@@ -28,7 +28,7 @@ await execFileAsync("/usr/bin/codesign", ["--verify", "--strict", "--verbose=2",
 const child = spawn(helper, [], { stdio: ["pipe", "pipe", "pipe", "pipe"] });
 const lines = createInterface({ input: child.stdout });
 
-function request(command, requestID) {
+function request(command, requestID, version) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`${command} timed out`)), 5_000);
     const onLine = (line) => {
@@ -40,11 +40,11 @@ function request(command, requestID) {
       else reject(new Error(`${response.code}: ${response.message}`));
     };
     lines.on("line", onLine);
-    child.stdin.write(`${JSON.stringify({ version: 2, request_id: requestID, command })}\n`);
+    child.stdin.write(`${JSON.stringify({ version, request_id: requestID, command })}\n`);
   });
 }
 
-const hello = await request("hello", "packaged-hello");
+const hello = await request("hello", "packaged-v2-hello", 2);
 if (
   hello.data?.backend_id !== "screen-capture-kit" ||
   hello.data?.supports_native_timestamps !== true ||
@@ -52,5 +52,19 @@ if (
 ) {
   throw new Error("packaged ScreenCaptureKit helper reported an invalid capability contract");
 }
-await request("shutdown", "packaged-shutdown");
-process.stdout.write("packaged ScreenCaptureKit helper signature and V2 protocol passed\n");
+const nativeMaster = await request("hello", "packaged-v3-hello", 3);
+if (
+  nativeMaster.version !== 3 ||
+  nativeMaster.data?.backend_id !== "screen-capture-kit" ||
+  nativeMaster.data?.backend_version !== "3.0.0" ||
+  nativeMaster.data?.supports_native_master !== true ||
+  nativeMaster.data?.supports_hardware_h264 !== true ||
+  nativeMaster.data?.supports_cfr_held_frames !== true ||
+  nativeMaster.data?.supports_atomic_finalization !== true ||
+  nativeMaster.data?.encoder?.id !== "videotoolbox-h264" ||
+  nativeMaster.data?.encoder?.hardware_accelerated !== true
+) {
+  throw new Error("packaged ScreenCaptureKit helper reported an invalid V3 native-master contract");
+}
+await request("shutdown", "packaged-v3-shutdown", 3);
+process.stdout.write("packaged ScreenCaptureKit helper signature and V2/V3 protocols passed\n");

@@ -2,8 +2,10 @@ import CoreMedia
 import Foundation
 
 public let helperProtocolVersion = 2
+public let nativeMasterProtocolVersion = 3
 public let helperBackendID = "screen-capture-kit"
 public let helperBackendVersion = "2.0.0"
+public let nativeMasterBackendVersion = "3.0.0"
 
 public enum HelperFailureCode: String, Codable, Error, Sendable {
     case backendUnavailable = "backend_unavailable"
@@ -29,6 +31,7 @@ public struct HelperTarget: Codable, Equatable, Sendable {
     public let ownerPID: Int32?
     public let ownerBundleID: String?
     public let expectedIdentity: String?
+    public let mediaSourceID: String?
 
     public init(
         kind: Kind,
@@ -36,7 +39,8 @@ public struct HelperTarget: Codable, Equatable, Sendable {
         windowID: UInt32? = nil,
         ownerPID: Int32? = nil,
         ownerBundleID: String? = nil,
-        expectedIdentity: String? = nil
+        expectedIdentity: String? = nil,
+        mediaSourceID: String? = nil
     ) {
         self.kind = kind
         self.displayID = displayID
@@ -44,6 +48,7 @@ public struct HelperTarget: Codable, Equatable, Sendable {
         self.ownerPID = ownerPID
         self.ownerBundleID = ownerBundleID
         self.expectedIdentity = expectedIdentity
+        self.mediaSourceID = mediaSourceID
     }
 }
 
@@ -62,6 +67,9 @@ public struct HelperCommandPayload: Codable, Equatable, Sendable {
     public let dynamicSizePolicy: DynamicSizePolicy?
     public let capturesSystemAudio: Bool?
     public let probeDurationMS: Int?
+    public let artifactPath: String?
+    public let fpsNumerator: Int?
+    public let fpsDenominator: Int?
 
     public init(
         target: HelperTarget? = nil,
@@ -72,7 +80,10 @@ public struct HelperCommandPayload: Codable, Equatable, Sendable {
         showsCursor: Bool? = nil,
         dynamicSizePolicy: DynamicSizePolicy? = nil,
         capturesSystemAudio: Bool? = nil,
-        probeDurationMS: Int? = nil
+        probeDurationMS: Int? = nil,
+        artifactPath: String? = nil,
+        fpsNumerator: Int? = nil,
+        fpsDenominator: Int? = nil
     ) {
         self.target = target
         self.outputWidth = outputWidth
@@ -83,6 +94,9 @@ public struct HelperCommandPayload: Codable, Equatable, Sendable {
         self.dynamicSizePolicy = dynamicSizePolicy
         self.capturesSystemAudio = capturesSystemAudio
         self.probeDurationMS = probeDurationMS
+        self.artifactPath = artifactPath
+        self.fpsNumerator = fpsNumerator
+        self.fpsDenominator = fpsDenominator
     }
 }
 
@@ -198,4 +212,15 @@ public func monotonicMicroseconds(_ time: CMTime) -> UInt64? {
         return nil
     }
     return UInt64((seconds * 1_000_000).rounded())
+}
+
+public func windowIDFromMediaSourceID(_ value: String) -> UInt32? {
+    let fields = value.split(separator: ":", omittingEmptySubsequences: false)
+    guard fields.count >= 2,
+          fields[0] == "window",
+          let id = UInt32(fields[1]),
+          id > 0 else {
+        return nil
+    }
+    return id
 }

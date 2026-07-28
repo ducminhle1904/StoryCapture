@@ -82,9 +82,9 @@ describe("story parser host command targets", () => {
     });
   });
 
-  it("parses fill as the runtime type command without losing its value", () => {
+  it("keeps fill distinct from the browser-native type command", () => {
     expect(commandFor('fill <textbox> "Search Wikipedia" with "ElectronJS"')).toMatchObject({
-      verb: "type",
+      verb: "fill",
       target: {
         kind: "role",
         value: { role: "textbox", name: "Search Wikipedia" },

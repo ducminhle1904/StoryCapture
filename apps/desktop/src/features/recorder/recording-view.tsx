@@ -98,6 +98,40 @@ const initialPermissionReport: ScreenCapturePermissionReport = {
   debugBypassAllowed: false,
 };
 
+function strictPreflightFailureMessage(code: string): string {
+  switch (code) {
+    case "permission_denied":
+      return "Allow Screen Recording in system settings";
+    case "backend_unavailable":
+      return "Native capture helper is unavailable";
+    case "backend_capability_mismatch":
+      return "Native capture helper needs an update";
+    case "encoder_unavailable":
+      return "A hardware H.264 encoder is required";
+    case "storage_estimate_failed":
+      return "Available storage could not be verified";
+    case "storage_reserve_exhausted":
+      return "Free storage before starting Strict recording";
+    case "preflight_failed":
+      return "Strict recording is disabled by policy";
+    default:
+      return code.replaceAll("_", " ");
+  }
+}
+
+function nativeReadinessLabel(readiness: RecorderStatus | string | null): string {
+  switch (readiness) {
+    case "global_ready":
+      return "Preparing browser target";
+    case "target_ready":
+      return "Waiting for initial surface";
+    case "initial_surface_received":
+      return "Native surface ready";
+    default:
+      return "Initializing";
+  }
+}
+
 function formatTime(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
   const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
@@ -137,6 +171,7 @@ export function RecordingView({
     outputPath,
     elapsedMs,
     preflight,
+    readiness,
     liveEvidence,
     verificationProgress,
     qualityFailure,
@@ -185,6 +220,7 @@ export function RecordingView({
   const [browserPreset, setBrowserPreset] = useState<string | null>(null);
   const appSettings = useAppSettingsStore((s) => s.settings);
   const recordingDeliveryPolicy = useOutputPrefsStore((s) => s.recordingDeliveryPolicy);
+  const setRecordingDeliveryPolicy = useOutputPrefsStore((s) => s.setRecordingDeliveryPolicy);
 
   const applyRecorderDefaults = () => {
     const capture = useAppSettingsStore.getState().settings?.capture;
@@ -501,9 +537,10 @@ export function RecordingView({
     setStatus("quality_failed");
     setQualityFailure(result);
     setOutputPath(result.diagnostic_bundle_path);
-    const message = result.cadence_evidence.failure_codes
-      .concat(result.quality_evidence.failure_codes)
-      .join(", ");
+    const message = [
+      ...result.cadence_evidence.failure_codes,
+      ...result.quality_evidence.failure_codes,
+    ].join(", ");
     setError(message || "Strict verification failed");
     toast.error("Strict verification failed", {
       description: message || result.diagnostic_bundle_path || undefined,
@@ -1125,15 +1162,37 @@ export function RecordingView({
               {preflight.strict_eligible ? "Strict preflight passed" : "Strict preflight blocked"}
             </span>
             <span className="text-[var(--color-fg-secondary)]">
-              {preflight.backend_id} {preflight.backend_version}
-              {preflight.certification ? ` · ${preflight.certification.id}` : " · uncertified"}
+              {preflight.version === 3
+                ? `${preflight.platform === "darwin" ? "ScreenCaptureKit" : "Windows Graphics Capture"} · ${preflight.encoder_id ?? "hardware H.264 unavailable"}`
+                : `${preflight.backend_id} ${preflight.backend_version}${
+                    preflight.certification ? ` · ${preflight.certification.id}` : " · uncertified"
+                  }`}
             </span>
           </div>
           <span className="font-mono text-[11px] text-[var(--color-fg-secondary)]">
             {liveEvidence
-              ? `${liveEvidence.encoder_acked_frames}/${liveEvidence.expected_slots} committed`
+              ? liveEvidence.version === 3
+                ? `${liveEvidence.output_frames} frames · ${liveEvidence.held_frames} held`
+                : `${liveEvidence.encoder_acked_frames}/${liveEvidence.expected_slots} committed`
               : preflight.failure_codes.join(", ") || "60/1 · 1920×1080"}
           </span>
+          {!preflight.strict_eligible ? (
+            <div className="flex w-full flex-wrap items-center justify-between gap-2 border-t border-[var(--color-danger)]/20 pt-2">
+              <span className="text-[var(--color-fg-secondary)]">
+                {preflight.failure_codes.map(strictPreflightFailureMessage).join(" · ")}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setRecordingDeliveryPolicy("best_effort");
+                  resetTake();
+                }}
+                className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)]"
+              >
+                Use Standard recording
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -1144,9 +1203,10 @@ export function RecordingView({
               Strict take was not published
             </div>
             <div className="truncate text-[var(--color-fg-secondary)]">
-              {qualityFailure.cadence_evidence.failure_codes
-                .concat(qualityFailure.quality_evidence.failure_codes)
-                .join(", ") || "Verification failed"}
+              {[
+                ...qualityFailure.cadence_evidence.failure_codes,
+                ...qualityFailure.quality_evidence.failure_codes,
+              ].join(", ") || "Verification failed"}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -1271,7 +1331,7 @@ export function RecordingView({
               ) : status === "paused" ? (
                 <span>Recording paused</span>
               ) : status === "verifying" ? (
-                <span>Verifying exact cadence and master hashes</span>
+                <span>Verifying cadence, native master integrity, and visual quality</span>
               ) : status === "completed" ? (
                 <span className="text-[var(--color-success)]">Recording complete</span>
               ) : status === "quality_failed" ? (
@@ -1351,6 +1411,9 @@ export function RecordingView({
                 v={permission === "granted" ? "Ready" : "Needs attention"}
               />
               <SettingsRow k="Target" v={captureTarget ? "Selected" : "Choose target"} />
+              {recordingDeliveryPolicy === "strict" && status !== "idle" ? (
+                <SettingsRow k="Native capture" v={nativeReadinessLabel(readiness)} />
+              ) : null}
               <SettingsRow k="Audio" v={audioDeviceId ? "Enabled" : "Video only"} />
               <SettingsRow k="Output" v={isOutputBlocked ? "Needs attention" : "Ready"} />
             </div>

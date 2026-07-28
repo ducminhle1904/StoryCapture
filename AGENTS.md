@@ -57,9 +57,10 @@ video.
   and simulator behavior is desktop IPC/host code, not a shared parser package.
 - `packages/shared-types` publicly exports browser presets, web account types,
   the checked-in IPC compatibility surface, and the JSON-safe post-production
-  composition/preflight/job and Recording V2 contracts. Electron/Node runtime
-  consumers of recording values use
-  `@storycapture/shared-types/recording-v2`; consumers of
+  composition/preflight/job and Recording V2/V3 contracts. Electron/Node runtime
+  consumers use `@storycapture/shared-types/recording-v3` for production Strict
+  recording and `@storycapture/shared-types/recording-v2` for compatibility;
+  consumers of
   composition values use `@storycapture/shared-types/export-composition`, not
   the package-root barrel.
   `packages/shared-types/src/generated/effects.ts` is checked-in generated
@@ -160,18 +161,20 @@ file explicitly says otherwise.
   `apps/desktop/electron/ipc/legacy/story-runner.ts`,
   `apps/desktop/src/ipc/automation.ts`, and
   `apps/desktop/src/features/recorder/recording-view.tsx`.
-- Strict Recording V2: start with
-  `packages/shared-types/src/recording-v2.ts`, then read
-  `apps/desktop/electron/ipc/recording-certification-catalog.ts`,
-  `apps/desktop/electron/ipc/capture-backend-v2-guard.ts`,
+- Strict Recording V3: start with
+  `packages/shared-types/src/recording-v3.ts`, then read
+  `apps/desktop/electron/ipc/recording-native-preflight.ts`,
+  `apps/desktop/electron/ipc/recording-native-browser-surface.ts`,
+  `apps/desktop/electron/ipc/recording-native-platform-session.ts`,
   `apps/desktop/electron/ipc/recording-strict-browser-lifecycle.ts`,
-  `apps/desktop/electron/ipc/browser-capture-backend-v2.ts`,
-  `apps/desktop/electron/ipc/recording-master-pipeline.ts`,
+  `apps/desktop/electron/ipc/recording-native-master-bundle.ts`,
   `apps/desktop/electron/ipc/recording-bundle.ts`, and
   `apps/desktop/electron/ipc/recording-quality-verifier.ts`. Native adapters are
   `macos-screen-capture-backend.ts`, `windows-capture-backend.ts`, and
-  `apps/desktop/native/`; use `docs/agent/operations.md` for certification,
-  packaging, signing, and kill-switch rules.
+  `apps/desktop/native/`. V3 admission uses runtime capability evidence, not the
+  certification catalog; read `recording-v2.ts`, `browser-capture-backend-v2.ts`,
+  and `recording-certification-catalog.ts` only for V2 compatibility. Use
+  `docs/agent/operations.md` for packaging, signing, live OS gates, and kill switches.
 - Recording logs/diagnostics: read
   `apps/desktop/electron/ipc/recording-observability.ts`,
   `apps/desktop/electron/ipc/log-store.ts`, and
@@ -209,7 +212,8 @@ file explicitly says otherwise.
   `docs/agent/testing.md`.
 - Packaged post-production export parity: `pnpm --dir apps/desktop run test:e2e:export`.
 - Packaged native capture helper gate:
-  `pnpm --dir apps/desktop run test:e2e:recording-v2-helper`.
+  `pnpm --dir apps/desktop run test:e2e:recording-v3-helper`; keep
+  `test:e2e:recording-v2-helper` for compatibility until V2 readers retire.
 - Web Prisma commands live in `apps/web/package.json`: `db:generate`,
   `db:migrate`, `db:push`, and `db:seed`.
 - CI is `.github/workflows/ci.yml` and runs typecheck, desktop/UI/web tests,

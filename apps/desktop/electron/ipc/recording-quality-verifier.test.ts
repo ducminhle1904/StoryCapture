@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   exactLosslessMasterQualityEvidence,
   RECORDING_STRICT_QUALITY_THRESHOLDS,
+  verifyGenericRecordingQualityV3,
   verifyRecordingQuality,
+  verifyRecordingQualityV3,
 } from "./recording-quality-verifier";
 import { injectDownscaleUpscaleBlur, injectOrdinalFault } from "./recording-verifier-faults";
 import {
@@ -80,6 +82,57 @@ describe("recording screen-content quality verifier", () => {
     expect(evidence.edge_spread_increase_px?.measured).toBe(0);
     expect(RECORDING_STRICT_QUALITY_THRESHOLDS.hardware.full_frame_luma_ssim).toBe(0.985);
   }, 30_000);
+
+  it("treats lossless hashes as inapplicable for a V3 hardware master", () => {
+    const reference = createRecordingVerifierFixtureSample(0).frame;
+    const evidence = verifyRecordingQualityV3({
+      profile: "hardware",
+      manifest: recordingVerifierFixtureManifest(),
+      frames: [{ reference, actual: Buffer.from(reference), expected_ordinal: 0 }],
+    });
+
+    expect(evidence).toMatchObject({
+      version: 3,
+      lossless_master_hashes: "not_applicable",
+      verdict: "passed",
+      failure_codes: [],
+    });
+  }, 30_000);
+
+  it("derives V3 screen-content metrics from bounded real frame comparisons", () => {
+    const reference = createRecordingVerifierFixtureSample(0).frame;
+    const evidence = verifyGenericRecordingQualityV3({
+      width: 1_920,
+      height: 1_080,
+      frames: [{ reference, actual: Buffer.from(reference) }],
+    });
+
+    expect(evidence).toMatchObject({
+      version: 3,
+      evaluated_frames: 1,
+      full_frame_luma_ssim: { passed: true },
+      text_edge_roi_ssim: { passed: true },
+      p01_edge_contrast_retention: { passed: true },
+      color_channel_delta: { passed: true },
+      lossless_master_hashes: "not_applicable",
+      verdict: "passed",
+    });
+  }, 30_000);
+
+  it("does not report perfect metrics for invalid V3 frame dimensions", () => {
+    const evidence = verifyGenericRecordingQualityV3({
+      width: 2,
+      height: 2,
+      frames: [{ reference: Buffer.alloc(4), actual: Buffer.alloc(4) }],
+    });
+
+    expect(evidence).toMatchObject({
+      evaluated_frames: 0,
+      full_frame_luma_ssim: null,
+      verdict: "failed",
+      failure_codes: ["contract_mismatch"],
+    });
+  });
 
   it("rejects a deliberately downscaled and upscaled frame as blurred", () => {
     const reference = createRecordingVerifierFixtureSample(0).frame;

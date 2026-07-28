@@ -44,7 +44,8 @@
 - Verify helpers in an existing unpacked package:
   `pnpm --dir apps/desktop native:verify:packaged`.
 - Build an unpacked package and run the native helper signature/protocol gate:
-  `pnpm --dir apps/desktop test:e2e:recording-v2-helper`.
+  `pnpm --dir apps/desktop test:e2e:recording-v3-helper`. The V2-named command
+  remains a compatibility alias.
 - Packaged recording/export parity: `pnpm --dir apps/desktop run test:e2e:export`.
 - Web build: `pnpm --dir apps/web build`.
 - Story DSL typecheck: `pnpm --dir packages/story-dsl typecheck`.
@@ -85,7 +86,9 @@
 - The Windows job runs the media and packaged export smokes.
 - `electron:build` and `test:e2e:export` build the platform native helper, but
   the current CI workflow does not run the complete
-  `test:e2e:recording-v2-helper` verification gate.
+  `test:e2e:recording-v3-helper` verification gate. Run native build/backend
+  tests and that packaged gate on each target OS; live TCC/WGC and sustained
+  capture acceptance remain manual environment gates.
 - The Ubuntu `prisma-postgres-smoke` job bootstraps the current schema into a
   disposable PostgreSQL 17 service, then runs adapter CRUD and seed smokes.
 

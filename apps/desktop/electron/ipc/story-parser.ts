@@ -467,7 +467,7 @@ export function parseStorySource(source: string) {
     if (verb === "type" || verb === "select" || verb === "upload") {
       command = parseValueCommand(verb, rest, base);
     }
-    if (verb === "fill") command = parseValueCommand("type", rest, base);
+    if (verb === "fill") command = parseValueCommand("fill", rest, base);
     if (verb === "drag") command = parseDragCommand(rest, base);
     if (verb === "scroll") {
       const parsed = parseScrollCommand(rest, base);

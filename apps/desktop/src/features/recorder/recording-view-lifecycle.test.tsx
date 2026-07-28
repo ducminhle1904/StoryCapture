@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   parseStory: vi.fn(),
   deleteFailedRecordingBundle: vi.fn(),
   openRecordingDiagnosticBundle: vi.fn(),
+  outputPrefs: { recordingDeliveryPolicy: "best_effort" as "best_effort" | "strict" },
+  setRecordingDeliveryPolicy: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
@@ -59,12 +61,14 @@ vi.mock("@/state/output-prefs", () => ({
   useOutputPrefsStore: Object.assign(
     (selector: (state: unknown) => unknown) =>
       selector({
-        recordingDeliveryPolicy: "best_effort",
+        recordingDeliveryPolicy: mocks.outputPrefs.recordingDeliveryPolicy,
+        setRecordingDeliveryPolicy: mocks.setRecordingDeliveryPolicy,
       }),
     {
       getState: () => ({
         activePreset: null,
-        recordingDeliveryPolicy: "best_effort",
+        recordingDeliveryPolicy: mocks.outputPrefs.recordingDeliveryPolicy,
+        setRecordingDeliveryPolicy: mocks.setRecordingDeliveryPolicy,
         recordingKnobs: { fps: 30, fit: "contain", pad: "#000000", quality: "high" },
       }),
     },
@@ -107,6 +111,10 @@ const targets = {
 };
 
 beforeEach(() => {
+  mocks.outputPrefs.recordingDeliveryPolicy = "best_effort";
+  mocks.setRecordingDeliveryPolicy.mockReset().mockImplementation((value) => {
+    mocks.outputPrefs.recordingDeliveryPolicy = value;
+  });
   useRecorderStore.getState().reset();
   useRecorderStore.setState({
     status: "completed",
@@ -377,6 +385,74 @@ describe("RecordingView take lifecycle", () => {
     await waitFor(() => expect(useRecorderStore.getState().status).toBe("quality_failed"));
     expect(mocks.publishCompletedRecording).not.toHaveBeenCalled();
     expect(screen.getByText("Strict take was not published")).toBeInTheDocument();
+  });
+
+  it("shows the native backend and hardware encoder from V3 preflight", async () => {
+    mocks.outputPrefs.recordingDeliveryPolicy = "strict";
+    let recordingEvent!: (event: RecordingEvent) => void;
+    mocks.startRecording.mockImplementation(
+      async (_args: unknown, onEvent: (event: RecordingEvent) => void) => {
+        recordingEvent = onEvent;
+        return { id: "take-native-v3" };
+      },
+    );
+
+    render(
+      <MemoryRouter>
+        <RecordingView
+          projectId="project-1"
+          projectName="Demo"
+          projectFolder="/tmp/demo"
+          storySource={'meta { app: "native" }'}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New take" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Start recording" }));
+    recordingEvent({
+      type: "preflight",
+      result: {
+        version: 3,
+        platform: "darwin",
+        helper_available: true,
+        protocol_compatible: true,
+        permission: "granted",
+        encoder_available: true,
+        encoder_id: "videotoolbox-h264",
+        hardware_accelerated: true,
+        storage_available_bytes: 10_000_000_000,
+        storage_required_bytes: 3_000_000_000,
+        policy_allowed: true,
+        strict_eligible: true,
+        failure_codes: [],
+      },
+    });
+
+    expect(await screen.findByText("Strict preflight passed")).toBeInTheDocument();
+    expect(screen.getByText(/ScreenCaptureKit · videotoolbox-h264/)).toBeInTheDocument();
+
+    recordingEvent({
+      type: "preflight",
+      result: {
+        version: 3,
+        platform: "darwin",
+        helper_available: true,
+        protocol_compatible: true,
+        permission: "granted",
+        encoder_available: false,
+        encoder_id: null,
+        hardware_accelerated: false,
+        storage_available_bytes: 10_000_000_000,
+        storage_required_bytes: 3_000_000_000,
+        policy_allowed: true,
+        strict_eligible: false,
+        failure_codes: ["encoder_unavailable"],
+      },
+    });
+    expect(await screen.findByText("A hardware H.264 encoder is required")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Use Standard recording" }));
+    expect(mocks.setRecordingDeliveryPolicy).toHaveBeenCalledWith("best_effort");
   });
 
   it("finalizes from the returned automation outcome when channel events are missing", async () => {

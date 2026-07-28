@@ -7,9 +7,11 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import { CaptureBackendV2Error } from "./capture-backend-v2-guard";
 import {
+  MACOS_NATIVE_MASTER_BACKEND_VERSION,
   MACOS_SCREEN_CAPTURE_BACKEND_ID,
   MACOS_SCREEN_CAPTURE_BACKEND_VERSION,
   MacNativePacketDecoder,
+  MacOSNativeMasterBackend,
   MacOSScreenCaptureBackend,
   type MacScreenCaptureHelperTransport,
   type MacScreenCapturePacket,
@@ -104,6 +106,7 @@ class FakeTransport implements MacScreenCaptureHelperTransport {
     options: unknown = {},
   ): ReturnType<MacScreenCaptureHelperTransport["request"]> {
     this.requests.push({ command, options });
+    const protocolVersion = (options as { protocolVersion?: 2 | 3 }).protocolVersion ?? 2;
     if (command === "probe" && this.probeFailure) {
       throw Object.assign(new Error(this.probeFailure), { code: this.probeFailure });
     }
@@ -135,7 +138,59 @@ class FakeTransport implements MacScreenCaptureHelperTransport {
         },
       };
     }
-    return { version: 2, event: command, ok: true, data: {} };
+    if (command === "hello") {
+      return {
+        version: 3,
+        event: "hello",
+        ok: true,
+        data: {
+          backend_id: MACOS_SCREEN_CAPTURE_BACKEND_ID,
+          backend_version: MACOS_NATIVE_MASTER_BACKEND_VERSION,
+          platform: "darwin",
+          arch: "arm64",
+          supports_native_master: true,
+          supports_hardware_h264: true,
+          supports_cfr_held_frames: true,
+          supports_atomic_finalization: true,
+          encoder: { id: "videotoolbox-h264", hardware_accelerated: true },
+        },
+      };
+    }
+    if (command === "stop") {
+      return {
+        version: 3,
+        event: "stopped",
+        ok: true,
+        data: {
+          artifact_path: "/tmp/take/master/video.mp4",
+          artifact_bytes: 42_000,
+          source_updates: 120,
+          output_frames: 180,
+          held_frames: 60,
+          encoder_dropped_frames: 0,
+          backpressure_events: 0,
+          unresolved_backpressure_events: 0,
+          width: 1_920,
+          height: 1_080,
+          started_monotonic_us: 1_000,
+          ended_monotonic_us: 3_001_000,
+          finalized_duration_us: 3_000_000,
+          pts_gaps: 0,
+          pts_duplicates: 0,
+          pts_non_monotonic: 0,
+          encoder: { id: "videotoolbox-h264", hardware_accelerated: true },
+          codec: "h264",
+          pixel_format: "nv12",
+          finalized: true,
+          artifact: {
+            finalized: true,
+            full_decode_succeeded: true,
+            decoded_frames: 180,
+          },
+        },
+      };
+    }
+    return { version: protocolVersion, event: command, ok: true, data: {} };
   }
 
   close(): void {}
@@ -346,6 +401,85 @@ describe("MacOSScreenCaptureBackend", () => {
   });
 });
 
+describe("MacOSNativeMasterBackend V3", () => {
+  it("uses protocol V3 without exposing a raw BGRA packet path", async () => {
+    const fake = new FakeTransport();
+    const capture = new MacOSNativeMasterBackend({
+      helperPath: "/helper",
+      target: {
+        kind: "window",
+        windowID: 42,
+        ownerPID: 99,
+        ownerBundleID: "com.example.Browser",
+        mediaSourceID: "window:42:0",
+      },
+      transportFactory: () => fake,
+    });
+    await expect(capture.probeCapabilities()).resolves.toMatchObject({
+      backend_version: "3.0.0",
+      supports_native_master: true,
+      encoder: { id: "videotoolbox-h264", hardware_accelerated: true },
+    });
+    await capture.start({
+      sessionId: "take-native",
+      artifactPath: "/tmp/take/master/video.mp4",
+      outputWidth: 1_920,
+      outputHeight: 1_080,
+      expectedLogicalWidth: 960,
+      expectedLogicalHeight: 540,
+      fps: { numerator: 60, denominator: 1 },
+    });
+    await capture.pause();
+    await capture.resume();
+    await expect(capture.stop()).resolves.toMatchObject({
+      output_frames: 180,
+      held_frames: 60,
+      encoder_dropped_frames: 0,
+      finalized: true,
+      artifact: { full_decode_succeeded: true, decoded_frames: 180 },
+    });
+    expect(fake.requests).toEqual([
+      { command: "hello", options: { protocolVersion: 3 } },
+      {
+        command: "start",
+        options: {
+          protocolVersion: 3,
+          sessionID: "take-native",
+          payload: expect.objectContaining({
+            artifactPath: "/tmp/take/master/video.mp4",
+            fpsNumerator: 60,
+            fpsDenominator: 1,
+          }),
+        },
+      },
+      { command: "pause", options: { protocolVersion: 3 } },
+      { command: "resume", options: { protocolVersion: 3 } },
+      { command: "stop", options: { protocolVersion: 3 } },
+      { command: "shutdown", options: { protocolVersion: 3 } },
+    ]);
+  });
+
+  it("rejects a window whose Electron media source does not identify the SCWindow", async () => {
+    const fake = new FakeTransport();
+    const capture = new MacOSNativeMasterBackend({
+      helperPath: "/helper",
+      target: { kind: "window", windowID: 42, mediaSourceID: "window:43:0" },
+      transportFactory: () => fake,
+    });
+    await expect(
+      capture.start({
+        sessionId: "take-native",
+        artifactPath: "/tmp/take/master/video.mp4",
+        outputWidth: 1_920,
+        outputHeight: 1_080,
+        expectedLogicalWidth: 960,
+        expectedLogicalHeight: 540,
+        fps: { numerator: 60, denominator: 1 },
+      }),
+    ).rejects.toMatchObject({ code: "contract_mismatch" });
+  });
+});
+
 describe("ScreenCaptureKit packaging contract", () => {
   it("resolves only the build output or packaged extra-resource path", () => {
     expect(
@@ -364,7 +498,7 @@ describe("ScreenCaptureKit packaging contract", () => {
     ).toContain("native/macos-screen-capture/.build/release/storycapture-screen-capture-helper");
   });
 
-  it("uses ScreenCaptureKit raw BGRA and excludes thumbnail/PNG polling paths", () => {
+  it("keeps V2 BGRA compatibility while V3 encodes natively", () => {
     const source = [
       "native/macos-screen-capture/Sources/ScreenCaptureCore/CaptureEngine.swift",
       "native/macos-screen-capture/Sources/StoryCaptureScreenCaptureHelper/main.swift",
@@ -373,6 +507,7 @@ describe("ScreenCaptureKit packaging contract", () => {
       .join("\n");
     expect(source).toContain("import ScreenCaptureKit");
     expect(source).toContain("kCVPixelFormatType_32BGRA");
+    expect(source).toContain("NativeMasterWriter");
     expect(source).toContain("minimumFrameInterval = CMTime(value: 1, timescale: 60)");
     expect(source).toContain("onScreenWindowsOnly: false");
     expect(source).toContain("attachments.first?[.displayTime]");

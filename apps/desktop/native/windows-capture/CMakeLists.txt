@@ -10,6 +10,7 @@ add_executable(storycapture-wgc
   src/main.cpp
   src/capture_session.cpp
   src/frame_ring.cpp
+  src/native_mp4_writer.cpp
   src/target_resolver.cpp
   helper.manifest
 )
@@ -23,7 +24,7 @@ target_compile_definitions(storycapture-wgc PRIVATE
   STORYCAPTURE_WGC_VERSION="${PROJECT_VERSION}"
 )
 target_compile_options(storycapture-wgc PRIVATE /W4 /WX /permissive- /EHsc /utf-8)
-target_link_libraries(storycapture-wgc PRIVATE d3d11 dxgi windowsapp shcore)
+target_link_libraries(storycapture-wgc PRIVATE d3d11 dxgi windowsapp shcore mfplat mfreadwrite mfuuid)
 set_target_properties(storycapture-wgc PROPERTIES
   MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
   LINK_FLAGS "/MANIFEST:EMBED /MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/helper.manifest"
@@ -31,3 +32,20 @@ set_target_properties(storycapture-wgc PROPERTIES
 )
 
 install(TARGETS storycapture-wgc RUNTIME DESTINATION .)
+
+option(STORYCAPTURE_NATIVE_ARTIFACT_TESTS "Build hardware MP4 artifact tests" OFF)
+if(STORYCAPTURE_NATIVE_ARTIFACT_TESTS)
+  enable_testing()
+  add_executable(storycapture-wgc-native-mp4-test
+    tests/native_mp4_writer_test.cpp
+    src/native_mp4_writer.cpp
+  )
+  target_include_directories(storycapture-wgc-native-mp4-test PRIVATE src)
+  target_compile_features(storycapture-wgc-native-mp4-test PRIVATE cxx_std_20)
+  target_compile_definitions(storycapture-wgc-native-mp4-test PRIVATE
+    NOMINMAX UNICODE _UNICODE WIN32_LEAN_AND_MEAN)
+  target_compile_options(storycapture-wgc-native-mp4-test PRIVATE /W4 /WX /permissive- /EHsc /utf-8)
+  target_link_libraries(storycapture-wgc-native-mp4-test PRIVATE
+    d3d11 dxgi windowsapp mfplat mfreadwrite mfuuid)
+  add_test(NAME storycapture-wgc-native-mp4-test COMMAND storycapture-wgc-native-mp4-test)
+endif()

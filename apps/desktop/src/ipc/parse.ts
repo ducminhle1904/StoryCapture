@@ -43,7 +43,7 @@ export type Command =
       step_id?: string | null;
     }
   | {
-      verb: "type";
+      verb: "type" | "fill";
       target: SelectorOrText;
       target_nth?: number;
       text: string;

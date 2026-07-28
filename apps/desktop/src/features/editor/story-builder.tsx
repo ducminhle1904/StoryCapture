@@ -355,6 +355,7 @@ function commandSummary(command: Command): string {
     case "assert":
     case "assert-visible":
       return targetLabel(command.target);
+    case "fill":
     case "type":
       return `${targetLabel(command.target)} -> ${command.text}`;
     case "drag":
@@ -383,6 +384,7 @@ function primaryEditableValue(command: Command): string {
   switch (command.verb) {
     case "navigate":
       return command.url;
+    case "fill":
     case "type":
       return command.text;
     case "select":

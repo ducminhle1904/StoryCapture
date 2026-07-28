@@ -3,6 +3,10 @@ import type {
   RecordingQualityFailureCode,
   RecordingQualityMetricV2,
 } from "@storycapture/shared-types/recording-v2";
+import type {
+  RecordingQualityEvidenceV3,
+  RecordingV3FailureCode,
+} from "@storycapture/shared-types/recording-v3";
 
 import {
   findPixelBounds,
@@ -31,6 +35,7 @@ export interface RecordingQualityVerificationInput {
   manifest: RecordingVerifierFixtureManifest;
   frames: readonly RecordingFrameComparison[];
   lossless_master_hashes_match?: boolean | null;
+  require_lossless_hash?: boolean;
   initial_failure_codes?: readonly RecordingQualityFailureCode[];
 }
 
@@ -322,7 +327,10 @@ export function verifyRecordingQuality(
   if (!edgeSpread.passed) addFailureCode(failureCodes, "visual_edge_spread");
   if (!geometry.passed) addFailureCode(failureCodes, "visual_overlay_geometry");
   if (!color.passed) addFailureCode(failureCodes, "visual_color_delta");
-  if (ordinalMismatch || input.lossless_master_hashes_match !== true) {
+  if (
+    ordinalMismatch ||
+    ((input.require_lossless_hash ?? true) && input.lossless_master_hashes_match !== true)
+  ) {
     addFailureCode(failureCodes, "artifact_hash_mismatch");
   }
 
@@ -338,5 +346,187 @@ export function verifyRecordingQuality(
     lossless_master_hashes_match: input.lossless_master_hashes_match ?? null,
     verdict: failureCodes.length === 0 ? "passed" : "failed",
     failure_codes: failureCodes,
+  };
+}
+
+export function verifyRecordingQualityV3(
+  input: Omit<
+    RecordingQualityVerificationInput,
+    "lossless_master_hashes_match" | "require_lossless_hash"
+  >,
+): RecordingQualityEvidenceV3 {
+  const evidence = verifyRecordingQuality({
+    ...input,
+    lossless_master_hashes_match: null,
+    require_lossless_hash: false,
+  });
+  return {
+    version: 3,
+    evaluated_frames: evidence.evaluated_frames,
+    full_frame_luma_ssim: evidence.full_frame_luma_ssim,
+    text_edge_roi_ssim: evidence.text_edge_roi_ssim,
+    p01_edge_contrast_retention: evidence.p01_edge_contrast_retention,
+    edge_spread_increase_px: evidence.edge_spread_increase_px,
+    overlay_geometry_delta_px: evidence.overlay_geometry_delta_px,
+    color_channel_delta: evidence.color_channel_delta,
+    lossless_master_hashes: "not_applicable",
+    verdict: evidence.verdict,
+    failure_codes: evidence.failure_codes as RecordingV3FailureCode[],
+  };
+}
+
+export interface GenericRecordingFrameComparison {
+  reference: Buffer;
+  actual: Buffer;
+}
+
+function histogramPercentile(counts: Uint32Array, total: number, quantile: number): number {
+  if (total === 0) return 0;
+  const target = Math.min(total - 1, Math.floor(total * quantile));
+  let seen = 0;
+  for (let index = 0; index < counts.length; index += 1) {
+    seen += counts[index] ?? 0;
+    if (seen > target) return index;
+  }
+  return counts.length - 1;
+}
+
+function genericEdgeAndColorMetrics(
+  reference: Buffer,
+  actual: Buffer,
+  width: number,
+  height: number,
+): { edgeSimilarity: number; contrastRetention: number; colorDelta: number } {
+  const edgeSimilarities = new Uint32Array(256);
+  const contrastScale = 1_024;
+  const contrastRatios = new Uint32Array(32 * contrastScale + 1);
+  const colorDeltas = new Uint32Array(256);
+  let edgeCount = 0;
+  let colorCount = 0;
+  const step = Math.max(1, Math.floor(Math.min(width, height) / 540));
+  for (let y = step; y < height; y += step) {
+    for (let x = step; x < width; x += step) {
+      const current = (y * width + x) * 4;
+      const left = (y * width + x - step) * 4;
+      const above = ((y - step) * width + x) * 4;
+      const referenceGradient = Math.max(
+        Math.abs(lumaAt(reference, width, x, y) - lumaAt(reference, width, x - step, y)),
+        Math.abs(lumaAt(reference, width, x, y) - lumaAt(reference, width, x, y - step)),
+      );
+      const actualGradient = Math.max(
+        Math.abs(lumaAt(actual, width, x, y) - lumaAt(actual, width, x - step, y)),
+        Math.abs(lumaAt(actual, width, x, y) - lumaAt(actual, width, x, y - step)),
+      );
+      if (referenceGradient >= 12) {
+        const similarity = 255 - Math.min(255, Math.abs(referenceGradient - actualGradient));
+        edgeSimilarities[similarity] += 1;
+        const contrast = Math.min(
+          contrastRatios.length - 1,
+          Math.round((actualGradient / referenceGradient) * contrastScale),
+        );
+        contrastRatios[contrast] += 1;
+        edgeCount += 1;
+      }
+      const colorDelta = Math.max(
+        Math.abs(reference[current] - actual[current]),
+        Math.abs(reference[current + 1] - actual[current + 1]),
+        Math.abs(reference[current + 2] - actual[current + 2]),
+        Math.abs(reference[left] - actual[left]),
+        Math.abs(reference[above] - actual[above]),
+      );
+      colorDeltas[colorDelta] += 1;
+      colorCount += 1;
+    }
+  }
+  return {
+    edgeSimilarity: histogramPercentile(edgeSimilarities, edgeCount, 0.01) / 255,
+    contrastRetention: histogramPercentile(contrastRatios, edgeCount, 0.01) / contrastScale,
+    colorDelta: histogramPercentile(colorDeltas, colorCount, 0.99),
+  };
+}
+
+export function verifyGenericRecordingQualityV3(input: {
+  width: number;
+  height: number;
+  frames: readonly GenericRecordingFrameComparison[];
+}): RecordingQualityEvidenceV3 {
+  const failures: RecordingV3FailureCode[] = [];
+  if (input.frames.length === 0) {
+    return {
+      version: 3,
+      evaluated_frames: 0,
+      full_frame_luma_ssim: null,
+      text_edge_roi_ssim: null,
+      p01_edge_contrast_retention: null,
+      edge_spread_increase_px: null,
+      overlay_geometry_delta_px: null,
+      color_channel_delta: null,
+      lossless_master_hashes: "not_applicable",
+      verdict: "failed",
+      failure_codes: ["contract_mismatch"],
+    };
+  }
+  const expectedBytes = input.width * input.height * 4;
+  let minimumSsim = 1;
+  let minimumEdgeSimilarity = 1;
+  let minimumContrastRetention = Number.POSITIVE_INFINITY;
+  let maximumColorDelta = 0;
+  let evaluatedFrames = 0;
+  for (const frame of input.frames) {
+    if (frame.reference.byteLength !== expectedBytes || frame.actual.byteLength !== expectedBytes) {
+      failures.push("contract_mismatch");
+      continue;
+    }
+    evaluatedFrames += 1;
+    minimumSsim = Math.min(
+      minimumSsim,
+      frameSsim(frame.reference, frame.actual, input.width, input.height),
+    );
+    const edge = genericEdgeAndColorMetrics(
+      frame.reference,
+      frame.actual,
+      input.width,
+      input.height,
+    );
+    minimumEdgeSimilarity = Math.min(minimumEdgeSimilarity, edge.edgeSimilarity);
+    minimumContrastRetention = Math.min(minimumContrastRetention, edge.contrastRetention);
+    maximumColorDelta = Math.max(maximumColorDelta, edge.colorDelta);
+  }
+  if (evaluatedFrames === 0) {
+    return {
+      version: 3,
+      evaluated_frames: 0,
+      full_frame_luma_ssim: null,
+      text_edge_roi_ssim: null,
+      p01_edge_contrast_retention: null,
+      edge_spread_increase_px: null,
+      overlay_geometry_delta_px: null,
+      color_channel_delta: null,
+      lossless_master_hashes: "not_applicable",
+      verdict: "failed",
+      failure_codes: failures,
+    };
+  }
+  const thresholds = RECORDING_STRICT_QUALITY_THRESHOLDS.hardware;
+  const fullFrame = metric(minimumSsim, thresholds.full_frame_luma_ssim, "gte");
+  const textEdge = metric(minimumEdgeSimilarity, thresholds.text_edge_roi_ssim, "gte");
+  const contrast = metric(minimumContrastRetention, thresholds.p01_edge_contrast_retention, "gte");
+  const color = metric(maximumColorDelta, thresholds.color_channel_delta, "lte");
+  if (!fullFrame.passed) failures.push("visual_full_frame_ssim");
+  if (!textEdge.passed) failures.push("visual_text_edge_ssim");
+  if (!contrast.passed) failures.push("visual_edge_contrast");
+  if (!color.passed) failures.push("visual_color_delta");
+  return {
+    version: 3,
+    evaluated_frames: evaluatedFrames,
+    full_frame_luma_ssim: fullFrame,
+    text_edge_roi_ssim: textEdge,
+    p01_edge_contrast_retention: contrast,
+    edge_spread_increase_px: null,
+    overlay_geometry_delta_px: null,
+    color_channel_delta: color,
+    lossless_master_hashes: "not_applicable",
+    verdict: failures.length === 0 ? "passed" : "failed",
+    failure_codes: failures,
   };
 }

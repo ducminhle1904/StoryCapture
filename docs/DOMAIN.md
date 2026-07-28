@@ -148,24 +148,26 @@ explicit policies:
 - **Standard** is `best_effort` and preserves the legacy recording path. It can
   complete on uncertified hardware, but its result and UI must remain visibly
   degraded rather than claiming Strict quality.
-- **Strict** requires exact nominal `60/1`, a certified platform/hardware/
-  backend tuple, successful throughput/storage/readiness preflight, zero cadence
-  loss, and exact decoded FFV1 master-frame identity. Any runtime violation ends
-  as `quality_failed`; it never silently falls back to Standard.
+- **Strict** requires exact nominal `60/1`, a compatible native helper, screen
+  permission, hardware H.264, storage reserve, target readiness, and passing
+  cadence/artifact/visual evidence. Admission uses runtime capability evidence,
+  not a machine certification tuple. Any runtime violation ends as
+  `quality_failed`; it never silently falls back to Standard.
 
 - Automation is BrowserWindow-based in the Electron host. It can launch an
   offscreen browser window or attach to an author preview stream.
-- Standard recording uses the existing Electron capture/encode path. Strict V2
-  has a browser backend plus native ScreenCaptureKit and Windows Graphics
-  Capture adapters/helpers. The native adapters are implemented but are not yet
-  registered in the production Strict lifecycle; the current certification
-  catalog is deliberately empty.
-- Strict writes a lossless FFV1/BGRA Matroska master, an H.264 editing proxy,
-  PCM WAV audio sidecars, action timing, cadence/quality evidence, and an exact
-  per-frame sequence ledger. Its bundle layout is
-  `master/video.mkv`, `proxy/video.mp4`, `audio/*.wav`,
-  `evidence/{cadence,quality,sequence-ledger}.json`,
-  `sidecars/actions.json`, and `manifest.json`.
+- Standard recording uses the existing Electron capture/encode path. Strict V3
+  captures the dedicated exact-size browser window with ScreenCaptureKit on
+  macOS or Windows Graphics Capture on Windows and encodes hardware H.264
+  without transferring BGRA frames through Node. Pause time is excluded from
+  the native media timeline.
+- Strict writes `master/video.mp4` with H.264 and `nv12`/`yuv420p`, optional
+  `proxy/video.mp4`, PCM WAV audio sidecars, action timing, cadence/quality
+  evidence, and a sequence ledger. Its bundle also contains
+  `evidence/cadence.json`, `evidence/quality.json`,
+  `evidence/sequence-ledger.jsonl`, optional `sidecars/actions.json`, and
+  `manifest.json`. V3 lossless hashes are not applicable; acceptance uses full
+  decode, exact cadence/artifact checks, and bounded real-frame visual metrics.
 - Audio is optional and merged during encode when available. The Electron
   preload special-cases recording start/stop so renderer-side browser
   `MediaRecorder` microphone capture can be handed back to the host through
@@ -174,10 +176,11 @@ explicit policies:
 - The automation runner returns `ready_to_finalize` after writing action/step
   sidecars. The renderer then flushes `MediaRecorder` microphone data through
   preload before the host performs the terminal bundle verification.
-- Only a `completed` V2 bundle is discoverable as a recording source. A
-  `quality_failed` bundle remains contained for diagnostics, is not registered,
-  uploaded, or opened in post-production, and exposes retry/open/delete actions
-  with seven-day retention.
+- Completed V3 bundles are preferred during discovery and play their proxy when
+  present, otherwise the native H.264 master. Completed V2 bundles remain
+  readable for compatibility. A `quality_failed` bundle remains contained for
+  diagnostics, is not registered, uploaded, or opened in post-production, and
+  exposes retry/open/delete actions with seven-day retention.
 - The legacy recorder emits privacy-safe JSONL V2 diagnostics for session,
   preview/backend, target/cursor/readiness, sidecar, cadence/audio, and terminal
   events. Process/session ordering is monotonic; logging failure falls back

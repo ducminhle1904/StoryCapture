@@ -91,6 +91,20 @@ describe("validatePickerActionRoundTrip", () => {
         },
       ),
     ).not.toThrow();
+
+    expect(() =>
+      validatePickerActionRoundTrip(
+        "fill",
+        { kind: "label", value: "Email" },
+        { text: "alice@example.com" },
+        {
+          verb: "fill",
+          target: { kind: "label", value: "Email" },
+          text: "alice@example.com",
+          span,
+        },
+      ),
+    ).not.toThrow();
   });
 
   it("rejects a semantic target mismatch with a canonical role hint", () => {

@@ -100,6 +100,18 @@ function isWritableElement(el: HTMLElement): boolean {
   );
 }
 
+function isTypeableElement(el: HTMLElement): boolean {
+  if (el instanceof HTMLInputElement) {
+    return (
+      !el.disabled &&
+      !el.readOnly &&
+      ["text", "search", "tel", "url", "password", "email"].includes(el.type)
+    );
+  }
+  if (el instanceof HTMLTextAreaElement) return !el.disabled && !el.readOnly;
+  return el.isContentEditable || el.getAttribute("contenteditable") === "true";
+}
+
 export interface SimulatorResolvedTarget {
   kind: string;
   label: string | null;
@@ -381,12 +393,48 @@ function resolvedEditableElement(el: Element | null): HTMLElement | null {
   return null;
 }
 
+function resolvedTypeableElement(el: Element | null): HTMLElement | null {
+  const editable = resolvedEditableElement(el);
+  if (editable && isTypeableElement(editable)) return editable;
+  if (!(el instanceof HTMLElement)) return null;
+  for (const candidate of el.querySelectorAll("*")) {
+    if (candidate instanceof HTMLElement && isTypeableElement(candidate)) return candidate;
+  }
+  return null;
+}
+
+function focusTypeTarget(el: Element | null, caretOffset: number | null): boolean {
+  const target = resolvedTypeableElement(el);
+  if (!target?.isConnected) return false;
+  target.focus();
+  if (document.activeElement !== target) return false;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    if (caretOffset === null) {
+      target.select();
+    } else {
+      const offset = Math.max(0, Math.min(caretOffset, target.value.length));
+      target.setSelectionRange(offset, offset);
+    }
+    return true;
+  }
+  const selection = window.getSelection();
+  if (!selection) return false;
+  const range = document.createRange();
+  range.selectNodeContents(target);
+  if (caretOffset !== null) range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
 async function writeElementValueIncrementally(
-  el: Element | null,
+  targetDefinition: unknown,
   value: string,
+  targetNth: number | undefined,
+  selector: string | null,
   delayMs: number,
 ): Promise<boolean> {
-  const target = resolvedEditableElement(el);
+  let target = resolvedEditableElement(findSimulatorTarget(targetDefinition, targetNth, selector));
   if (!target) return false;
   target.focus();
   const normalizedDelay = Math.max(0, Math.min(Number(delayMs) || 0, 250));
@@ -408,14 +456,49 @@ async function writeElementValueIncrementally(
   let nextValue = "";
   for (const char of characters) {
     nextValue += char;
+    target = resolvedEditableElement(findSimulatorTarget(targetDefinition, targetNth, selector));
+    if (!target?.isConnected) return false;
     if (!assignElementValue(target, nextValue)) return false;
     target.dispatchEvent(new Event("input", { bubbles: true }));
     if (normalizedDelay > 0) {
       await new Promise((resolve) => setTimeout(resolve, normalizedDelay));
     }
   }
+  target = resolvedEditableElement(findSimulatorTarget(targetDefinition, targetNth, selector));
+  if (!target?.isConnected) return false;
   target.dispatchEvent(new Event("change", { bubbles: true }));
   return true;
+}
+
+export function prepareSimulatorTypeTargetScript(
+  target: unknown,
+  targetNth?: number,
+  selector?: string | null,
+  caretOffset: number | null = null,
+): string {
+  return `
+    (() => {
+      ${textOf.toString()}
+      ${cssEscape.toString()}
+      ${formLabelOf.toString()}
+      ${nameOf.toString()}
+      ${roleOf.toString()}
+      ${isVisible.toString()}
+      ${isEditableElement.toString()}
+      ${isWritableElement.toString()}
+      ${isTypeableElement.toString()}
+      ${labelMatches.toString()}
+      ${resolvedEditableElement.toString()}
+      ${resolvedTypeableElement.toString()}
+      ${focusTypeTarget.toString()}
+      const resolved = (${findSimulatorTarget.toString()})(
+        ${JSON.stringify(target)},
+        ${JSON.stringify(targetNth ?? null)},
+        ${JSON.stringify(selector ?? null)}
+      );
+      return focusTypeTarget(resolved, ${JSON.stringify(caretOffset)});
+    })()
+  `;
 }
 
 export function setActiveElementValueScript(value: string): string {
@@ -485,16 +568,13 @@ export function setSimulatorTargetValueIncrementalScript(
       ${writeElementValue.toString()}
       ${setSimulatorTargetValue.toString()}
       ${resolvedEditableElement.toString()}
-      ${setResolvedTargetValue.toString()}
+      ${findSimulatorTarget.toString()}
       ${writeElementValueIncrementally.toString()}
-      const el = (${findSimulatorTarget.toString()})(
-        ${JSON.stringify(target)},
-        ${JSON.stringify(targetNth ?? null)},
-        ${JSON.stringify(selector ?? null)}
-      );
       return writeElementValueIncrementally(
-        el,
+        ${JSON.stringify(target)},
         ${JSON.stringify(value)},
+        ${JSON.stringify(targetNth ?? null)},
+        ${JSON.stringify(selector ?? null)},
         ${JSON.stringify(delayMs)}
       );
     })()
@@ -517,14 +597,16 @@ export function simulatorTypeProbeScript(
       ${isVisible.toString()}
       ${isEditableElement.toString()}
       ${isWritableElement.toString()}
+      ${isTypeableElement.toString()}
       ${labelMatches.toString()}
       ${resolvedEditableElement.toString()}
+      ${resolvedTypeableElement.toString()}
       const resolved = (${findSimulatorTarget.toString()})(
         ${JSON.stringify(target)},
         ${JSON.stringify(targetNth ?? null)},
         ${JSON.stringify(selector ?? null)}
       );
-      const el = resolvedEditableElement(resolved);
+      const el = resolvedTypeableElement(resolved);
       if (!el) return { found: false };
       const value = "value" in el ? String(el.value ?? "") : String(el.textContent ?? "");
       const bytes = new TextEncoder().encode(${JSON.stringify(hashSalt)} + value);

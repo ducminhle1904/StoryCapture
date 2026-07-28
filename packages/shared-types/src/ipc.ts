@@ -11,8 +11,14 @@ import type {
   RecordingDeliveryPolicy,
   RecordingResultV2,
 } from "./recording-v2";
+import type {
+  RecordingCadenceEvidenceV3,
+  RecordingNativePreflightV3,
+  RecordingResultV3,
+} from "./recording-v3";
 
 export type * from "./recording-v2";
+export type * from "./recording-v3";
 
 /** user-defined commands **/
 
@@ -2056,10 +2062,12 @@ export type EncodeResultDto = {
 };
 export type RecordingCompletedResult =
   | EncodeResultDto
-  | (RecordingResultV2 & { status: "completed" });
+  | (RecordingResultV2 & { status: "completed" })
+  | (RecordingResultV3 & { status: "completed" });
 export type RecordingStopResult =
   | RecordingCompletedResult
-  | (RecordingResultV2 & { status: "quality_failed" });
+  | (RecordingResultV2 & { status: "quality_failed" })
+  | (RecordingResultV3 & { status: "quality_failed" });
 export type EncoderOptionsDto = {
   container?: ContainerDto | null;
   codec?: CodecDto | null;
@@ -2434,14 +2442,28 @@ export type RecordingEvent =
    */
   | { type: "frames-dropped"; total: number; delta: number }
   | { type: "completed"; result: RecordingCompletedResult }
-  | { type: "preflight"; result: import("./recording-v2").RecordingPreflightV2Dto }
+  | {
+      type: "preflight";
+      result: import("./recording-v2").RecordingPreflightV2Dto | RecordingNativePreflightV3;
+    }
   | {
       type: "readiness";
-      state: "source_ready" | "first_frame_committed" | "pre_input_frame_committed";
+      state:
+        | "source_ready"
+        | "first_frame_committed"
+        | "pre_input_frame_committed"
+        | "global_ready"
+        | "target_ready"
+        | "initial_surface_received";
     }
-  | { type: "live-evidence"; evidence: RecordingCadenceEvidenceV2 }
+  | { type: "live-evidence"; evidence: RecordingCadenceEvidenceV2 | RecordingCadenceEvidenceV3 }
   | { type: "verifying"; progress: number }
-  | { type: "quality-failed"; result: RecordingResultV2 & { status: "quality_failed" } }
+  | {
+      type: "quality-failed";
+      result:
+        | (RecordingResultV2 & { status: "quality_failed" })
+        | (RecordingResultV3 & { status: "quality_failed" });
+    }
   | { type: "failed"; message: string }
   /**
    * Mic/audio negotiation failed or the device vanished mid-session.
@@ -2471,7 +2493,7 @@ export type RecordingInfoDto = {
         status: "invalid";
         reason: "empty" | "not_file" | "missing" | "timeout" | "unsupported_or_corrupt";
       };
-  version?: 2;
+  version?: 2 | 3;
   master_path?: string | null;
   proxy_path?: string | null;
   cadence_evidence_path?: string | null;

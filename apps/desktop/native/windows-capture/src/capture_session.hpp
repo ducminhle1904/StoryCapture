@@ -3,6 +3,8 @@
 #include <windows.h>
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -15,6 +17,7 @@
 
 #include "capture_types.hpp"
 #include "frame_ring.hpp"
+#include "native_mp4_writer.hpp"
 #include "protocol.hpp"
 #include "target_resolver.hpp"
 
@@ -29,12 +32,14 @@ class CaptureSession final {
   CaptureSession& operator=(const CaptureSession&) = delete;
 
   void start();
+  void wait_for_initial_surface(std::chrono::milliseconds timeout);
   void pause();
   void resume();
   void stop();
 
   [[nodiscard]] ProbeObservation observation() const;
   [[nodiscard]] const NativeFrameRing* ring() const noexcept { return ring_.get(); }
+  [[nodiscard]] NativeCaptureEvidence finalize_native_mp4();
   [[nodiscard]] std::wstring gpu_identity() const;
   [[nodiscard]] std::wstring adapter_luid() const;
   [[nodiscard]] std::wstring hardware_fingerprint() const;
@@ -59,10 +64,13 @@ class CaptureSession final {
   winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool frame_pool_{nullptr};
   winrt::Windows::Graphics::Capture::GraphicsCaptureSession capture_session_{nullptr};
   std::unique_ptr<NativeFrameRing> ring_;
+  std::unique_ptr<NativeMp4Writer> mp4_writer_;
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> latest_texture_;
   winrt::event_token frame_token_{};
   winrt::event_token closed_token_{};
   std::jthread watchdog_;
   mutable std::mutex mutex_;
+  std::condition_variable initial_surface_cv_;
   std::atomic_bool running_{};
   std::atomic_bool paused_{};
   std::atomic_bool failed_{};
@@ -74,6 +82,11 @@ class CaptureSession final {
   std::int64_t last_source_pts_us_{-1};
   std::int64_t previous_active_pts_us_{-1};
   std::uint64_t source_frame_index_{};
+  std::uint64_t output_frame_index_{};
+  std::uint64_t held_frames_{};
+  std::uint64_t encoder_dropped_frames_{};
+  std::int64_t started_monotonic_us_{};
+  std::int64_t ended_monotonic_us_{};
   ProbeObservation observation_;
 };
 

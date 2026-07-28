@@ -6,6 +6,7 @@ import {
   firstStickyCadenceFailure,
   probePtsAnomalies,
   verifyRecordingCadence,
+  verifyRecordingCadenceV3,
 } from "./recording-cadence-verifier";
 import {
   createPassingCadenceObservation,
@@ -64,6 +65,27 @@ describe("recording cadence verifier", () => {
     expect(evidence.verdict).toBe("passed");
     expect(evidence.failure_codes).toEqual([]);
     expect(evidence.expected_slots).toBe(300);
+  });
+
+  it("accepts held CFR frames when static content has one source presentation", () => {
+    const evidence = verifyRecordingCadenceV3({
+      version: 3,
+      requested_fps: { numerator: 60, denominator: 1 },
+      active_duration_us: 5_000_000,
+      source_updates: 1,
+      output_frames: 300,
+      held_frames: 299,
+      encoder_dropped_frames: 0,
+      backpressure_events: 0,
+      unresolved_backpressure_events: 0,
+      pts_gaps: 0,
+      pts_duplicates: 0,
+      pts_non_monotonic: 0,
+      initial_surface_received: true,
+    });
+
+    expect(evidence.verdict).toBe("passed");
+    expect(evidence.failure_codes).toEqual([]);
   });
 
   it.each(cadenceFaults)("rejects the %s fault with sticky code %s", (fault, code) => {

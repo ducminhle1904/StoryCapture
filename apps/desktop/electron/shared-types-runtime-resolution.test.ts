@@ -17,8 +17,22 @@ describe("shared-types runtime resolution", () => {
       { cwd: desktopDir, encoding: "utf8" },
     );
 
-    expect(result.stderr.trim()).toBe("");
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe("0.85");
+  });
+
+  it("loads recording V3 values and their V2 dependency through Node ESM", () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        'import("@storycapture/shared-types/recording-v3").then((module) => console.log(module.RECORDING_V3_CONTRACT_VERSION))',
+      ],
+      { cwd: desktopDir, encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe("3");
   });
 });

@@ -181,22 +181,22 @@ emits typed JSONL V2 events through `ipc/recording-observability.ts`, while
 `ipc/log-store.ts` owns redaction, rotation, and diagnostic-bundle inclusion.
 Logging is best-effort and cannot change the recording result it describes.
 
-Strict Recording V2 uses `packages/shared-types/src/recording-v2.ts` as its
-public contract. `recording-certification-catalog.ts` admits only an exact
-certified platform/hardware/backend tuple; the bundled catalog is currently
-empty, so Strict remains fail-closed. The browser lifecycle is implemented by
-`recording-strict-browser-lifecycle.ts` and
-`browser-capture-backend-v2.ts`. The shared data plane writes an FFV1/BGRA
-master, H.264 proxy, PCM sidecars, action sidecar, cadence/quality evidence,
-and a sequence ledger through `recording-master-pipeline.ts` and commits a
-validated bundle atomically through `recording-bundle.ts`.
+Production Strict Recording uses the V3 contract in
+`packages/shared-types/src/recording-v3.ts`.
+`recording-native-preflight.ts` admits a take from runtime helper/protocol,
+screen permission, hardware H.264, storage, and policy evidence; it does not use
+the certification catalog. `recording-native-browser-surface.ts` owns the
+isolated exact-size BrowserWindow and native window identity,
+`recording-native-platform-session.ts` selects ScreenCaptureKit or Windows
+Graphics Capture, and `recording-strict-browser-lifecycle.ts` coordinates the
+take. Native helpers keep capture surfaces and H.264 encoding outside Node.
 
-The ScreenCaptureKit and Windows Graphics Capture adapters/helpers are present,
-but production Strict lifecycle registration for display/window targets is not
-complete. The browser adapter still copies each offscreen frame through
-`image.toBitmap()`, and the Windows adapter still requires a production Node
-named-ring consumer. These paths must not be added to the certification catalog
-until packaged live capture and release-soak gates pass.
+`recording-native-master-bundle.ts`, the cadence/quality verifiers, and
+`recording-bundle.ts` independently probe/full-decode the MP4, validate evidence,
+copy action/audio sidecars, and atomically commit completed or diagnostic V3
+bundles. `recording-v2.ts`, `recording-certification-catalog.ts`,
+`capture-backend-v2-guard.ts`, `browser-capture-backend-v2.ts`, and the FFV1
+master pipeline remain compatibility surfaces, not production Strict admission.
 
 Plugin shims live under `ipc/plugin/*` and cover Tauri-compatible
 dialog/event/log/resource, fs, os/process, shell, store, updater, and
@@ -266,10 +266,10 @@ host handlers.
   plus CodeMirror language support. Runtime parsing is reached through desktop IPC
   (`apps/desktop/src/ipc/parse.ts`) and host handlers.
 - `@storycapture/shared-types`: public package exports are `.`, `./ipc`,
-  `./recording-v2`, and `./export-composition`. Electron/Node runtime consumers
-  of Recording V2 or composition
+  `./recording-v2`, `./recording-v3`, and `./export-composition`. Electron/Node
+  runtime consumers of Recording V2/V3 or composition
   constants or validators use the self-contained `./export-composition`
-  or `./recording-v2` subpath; the root `src/index.ts` barrel contains extensionless source
+  `./recording-v2`, or `./recording-v3` subpath; the root `src/index.ts` barrel contains extensionless source
   re-exports and is not directly Node ESM-safe for runtime value imports. The
   root barrel otherwise exports IPC types/commands, browser presets,
   `APP_PANIC_EVENT`, and the JSON-safe export composition/preflight/job
@@ -377,8 +377,9 @@ installed. Production signing/notarization credentials are documented in
 - Native helper build and package verification use
   `pnpm --dir apps/desktop native:build`,
   `pnpm --dir apps/desktop native:verify:packaged`, and the complete
-  `pnpm --dir apps/desktop test:e2e:recording-v2-helper` gate. The current CI
-  workflow does not yet invoke the complete helper gate.
+  `pnpm --dir apps/desktop test:e2e:recording-v3-helper` gate. The V2-named gate
+  remains a compatibility alias. The current CI workflow does not yet invoke the
+  complete helper gate.
 - Recording synchronization is split between the committed-frame media clock,
   `ipc/action-landmarks.ts`, and the centralized `ipc/cursor-sync-mode.ts`
   rollout resolver. The action sidecar writer stays compatible in shadow mode

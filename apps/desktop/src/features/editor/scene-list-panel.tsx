@@ -49,6 +49,7 @@ function stepLabel(cmd: Command): string {
     case "wait-for":
     case "wait-for-visible":
       return targetLabel(cmd.target);
+    case "fill":
     case "type":
       return `${targetLabel(cmd.target)} → "${cmd.text}"`;
     case "select":

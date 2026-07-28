@@ -47,10 +47,11 @@ migrations, generated files, or release tooling.
 - Electron Builder packages the ScreenCaptureKit helper at
   `resources/native/macos/storycapture-screen-capture-helper` and the WGC helper
   at `resources/native/windows/${arch}/storycapture-wgc.exe`.
-- `pnpm --dir apps/desktop run test:e2e:recording-v2-helper` builds an unpacked
-  package and verifies the helper signature and V2 protocol. The macOS verifier
-  runs strict `codesign` verification; the Windows verifier requires a valid
-  Authenticode signature and optionally checks the configured publisher.
+- `pnpm --dir apps/desktop run test:e2e:recording-v3-helper` builds an unpacked
+  package. The macOS verifier runs strict `codesign` and V2/V3 capability
+  handshakes; the Windows verifier requires valid Authenticode, optionally
+  checks the publisher, and probes the V3 hardware H.264 contract. The
+  V2-named command remains a compatibility alias.
 - Packaged export verification is
   `pnpm --dir apps/desktop run test:e2e:export`; its main-process harness is
   `apps/desktop/electron/ipc/export-e2e-smoke.ts`, and its launcher is
@@ -74,17 +75,18 @@ migrations, generated files, or release tooling.
 - For signing secrets and missing-secret behavior, read `docs/CREDENTIALS.md`
   first.
 
-### Recording V2 Release Controls
+### Recording V3 Release Controls And V2 Compatibility
 
-- `BUNDLED_RECORDING_CERTIFICATION_TIERS` is intentionally empty. Strict is
-  fail-closed until the exact platform/architecture/hardware/backend/target
-  tuple completes packaged live capture and release-soak certification.
-- `STORYCAPTURE_DISABLE_RECORDING_TIER_IDS` is a comma-separated emergency
-  kill switch. It can disable a certified tier independently; it never relabels
-  a failed/degraded take as Strict.
-- There is no automated 60-second capture or ten-minute soak command in the
-  current repo. Do not promote a tier based only on unit/protocol/package smoke
-  tests.
+- Production Strict V3 is fail-closed from per-take helper/protocol, permission,
+  hardware encoder, storage, target-readiness, cadence, artifact, and visual
+  evidence. It does not require a machine certification catalog entry.
+- `BUNDLED_RECORDING_CERTIFICATION_TIERS` and
+  `STORYCAPTURE_DISABLE_RECORDING_TIER_IDS` apply only to legacy V2 admission.
+- Package smoke verifies signing/protocol/capabilities, not live capture,
+  encoder creation, MP4 finalization/full decode, or sustained quality. Release
+  acceptance still requires macOS TCC capture, a Windows SDK/WGC hardware
+  runner, 60-second and ten-minute takes, and packaged `wikipedia-navigation`
+  with CFR/decode/cadence/quality/artifact/discovery evidence.
 - Failed Strict bundles remain inside `<project>/exports`, default to seven-day
   retention, and may be manually deleted only after validation as a contained
   `quality_failed` bundle.

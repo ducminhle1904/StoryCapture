@@ -3,6 +3,11 @@ import type {
   RecordingPreflightV2Dto,
   RecordingResultV2,
 } from "@storycapture/shared-types/recording-v2";
+import type {
+  RecordingCadenceEvidenceV3,
+  RecordingNativePreflightV3,
+  RecordingResultV3,
+} from "@storycapture/shared-types/recording-v3";
 import { create } from "zustand";
 import type { AudioPickerValue } from "@/ipc/audio";
 import {
@@ -89,11 +94,21 @@ export interface RecorderData {
   error: string | null;
   outputPath: string | null;
   elapsedMs: number;
-  preflight: RecordingPreflightV2Dto | null;
-  readiness: "source_ready" | "first_frame_committed" | "pre_input_frame_committed" | null;
-  liveEvidence: RecordingCadenceEvidenceV2 | null;
+  preflight: RecordingPreflightV2Dto | RecordingNativePreflightV3 | null;
+  readiness:
+    | "source_ready"
+    | "first_frame_committed"
+    | "pre_input_frame_committed"
+    | "global_ready"
+    | "target_ready"
+    | "initial_surface_received"
+    | null;
+  liveEvidence: RecordingCadenceEvidenceV2 | RecordingCadenceEvidenceV3 | null;
   verificationProgress: number | null;
-  qualityFailure: (RecordingResultV2 & { status: "quality_failed" }) | null;
+  qualityFailure:
+    | (RecordingResultV2 & { status: "quality_failed" })
+    | (RecordingResultV3 & { status: "quality_failed" })
+    | null;
 
   captureTarget: CaptureTarget | null;
   availableTargets: CaptureTargets | null;
@@ -128,9 +143,9 @@ export interface RecorderActions {
   setError: (e: string | null) => void;
   setOutputPath: (p: string | null) => void;
   setElapsed: (ms: number) => void;
-  setPreflight: (value: RecordingPreflightV2Dto | null) => void;
+  setPreflight: (value: RecorderData["preflight"]) => void;
   setReadiness: (value: RecorderData["readiness"]) => void;
-  setLiveEvidence: (value: RecordingCadenceEvidenceV2 | null) => void;
+  setLiveEvidence: (value: RecorderData["liveEvidence"]) => void;
   setVerificationProgress: (value: number | null) => void;
   setQualityFailure: (value: RecorderData["qualityFailure"]) => void;
   resetTake: () => void;

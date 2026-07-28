@@ -3,6 +3,10 @@ import type {
   RecordingQualityFailureCode,
   RecordingRational,
 } from "@storycapture/shared-types/recording-v2";
+import type {
+  RecordingCadenceEvidenceV3,
+  RecordingV3FailureCode,
+} from "@storycapture/shared-types/recording-v3";
 
 import type { RecordingProbeResult } from "./media-probe";
 
@@ -11,6 +15,13 @@ export type RecordingCadenceObservationV2 = Omit<
   "verdict" | "failure_codes"
 > & {
   failure_codes?: readonly RecordingQualityFailureCode[];
+};
+
+export type RecordingCadenceObservationV3 = Omit<
+  RecordingCadenceEvidenceV3,
+  "verdict" | "failure_codes"
+> & {
+  failure_codes?: readonly RecordingV3FailureCode[];
 };
 
 export interface RecordingArtifactExpectation {
@@ -203,6 +214,32 @@ export function verifyRecordingCadence(
   if (observation.pts_duplicates > 0) add("artifact_pts_duplicate");
   if (!observation.full_decode_succeeded) add("artifact_decode_failed");
 
+  return {
+    ...observation,
+    failure_codes: failureCodes,
+    verdict: failureCodes.length === 0 ? "passed" : "failed",
+  };
+}
+
+export function verifyRecordingCadenceV3(
+  observation: RecordingCadenceObservationV3,
+): RecordingCadenceEvidenceV3 {
+  const failureCodes = [...(observation.failure_codes ?? [])];
+  const add = (code: RecordingV3FailureCode): void => {
+    if (!failureCodes.includes(code)) failureCodes.push(code);
+  };
+  const expectedFrames = expectedStrictFrameSlots(
+    observation.active_duration_us,
+    observation.requested_fps,
+  );
+  if (!observation.initial_surface_received) add("initial_surface_missing");
+  if (observation.output_frames !== expectedFrames) add("scheduled_slot_skipped");
+  if (observation.held_frames > observation.output_frames) add("contract_mismatch");
+  if (observation.encoder_dropped_frames > 0) add("encoder_rejected_frame");
+  if (observation.unresolved_backpressure_events > 0) add("encoder_deadline_missed");
+  if (observation.pts_gaps > 0) add("artifact_pts_gap");
+  if (observation.pts_duplicates > 0) add("artifact_pts_duplicate");
+  if (observation.pts_non_monotonic > 0) add("output_pts_non_monotonic");
   return {
     ...observation,
     failure_codes: failureCodes,

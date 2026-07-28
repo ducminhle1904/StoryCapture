@@ -277,8 +277,7 @@ export function validatePickerActionRoundTrip(
   options: PickerActionOptions | undefined,
   command: Command | undefined,
 ): void {
-  const expectedVerb = action === "fill" ? "type" : action;
-  if (!command || command.verb !== expectedVerb) {
+  if (!command || command.verb !== action) {
     throw pickerRoundTripError(locator, `runtime parser returned ${command?.verb ?? "no command"}`);
   }
 
@@ -314,7 +313,7 @@ export function validatePickerActionRoundTrip(
   }
   assertParsedTarget(locator, command.target, command.target_nth, "target");
 
-  if ((action === "fill" || action === "type") && command.verb === "type") {
+  if ((action === "fill" || action === "type") && command.verb === action) {
     assertParsedValue(locator, "text", options?.text, command.text);
   } else if (action === "select" && command.verb === "select") {
     assertParsedValue(locator, "value", options?.value, command.value);

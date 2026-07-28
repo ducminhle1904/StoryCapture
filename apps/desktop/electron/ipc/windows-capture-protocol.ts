@@ -3,8 +3,10 @@ import type {
   RecordingPreflightV2Request,
   RecordingQualityFailureCode,
 } from "@storycapture/shared-types/recording-v2";
+import type { RecordingV3FailureCode } from "@storycapture/shared-types/recording-v3";
 
 export const WINDOWS_CAPTURE_PROTOCOL_VERSION = 2 as const;
+export const WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION = 3 as const;
 export const WINDOWS_CAPTURE_BACKEND_ID = "windows-graphics-capture" as const;
 export const WINDOWS_CAPTURE_BACKEND_VERSION = "1.0.0" as const;
 export const WINDOWS_CAPTURE_RING_CAPACITY = 8 as const;
@@ -28,6 +30,15 @@ const WINDOWS_HELPER_FAILURE_CODES = new Set<RecordingQualityFailureCode>([
   "artifact_pts_duplicate",
   "verification_timeout",
   "contract_mismatch",
+]);
+
+const WINDOWS_NATIVE_FAILURE_CODES = new Set<RecordingV3FailureCode>([
+  ...WINDOWS_HELPER_FAILURE_CODES,
+  "encoder_unavailable",
+  "encoder_rejected_frame",
+  "initial_surface_missing",
+  "output_pts_non_monotonic",
+  "artifact_finalize_failed",
 ]);
 
 export type WindowsCaptureTarget =
@@ -187,6 +198,117 @@ export interface WindowsCaptureHelperTransport {
   close(): Promise<void>;
 }
 
+export interface WindowsNativeCaptureCapabilities {
+  backend_id: typeof WINDOWS_CAPTURE_BACKEND_ID;
+  backend_version: typeof WINDOWS_CAPTURE_BACKEND_VERSION;
+  platform: "win32";
+  arch: "x64" | "arm64";
+  target_classes: Array<"display" | "window">;
+  codec: "h264";
+  pixel_format: "nv12";
+  exact_fps: { numerator: 60; denominator: 1 };
+  hardware_accelerated: true;
+  supports_pause_resume: true;
+  keeps_surfaces_native: true;
+  encoder_id: string;
+  gpu_identity: string | null;
+  adapter_luid: string | null;
+}
+
+export interface WindowsNativeCaptureStartOptions {
+  session_id: string;
+  output_path: string;
+  target: WindowsCaptureTarget;
+  cursor_policy: "include" | "exclude";
+  dynamic_size_policy: "fail";
+  requested_width: number;
+  requested_height: number;
+  requested_fps: { numerator: 60; denominator: 1 };
+}
+
+export interface WindowsNativeCaptureEvidence {
+  artifact_path: string;
+  codec: "h264";
+  pixel_format: "nv12";
+  width: number;
+  height: number;
+  exact_fps: { numerator: 60; denominator: 1 };
+  source_frames: number;
+  output_frames: number;
+  held_frames: number;
+  encoder_dropped_frames: number;
+  backpressure_events: number;
+  unresolved_backpressure_events: number;
+  pts_gaps: number;
+  pts_duplicates: number;
+  pts_non_monotonic: number;
+  initial_surface_received: true;
+  started_monotonic_us: number;
+  ended_monotonic_us: number;
+  finalized_duration_us: number;
+  encoder_id: string;
+  hardware_accelerated: true;
+  finalized: true;
+  failure_codes: RecordingV3FailureCode[];
+}
+
+export type WindowsNativeCaptureHelperCommand =
+  | { version: typeof WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION; type: "capabilities" }
+  | ({
+      version: typeof WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION;
+      type: "start";
+    } & WindowsNativeCaptureStartOptions)
+  | {
+      version: typeof WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION;
+      type: "pause" | "resume" | "stop";
+      session_id: string;
+    }
+  | {
+      version: typeof WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION;
+      type: "shutdown";
+      session_id: string | null;
+    };
+
+export type WindowsNativeCaptureHelperEvent =
+  | {
+      version: typeof WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION;
+      type: "hello";
+      backend_id: typeof WINDOWS_CAPTURE_BACKEND_ID;
+      backend_version: typeof WINDOWS_CAPTURE_BACKEND_VERSION;
+      process_id: number;
+    }
+  | {
+      version: typeof WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION;
+      type: "capabilities";
+      capabilities: WindowsNativeCaptureCapabilities;
+    }
+  | {
+      version: typeof WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION;
+      type: "started" | "paused" | "resumed";
+      session_id: string;
+    }
+  | {
+      version: typeof WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION;
+      type: "finalized";
+      session_id: string;
+      evidence: WindowsNativeCaptureEvidence;
+    }
+  | {
+      version: typeof WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION;
+      type: "failure";
+      session_id: string | null;
+      failure_code: RecordingV3FailureCode;
+      message: string;
+    };
+
+export interface WindowsNativeCaptureHelperTransport {
+  start(): Promise<void>;
+  send(command: WindowsNativeCaptureHelperCommand): Promise<void>;
+  onEvent(listener: (event: WindowsNativeCaptureHelperEvent) => void): () => void;
+  onExit(listener: (exitCode: number | null, signal: NodeJS.Signals | null) => void): () => void;
+  close(): Promise<void>;
+}
+
 export class WindowsCaptureProtocolError extends Error {
   constructor(
     readonly failureCode: RecordingQualityFailureCode,
@@ -197,7 +319,23 @@ export class WindowsCaptureProtocolError extends Error {
   }
 }
 
+export class WindowsNativeCaptureProtocolError extends Error {
+  constructor(
+    readonly failureCode: RecordingV3FailureCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "WindowsNativeCaptureProtocolError";
+  }
+}
+
 export function encodeWindowsCaptureCommand(command: WindowsCaptureHelperCommand): string {
+  return `${JSON.stringify(command)}\n`;
+}
+
+export function encodeWindowsNativeCaptureCommand(
+  command: WindowsNativeCaptureHelperCommand,
+): string {
   return `${JSON.stringify(command)}\n`;
 }
 
@@ -301,6 +439,12 @@ function parseProbeResult(value: unknown): WindowsCaptureProbeResult {
     !isPositiveInteger(value.physical_width) ||
     !isPositiveInteger(value.physical_height) ||
     !Array.isArray(value.failure_codes) ||
+    value.failure_codes.length !== 0 ||
+    value.encoder_dropped_frames !== 0 ||
+    value.unresolved_backpressure_events !== 0 ||
+    value.pts_gaps !== 0 ||
+    value.pts_duplicates !== 0 ||
+    value.pts_non_monotonic !== 0 ||
     !value.failure_codes.every(
       (code) =>
         typeof code === "string" &&
@@ -429,6 +573,165 @@ export function parseWindowsCaptureEvent(line: string): WindowsCaptureHelperEven
       return value as unknown as WindowsCaptureHelperEvent;
     default:
       throw new WindowsCaptureProtocolError(
+        "contract_mismatch",
+        `unknown native helper event ${value.type}`,
+      );
+  }
+}
+
+function parseWindowsNativeCapabilities(value: unknown): WindowsNativeCaptureCapabilities {
+  if (
+    !isRecord(value) ||
+    value.backend_id !== WINDOWS_CAPTURE_BACKEND_ID ||
+    value.backend_version !== WINDOWS_CAPTURE_BACKEND_VERSION ||
+    value.platform !== "win32" ||
+    (value.arch !== "x64" && value.arch !== "arm64") ||
+    !Array.isArray(value.target_classes) ||
+    value.target_classes.length !== 2 ||
+    !value.target_classes.includes("display") ||
+    !value.target_classes.includes("window") ||
+    value.codec !== "h264" ||
+    value.pixel_format !== "nv12" ||
+    !isRecord(value.exact_fps) ||
+    value.exact_fps.numerator !== 60 ||
+    value.exact_fps.denominator !== 1 ||
+    value.hardware_accelerated !== true ||
+    value.supports_pause_resume !== true ||
+    value.keeps_surfaces_native !== true ||
+    typeof value.encoder_id !== "string" ||
+    !value.encoder_id ||
+    (value.gpu_identity !== null && typeof value.gpu_identity !== "string") ||
+    (value.adapter_luid !== null && typeof value.adapter_luid !== "string")
+  ) {
+    throw new WindowsNativeCaptureProtocolError(
+      "contract_mismatch",
+      "invalid Windows native capture capabilities",
+    );
+  }
+  return value as unknown as WindowsNativeCaptureCapabilities;
+}
+
+function parseWindowsNativeEvidence(value: unknown): WindowsNativeCaptureEvidence {
+  if (
+    !isRecord(value) ||
+    ["pixels", "bytes", "bitmap", "data"].some((key) => key in value) ||
+    typeof value.artifact_path !== "string" ||
+    !value.artifact_path ||
+    value.codec !== "h264" ||
+    value.pixel_format !== "nv12" ||
+    !isPositiveInteger(value.width) ||
+    !isPositiveInteger(value.height) ||
+    !isRecord(value.exact_fps) ||
+    value.exact_fps.numerator !== 60 ||
+    value.exact_fps.denominator !== 1 ||
+    !isPositiveInteger(value.source_frames) ||
+    !isPositiveInteger(value.output_frames) ||
+    !isNonNegativeInteger(value.held_frames) ||
+    value.held_frames > value.output_frames ||
+    !isNonNegativeInteger(value.encoder_dropped_frames) ||
+    !isNonNegativeInteger(value.backpressure_events) ||
+    !isNonNegativeInteger(value.unresolved_backpressure_events) ||
+    !isNonNegativeInteger(value.pts_gaps) ||
+    !isNonNegativeInteger(value.pts_duplicates) ||
+    !isNonNegativeInteger(value.pts_non_monotonic) ||
+    value.initial_surface_received !== true ||
+    !isNonNegativeInteger(value.started_monotonic_us) ||
+    !isPositiveInteger(value.ended_monotonic_us) ||
+    value.ended_monotonic_us <= value.started_monotonic_us ||
+    !isPositiveInteger(value.finalized_duration_us) ||
+    typeof value.encoder_id !== "string" ||
+    !value.encoder_id ||
+    value.hardware_accelerated !== true ||
+    value.finalized !== true ||
+    !Array.isArray(value.failure_codes) ||
+    !value.failure_codes.every(
+      (code) =>
+        typeof code === "string" &&
+        WINDOWS_NATIVE_FAILURE_CODES.has(code as RecordingV3FailureCode),
+    )
+  ) {
+    throw new WindowsNativeCaptureProtocolError(
+      "contract_mismatch",
+      "invalid Windows native capture evidence",
+    );
+  }
+  return value as unknown as WindowsNativeCaptureEvidence;
+}
+
+export function parseWindowsNativeCaptureEvent(line: string): WindowsNativeCaptureHelperEvent {
+  let value: unknown;
+  try {
+    value = JSON.parse(line);
+  } catch {
+    throw new WindowsNativeCaptureProtocolError(
+      "contract_mismatch",
+      "native helper emitted invalid JSON",
+    );
+  }
+  if (
+    !isRecord(value) ||
+    value.version !== WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION ||
+    typeof value.type !== "string"
+  ) {
+    throw new WindowsNativeCaptureProtocolError(
+      "contract_mismatch",
+      "native helper protocol version mismatch",
+    );
+  }
+  switch (value.type) {
+    case "hello":
+      if (
+        value.backend_id !== WINDOWS_CAPTURE_BACKEND_ID ||
+        value.backend_version !== WINDOWS_CAPTURE_BACKEND_VERSION ||
+        !isPositiveInteger(value.process_id)
+      ) {
+        throw new WindowsNativeCaptureProtocolError("contract_mismatch", "invalid helper identity");
+      }
+      return value as unknown as WindowsNativeCaptureHelperEvent;
+    case "capabilities":
+      return {
+        version: WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION,
+        type: "capabilities",
+        capabilities: parseWindowsNativeCapabilities(value.capabilities),
+      };
+    case "started":
+    case "paused":
+    case "resumed":
+      if (typeof value.session_id !== "string" || !value.session_id) {
+        throw new WindowsNativeCaptureProtocolError(
+          "contract_mismatch",
+          `${value.type} event has no session ID`,
+        );
+      }
+      return value as unknown as WindowsNativeCaptureHelperEvent;
+    case "finalized":
+      if (typeof value.session_id !== "string" || !value.session_id) {
+        throw new WindowsNativeCaptureProtocolError(
+          "contract_mismatch",
+          "finalized event has no session ID",
+        );
+      }
+      return {
+        version: WINDOWS_CAPTURE_NATIVE_PROTOCOL_VERSION,
+        type: "finalized",
+        session_id: value.session_id,
+        evidence: parseWindowsNativeEvidence(value.evidence),
+      };
+    case "failure":
+      if (
+        (value.session_id !== null && typeof value.session_id !== "string") ||
+        typeof value.failure_code !== "string" ||
+        !WINDOWS_NATIVE_FAILURE_CODES.has(value.failure_code as RecordingV3FailureCode) ||
+        typeof value.message !== "string"
+      ) {
+        throw new WindowsNativeCaptureProtocolError(
+          "contract_mismatch",
+          "invalid helper failure event",
+        );
+      }
+      return value as unknown as WindowsNativeCaptureHelperEvent;
+    default:
+      throw new WindowsNativeCaptureProtocolError(
         "contract_mismatch",
         `unknown native helper event ${value.type}`,
       );

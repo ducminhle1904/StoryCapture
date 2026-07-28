@@ -25,9 +25,14 @@ public final class ControlChannel: @unchecked Sendable {
         try? handle.write(contentsOf: data)
     }
 
-    public func reply(_ requestID: String, event: String, data: [String: Any] = [:]) {
+    public func reply(
+        _ requestID: String,
+        event: String,
+        data: [String: Any] = [:],
+        version: Int = helperProtocolVersion
+    ) {
         send([
-            "version": helperProtocolVersion,
+            "version": version,
             "request_id": requestID,
             "event": event,
             "ok": true,
@@ -35,9 +40,14 @@ public final class ControlChannel: @unchecked Sendable {
         ])
     }
 
-    public func fail(_ requestID: String?, code: HelperFailureCode, message: String) {
+    public func fail(
+        _ requestID: String?,
+        code: HelperFailureCode,
+        message: String,
+        version: Int = helperProtocolVersion
+    ) {
         var value: [String: Any] = [
-            "version": helperProtocolVersion,
+            "version": version,
             "event": "error",
             "ok": false,
             "code": code.rawValue,
@@ -45,6 +55,112 @@ public final class ControlChannel: @unchecked Sendable {
         ]
         if let requestID { value["request_id"] = requestID }
         send(value)
+    }
+}
+
+private final class NativeMasterStreamOutput: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
+    private let control: ControlChannel
+    private let writer: NativeMasterWriter
+    private let lock = NSLock()
+    private var lifecycle = CaptureLifecycle()
+    private var failure: HelperFailureCode?
+
+    init(control: ControlChannel, writer: NativeMasterWriter) {
+        self.control = control
+        self.writer = writer
+    }
+
+    func start() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        try lifecycle.start()
+    }
+
+    func pause() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        try lifecycle.pause()
+        try writer.pause()
+    }
+
+    func resume() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        try lifecycle.resume()
+        try writer.resume()
+    }
+
+    func stop() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if lifecycle.state == .stopped { return }
+        try lifecycle.stop()
+    }
+
+    func waitForInitialSurface(timeoutMS: Int = 5_000) async throws {
+        let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(timeoutMS) * 1_000_000
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            if writer.hasInitialSurface() { return }
+            if let currentFailure = capturedFailure() { throw currentFailure }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        throw HelperFailureCode.backendUnavailable
+    }
+
+    func finish() async throws -> NativeMasterResult {
+        try await writer.finish()
+    }
+
+    private func capturedFailure() -> HelperFailureCode? {
+        lock.lock()
+        defer { lock.unlock() }
+        return failure
+    }
+
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        fail(.targetLost, "ScreenCaptureKit stopped: \(error.localizedDescription)")
+    }
+
+    func stream(
+        _ stream: SCStream,
+        didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+        of outputType: SCStreamOutputType
+    ) {
+        guard outputType == .screen,
+              sampleBuffer.isValid,
+              sampleBuffer.isCompleteFrame,
+              let pixelBuffer = sampleBuffer.imageBuffer else {
+            return
+        }
+        lock.lock()
+        let running = lifecycle.state == .running && failure == nil
+        lock.unlock()
+        guard running else { return }
+        do {
+            try writer.append(pixelBuffer)
+        } catch let code as HelperFailureCode {
+            fail(code, code.rawValue)
+        } catch {
+            fail(.submittedFrameDropped, error.localizedDescription)
+        }
+    }
+
+    private func fail(_ code: HelperFailureCode, _ message: String) {
+        lock.lock()
+        guard failure == nil else {
+            lock.unlock()
+            return
+        }
+        failure = code
+        lifecycle.fail()
+        lock.unlock()
+        writer.fail(code)
+        control.fail(
+            nil,
+            code: code,
+            message: message,
+            version: nativeMasterProtocolVersion
+        )
     }
 }
 
@@ -216,13 +332,10 @@ private final class CaptureStreamOutput: NSObject, SCStreamOutput, SCStreamDeleg
         of outputType: SCStreamOutputType
     ) {
         guard sampleBuffer.isValid else { return }
-        switch outputType {
-        case .screen:
+        if outputType == .screen {
             writeVideo(sampleBuffer)
-        case .audio:
+        } else if outputType == .audio {
             writeAudio(sampleBuffer)
-        @unknown default:
-            break
         }
     }
 
@@ -374,6 +487,7 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
     private let audioQueue = DispatchQueue(label: "com.storycapture.capture.audio", qos: .userInteractive)
     private var stream: SCStream?
     private var output: CaptureStreamOutput?
+    private var nativeMasterOutput: NativeMasterStreamOutput?
     private var activeTarget: HelperTarget?
     private var activeIdentity: ResolvedTargetIdentity?
     private var sessionID: String?
@@ -384,50 +498,97 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
     }
 
     public func handle(_ command: HelperCommand) async -> Bool {
-        guard command.version == helperProtocolVersion else {
-            control.fail(command.requestID, code: .contractMismatch, message: "helper protocol version must be 2")
+        guard command.version == helperProtocolVersion || command.version == nativeMasterProtocolVersion else {
+            control.fail(command.requestID, code: .contractMismatch, message: "helper protocol version must be 2 or 3")
             return true
         }
         do {
             switch command.command {
             case .hello:
-                control.reply(command.requestID, event: "hello", data: capabilities())
+                control.reply(
+                    command.requestID,
+                    event: "hello",
+                    data: capabilities(version: command.version),
+                    version: command.version
+                )
             case .probe:
                 let payload = try requiredPayload(command)
                 let result = try await probe(payload)
-                control.reply(command.requestID, event: "probe", data: probeData(result))
+                control.reply(
+                    command.requestID,
+                    event: "probe",
+                    data: probeData(result, version: command.version),
+                    version: command.version
+                )
             case .start:
-                try await start(command)
-                control.reply(command.requestID, event: "started", data: identityData())
+                if command.version == nativeMasterProtocolVersion {
+                    try await startNativeMaster(command)
+                } else {
+                    try await start(command)
+                }
+                control.reply(
+                    command.requestID,
+                    event: "started",
+                    data: identityData(),
+                    version: command.version
+                )
             case .pause:
-                guard let output else { throw HelperFailureCode.contractMismatch }
-                try output.pause()
-                control.reply(command.requestID, event: "paused")
+                if let nativeMasterOutput {
+                    try nativeMasterOutput.pause()
+                } else if let output {
+                    try output.pause()
+                } else {
+                    throw HelperFailureCode.contractMismatch
+                }
+                control.reply(command.requestID, event: "paused", version: command.version)
             case .resume:
-                guard let output else { throw HelperFailureCode.contractMismatch }
                 try await validateActiveTarget()
-                try output.resume()
-                control.reply(command.requestID, event: "resumed")
+                if let nativeMasterOutput {
+                    try nativeMasterOutput.resume()
+                } else if let output {
+                    try output.resume()
+                } else {
+                    throw HelperFailureCode.contractMismatch
+                }
+                control.reply(command.requestID, event: "resumed", version: command.version)
             case .stop:
-                let stats = try await stop()
-                control.reply(command.requestID, event: "stopped", data: stats)
+                let stats = nativeMasterOutput == nil ? try await stop() : try await stopNativeMaster()
+                control.reply(command.requestID, event: "stopped", data: stats, version: command.version)
             case .shutdown:
-                if stream != nil { _ = try await stop() }
-                control.reply(command.requestID, event: "shutdown")
+                if stream != nil {
+                    if nativeMasterOutput == nil {
+                        _ = try await stop()
+                    } else {
+                        _ = try await stopNativeMaster()
+                    }
+                }
+                control.reply(command.requestID, event: "shutdown", version: command.version)
                 return false
             }
         } catch let code as HelperFailureCode {
-            control.fail(command.requestID, code: code, message: code.rawValue)
+            control.fail(
+                command.requestID,
+                code: code,
+                message: code.rawValue,
+                version: command.version
+            )
         } catch {
-            control.fail(command.requestID, code: .backendUnavailable, message: error.localizedDescription)
+            control.fail(
+                command.requestID,
+                code: .backendUnavailable,
+                message: error.localizedDescription,
+                version: command.version
+            )
         }
         return true
     }
 
-    private func capabilities() -> [String: Any] {
-        [
+    private func capabilities(version: Int) -> [String: Any] {
+        var value: [String: Any] = [
             "backend_id": helperBackendID,
-            "backend_version": helperBackendVersion,
+            "backend_version": version == nativeMasterProtocolVersion
+                ? nativeMasterBackendVersion
+                : helperBackendVersion,
             "platform": "darwin",
             "arch": architecture(),
             "supports_native_timestamps": true,
@@ -436,6 +597,20 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
             "supports_cursor_policy": true,
             "supports_pause_resume": true,
         ]
+        if version == nativeMasterProtocolVersion {
+            let hardwareEncoderAvailable = NativeMasterWriter.hardwareEncoderAvailable()
+            value.merge([
+                "supports_native_master": true,
+                "supports_hardware_h264": hardwareEncoderAvailable,
+                "supports_cfr_held_frames": true,
+                "supports_atomic_finalization": true,
+                "encoder": [
+                    "id": "videotoolbox-h264",
+                    "hardware_accelerated": true,
+                ],
+            ]) { _, new in new }
+        }
+        return value
     }
 
     private func requiredPayload(_ command: HelperCommand) throws -> HelperCommandPayload {
@@ -505,6 +680,59 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
         sessionID = requestedSessionID
     }
 
+    private func startNativeMaster(_ command: HelperCommand) async throws {
+        guard stream == nil,
+              let requestedSessionID = command.sessionID,
+              !requestedSessionID.isEmpty else {
+            throw HelperFailureCode.contractMismatch
+        }
+        guard CGPreflightScreenCaptureAccess() else { throw HelperFailureCode.permissionDenied }
+        let payload = try requiredPayload(command)
+        guard let artifactPath = payload.artifactPath,
+              !artifactPath.isEmpty,
+              payload.fpsNumerator == 60,
+              payload.fpsDenominator == 1,
+              let width = payload.outputWidth,
+              let height = payload.outputHeight,
+              let target = payload.target else {
+            throw HelperFailureCode.contractMismatch
+        }
+        if target.kind == .window {
+            guard let mediaSourceID = target.mediaSourceID,
+                  windowIDFromMediaSourceID(mediaSourceID) == target.windowID else {
+                throw HelperFailureCode.contractMismatch
+            }
+        }
+        let resolved = try await resolve(target)
+        try validateDimensions(resolved.identity, payload: payload)
+        let configuration = try streamConfiguration(payload)
+        configuration.capturesAudio = false
+        let writer = try NativeMasterWriter(
+            artifactPath: artifactPath,
+            width: width,
+            height: height,
+            fpsNumerator: payload.fpsNumerator ?? 60,
+            fpsDenominator: payload.fpsDenominator ?? 1
+        )
+        let output = NativeMasterStreamOutput(control: control, writer: writer)
+        let stream = SCStream(filter: resolved.filter, configuration: configuration, delegate: output)
+        try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: videoQueue)
+        try output.start()
+        do {
+            try await stream.startCapture()
+            try await output.waitForInitialSurface()
+        } catch {
+            try? output.stop()
+            try? await stream.stopCapture()
+            throw error
+        }
+        self.stream = stream
+        nativeMasterOutput = output
+        activeTarget = target
+        activeIdentity = resolved.identity
+        sessionID = requestedSessionID
+    }
+
     private func stop() async throws -> [String: Any] {
         guard let stream, let output else { throw HelperFailureCode.contractMismatch }
         try await stream.stopCapture()
@@ -520,6 +748,23 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
             "audio_packets": stats.audio,
             "failure_code": stats.failure?.rawValue ?? NSNull(),
         ]
+    }
+
+    private func stopNativeMaster() async throws -> [String: Any] {
+        guard let stream, let output = nativeMasterOutput else {
+            throw HelperFailureCode.contractMismatch
+        }
+        try await stream.stopCapture()
+        try output.stop()
+        defer {
+            self.stream = nil
+            nativeMasterOutput = nil
+            activeTarget = nil
+            activeIdentity = nil
+            sessionID = nil
+        }
+        let result = try await output.finish()
+        return result.dictionary
     }
 
     private func validateActiveTarget() async throws {
@@ -621,13 +866,13 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
         return Double(matchingScreen?.backingScaleFactor ?? 1)
     }
 
-    private func probeData(_ result: NativeProbeResult) -> [String: Any] {
+    private func probeData(_ result: NativeProbeResult, version: Int) -> [String: Any] {
         var fps: Any = NSNull()
         if let numerator = result.measuredFPSNumerator,
            let denominator = result.measuredFPSDenominator {
             fps = ["numerator": numerator, "denominator": denominator]
         }
-        return capabilities().merging([
+        return capabilities(version: version).merging([
             "permissions_granted": true,
             "hardware_fingerprint": hardwareFingerprint(),
             "target_identity": result.identity.fingerprint,

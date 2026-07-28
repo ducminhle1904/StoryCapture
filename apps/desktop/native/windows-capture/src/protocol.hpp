@@ -92,9 +92,31 @@ inline CaptureOptions parse_options(const JsonObject& command) {
   return result;
 }
 
-inline JsonObject parse_command(std::wstring_view line) {
+inline CaptureOptions parse_native_options(const JsonObject& command) {
+  CaptureOptions result;
+  result.native_mp4 = true;
+  result.session_id = required_string(command, L"session_id");
+  result.output_path = required_string(command, L"output_path");
+  result.target = parse_target(command.GetNamedObject(L"target"));
+  result.cursor_policy = required_string(command, L"cursor_policy") == L"exclude"
+                             ? CursorPolicy::exclude
+                             : CursorPolicy::include;
+  if (required_string(command, L"dynamic_size_policy") != L"fail") {
+    throw ProtocolError("contract_mismatch", "Strict dynamic-size policy must fail closed");
+  }
+  result.requested_width = required_uint32(command, L"requested_width");
+  result.requested_height = required_uint32(command, L"requested_height");
+  const auto fps = command.GetNamedObject(L"requested_fps");
+  if (fps.GetNamedNumber(L"numerator", 0) != 60 ||
+      fps.GetNamedNumber(L"denominator", 0) != 1) {
+    throw ProtocolError("contract_mismatch", "native MP4 capture requires exact CFR 60/1");
+  }
+  return result;
+}
+
+inline JsonObject parse_command(std::wstring_view line, std::uint32_t protocol_version = 2) {
   const auto object = JsonObject::Parse(line);
-  if (object.GetNamedNumber(L"version", 0) != 2) {
+  if (object.GetNamedNumber(L"version", 0) != protocol_version) {
     throw ProtocolError("contract_mismatch", "unsupported helper protocol version");
   }
   required_string(object, L"type");
@@ -115,8 +137,10 @@ inline void set_bool(JsonObject& object, std::wstring_view key, bool value) {
 
 class EventWriter final {
  public:
+  explicit EventWriter(std::uint32_t protocol_version = 2) : protocol_version_(protocol_version) {}
+
   void emit(JsonObject object) {
-    object.SetNamedValue(L"version", JsonValue::CreateNumberValue(2));
+    object.SetNamedValue(L"version", JsonValue::CreateNumberValue(protocol_version_));
     std::scoped_lock lock(mutex_);
     std::wcout << object.Stringify().c_str() << L'\n' << std::flush;
   }
@@ -135,6 +159,7 @@ class EventWriter final {
   }
 
  private:
+  std::uint32_t protocol_version_;
   std::mutex mutex_;
 };
 

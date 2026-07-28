@@ -2,13 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   findSimulatorTarget,
+  prepareSimulatorTypeTargetScript,
   setActiveElementValueScript,
   setSimulatorTargetValueIncrementalScript,
   setSimulatorTargetValueScript,
-  simulatorTypeProbeScript,
   simulatorTargetCenterScript,
   simulatorTargetGeometryScript,
   simulatorTargetReadinessScript,
+  simulatorTypeProbeScript,
 } from "./simulator-dom";
 
 function makeVisible(el: Element): void {
@@ -62,6 +63,18 @@ describe("simulator DOM helpers", () => {
     const target = findSimulatorTarget({ kind: "label", value: "EMAIL ADDRESS" });
 
     expect(target).toBe(document.getElementById("email"));
+  });
+
+  it("rejects browser-native typing for inputs without selection semantics", () => {
+    document.body.innerHTML = `<label for="quantity">Quantity</label><input id="quantity" type="number" />`;
+    document.querySelectorAll("*").forEach(makeVisible);
+
+    // biome-ignore lint/security/noGlobalEval: executes the generated renderer script in JSDOM.
+    const prepared = window.eval(
+      prepareSimulatorTypeTargetScript({ kind: "label", value: "Quantity" }, undefined, null, null),
+    );
+
+    expect(prepared).toBe(false);
   });
 
   it("builds a center script that can resolve the editable label target", () => {
@@ -271,6 +284,38 @@ describe("simulator DOM helpers", () => {
     expect(didWrite).toBe(true);
     expect(input.value).toBe("abc");
     expect(events).toEqual(["input:", "input:a", "input:ab", "input:abc", "change:abc"]);
+  });
+
+  it("continues typing into a reactive replacement input", async () => {
+    document.body.innerHTML = `
+      <label for="search">Search Wikipedia</label>
+      <input id="search" type="search" />
+    `;
+    document.querySelectorAll("*").forEach(makeVisible);
+    const input = document.getElementById("search") as HTMLInputElement;
+    input.addEventListener(
+      "input",
+      () => {
+        const replacement = input.cloneNode() as HTMLInputElement;
+        replacement.value = input.value;
+        input.replaceWith(replacement);
+        makeVisible(replacement);
+      },
+      { once: true },
+    );
+
+    const didWrite = await window.eval(
+      setSimulatorTargetValueIncrementalScript(
+        { kind: "label", value: "Search Wikipedia" },
+        "ElectronJS",
+        undefined,
+        null,
+        0,
+      ),
+    );
+
+    expect(didWrite).toBe(true);
+    expect((document.getElementById("search") as HTMLInputElement).value).toBe("ElectronJS");
   });
 
   it("builds a privacy-safe type probe without returning plaintext values", async () => {
