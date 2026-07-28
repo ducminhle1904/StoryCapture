@@ -9,6 +9,7 @@ import {
   actionTimelineEventFromStep,
   deriveActionCaptureRect,
   recordingActionsFromSession,
+  scaleActionTimelineEvents,
   writeActionsSidecarAtomic,
 } from "./action-timeline";
 import { RecordingMediaClock } from "./recording-media-clock";
@@ -37,6 +38,67 @@ afterEach(async () => {
 });
 
 describe("action timeline sidecar helpers", () => {
+  it("maps CSS targets into output pixel coordinates", () => {
+    const event = actionTimelineEventFromStep({
+      ordinal: 1,
+      command: { verb: "click" },
+      stepStartedAtMs: 0,
+      actionAtMs: 100,
+      stepEndedAtMs: 120,
+      target: {
+        kind: "element",
+        label: "Submit",
+        center: { x: 400, y: 200 },
+        bounds: { x: 380, y: 180, w: 40, h: 40 },
+      },
+    });
+
+    expect(scaleActionTimelineEvents([event], { x: 1.5, y: 1.5 })[0]?.target).toEqual({
+      kind: "element",
+      label: "Submit",
+      center: { x: 600, y: 300 },
+      bounds: { x: 570, y: 270, w: 60, h: 60 },
+    });
+  });
+
+  it("round-trips a native V3 sidecar with a completed media clock", () => {
+    const mediaClock = new RecordingMediaClock({ fpsNum: 60, fpsDen: 1 });
+    for (let frame = 0; frame < 120; frame += 1) mediaClock.commitFrame(true);
+    mediaClock.freeze();
+    const event = actionTimelineEventFromStep({
+      ordinal: 1,
+      command: { verb: "hover", step_id: "step-hover" },
+      stepStartedAtMs: 100,
+      actionAtMs: 900,
+      stepEndedAtMs: 1_000,
+      target: {
+        kind: "element",
+        label: "Details",
+        center: { x: 400, y: 200 },
+        bounds: { x: 380, y: 180, w: 40, h: 40 },
+      },
+      cursorTiming: {
+        motion_preset: "natural",
+        start_ms: 100,
+        arrival_ms: 800,
+        travel_ms: 700,
+        dwell_ms: 100,
+      },
+      inputTiming: { kind: "hover", action_ms: 900 },
+    });
+    const dto = recordingActionsFromSession(
+      recordingSession({ frameSeq: 120, mediaClock }),
+      scaleActionTimelineEvents([event], { x: 1.5, y: 1.5 }),
+      { cursorMotionPreset: "natural", version: 3 },
+    );
+
+    expect(parseActionSidecar(dto)).toMatchObject({
+      source_version: 3,
+      frame_count: 120,
+      events: [{ target: { center: { x: 600, y: 300 } } }],
+    });
+  });
+
   it("derives the actions sidecar path next to the recording", () => {
     expect(actionsSidecarPath("/tmp/demo/recording.mp4")).toBe("/tmp/demo/recording.actions.json");
     expect(actionsSidecarPath("/tmp/demo/recording")).toBe("/tmp/demo/recording.actions.json");

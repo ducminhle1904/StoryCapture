@@ -230,6 +230,42 @@ export function actionTimelineEventFromStep(input: ActionTimelineEventInput): Ac
   };
 }
 
+export function scaleActionTimelineEvents(
+  events: ActionTimelineEvent[],
+  scale: { x: number; y: number },
+): ActionTimelineEvent[] {
+  const scaleTarget = (target: ActionTarget | null): ActionTarget | null =>
+    target
+      ? {
+          ...target,
+          center: { x: target.center.x * scale.x, y: target.center.y * scale.y },
+          bounds: {
+            x: target.bounds.x * scale.x,
+            y: target.bounds.y * scale.y,
+            w: target.bounds.w * scale.x,
+            h: target.bounds.h * scale.y,
+          },
+        }
+      : null;
+  return events.map((event) => ({
+    ...event,
+    target: scaleTarget(event.target),
+    secondary_target: scaleTarget(event.secondary_target),
+    ...(event.cursor_path
+      ? {
+          cursor_path: {
+            ...event.cursor_path,
+            samples: event.cursor_path.samples.map((sample) => ({
+              ...sample,
+              x: sample.x * scale.x,
+              y: sample.y * scale.y,
+            })),
+          },
+        }
+      : {}),
+  }));
+}
+
 export function recordingActionsFromSession(
   session: ActionTimelineRecordingSession,
   events: ActionTimelineEvent[],

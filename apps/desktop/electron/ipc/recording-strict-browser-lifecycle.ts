@@ -14,6 +14,7 @@ import {
   type ActionCursorTiming,
   type ActionTimelineEvent,
   recordingActionsFromSession,
+  scaleActionTimelineEvents,
   writeActionsSidecarAtomic,
 } from "./action-timeline";
 import type { BrowserRecordingReadinessState } from "./browser-capture-backend-v2";
@@ -23,6 +24,7 @@ import { RecordingBundleWorkspace } from "./recording-bundle";
 import { probePtsAnomalies, rationalsEqual } from "./recording-cadence-verifier";
 import { transcodeAudioFileToPcmWav } from "./recording-master";
 import { SequentialMasterDecoder } from "./recording-master-decoder";
+import { RecordingMediaClock } from "./recording-media-clock";
 import {
   RecordingNativeBrowserSurface,
   type RecordingQualityReferenceSample,
@@ -492,6 +494,11 @@ async function stopSession(session: StrictBrowserSession): Promise<RecordingResu
       const width = session.dimensions.requested_output_width;
       const height = session.dimensions.requested_output_height;
       try {
+        const mediaClock = new RecordingMediaClock({ fpsNum: STRICT_FPS, fpsDen: 1 });
+        for (let frame = 0; frame < evidence.output_frames; frame += 1) {
+          mediaClock.commitFrame(true);
+        }
+        mediaClock.freeze();
         await writeActionsSidecarAtomic(
           session.actionsPath,
           recordingActionsFromSession(
@@ -505,8 +512,12 @@ async function stopSession(session: StrictBrowserSession): Promise<RecordingResu
               frameSeq: evidence.output_frames,
               target: { kind: "author_preview" },
               frameCrop: null,
+              mediaClock,
             },
-            session.actionEvents,
+            scaleActionTimelineEvents(
+              session.actionEvents,
+              session.surface.outputCoordinateScale(),
+            ),
             { cursorMotionPreset: session.cursorMotionPreset, version: 3 },
           ),
         );

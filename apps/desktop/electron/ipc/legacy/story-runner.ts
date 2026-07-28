@@ -398,6 +398,11 @@ export async function executeParsedCommand(
         await waitMs(durationMs);
         return true;
       },
+      animationWait: async (durationMs) => {
+        await waitMs(durationMs);
+        return true;
+      },
+      isPaused: () => options.pauseGate?.state === "paused",
       shouldCancel: options.shouldCancel,
     });
     return {};
@@ -728,6 +733,11 @@ async function ensureReadyCommandTarget(
       await waitMs(durationMs);
       return true;
     },
+    animationWait: async (durationMs) => {
+      await waitMs(durationMs);
+      return true;
+    },
+    isPaused: () => options.pauseGate?.state === "paused",
     shouldCancel: () => {
       if (options.shouldCancel?.()) throw new RecordingPauseCancelledError();
       return false;

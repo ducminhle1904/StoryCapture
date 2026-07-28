@@ -204,23 +204,83 @@ function prepareExplicitScrollScript(input: {
   `;
 }
 
-function applyTargetScrollFrameScript(token: string, progress: number): string {
+function startTargetScrollAnimationScript(token: string, durationMs: number): string {
   return `
     (() => {
       const registry = window.__storycaptureScrollPlans || {};
       const plans = registry[${JSON.stringify(token)}];
       if (!Array.isArray(plans)) return false;
       const easeInOutCubic = ${easeInOutCubic.toString()};
-      const raw = Math.max(0, Math.min(1, ${JSON.stringify(progress)}));
-      const eased = easeInOutCubic(raw);
-      for (const plan of plans) {
-        const x = plan.startX + (plan.desiredX - plan.startX) * eased;
-        const y = plan.startY + (plan.desiredY - plan.startY) * eased;
-        if (plan.document) window.scrollTo(x, y);
-        else plan.node.scrollTo(x, y);
-      }
-      if (raw >= 1) delete registry[${JSON.stringify(token)}];
+      const animations = window.__storycaptureScrollAnimations || (window.__storycaptureScrollAnimations = {});
+      const existing = animations[${JSON.stringify(token)}];
+      if (existing?.rafId) cancelAnimationFrame(existing.rafId);
+      const animation = {
+        status: "running",
+        rafId: 0,
+        startedAt: null,
+        pausedAt: null,
+        totalPausedMs: 0,
+      };
+      animations[${JSON.stringify(token)}] = animation;
+      const duration = Math.max(1, ${JSON.stringify(durationMs)});
+      const step = (timestamp) => {
+        if (animation.status !== "running") return;
+        if (animation.startedAt === null) animation.startedAt = timestamp;
+        const raw = Math.max(
+          0,
+          Math.min(1, (timestamp - animation.startedAt - animation.totalPausedMs) / duration)
+        );
+        const eased = easeInOutCubic(raw);
+        for (const plan of plans) {
+          const x = plan.startX + (plan.desiredX - plan.startX) * eased;
+          const y = plan.startY + (plan.desiredY - plan.startY) * eased;
+          if (plan.document) window.scrollTo(x, y);
+          else plan.node.scrollTo(x, y);
+        }
+        if (raw >= 1) {
+          animation.status = "completed";
+          animation.rafId = 0;
+          return;
+        }
+        animation.rafId = requestAnimationFrame(step);
+      };
+      animation.step = step;
+      animation.rafId = requestAnimationFrame(step);
       return true;
+    })()
+  `;
+}
+
+function controlTargetScrollAnimationScript(token: string, paused: boolean): string {
+  return `
+    (() => {
+      const animation = window.__storycaptureScrollAnimations?.[${JSON.stringify(token)}];
+      if (!animation) return "missing";
+      if (${JSON.stringify(paused)}) {
+        if (animation.status === "running") {
+          if (animation.rafId) cancelAnimationFrame(animation.rafId);
+          animation.rafId = 0;
+          animation.pausedAt = performance.now();
+          animation.status = "paused";
+        }
+        return animation.status;
+      }
+      if (animation.status === "paused") {
+        animation.totalPausedMs += Math.max(0, performance.now() - animation.pausedAt);
+        animation.pausedAt = null;
+        animation.status = "running";
+        animation.rafId = requestAnimationFrame(animation.step);
+      }
+      return animation.status;
+    })()
+  `;
+}
+
+function targetScrollAnimationStatusScript(token: string): string {
+  return `
+    (() => {
+      const animation = window.__storycaptureScrollAnimations?.[${JSON.stringify(token)}];
+      return animation?.status ?? "missing";
     })()
   `;
 }
@@ -230,6 +290,13 @@ function cleanupTargetScrollScript(token: string): string {
     (() => {
       const registry = window.__storycaptureScrollPlans;
       if (registry) delete registry[${JSON.stringify(token)}];
+      const animations = window.__storycaptureScrollAnimations;
+      const animation = animations?.[${JSON.stringify(token)}];
+      if (animation?.rafId) cancelAnimationFrame(animation.rafId);
+      if (animation) {
+        animation.status = "cancelled";
+        delete animations[${JSON.stringify(token)}];
+      }
     })()
   `;
 }
@@ -250,22 +317,38 @@ async function animatePreparedScroll(input: {
   token: string;
   durationMs: number;
   wait: (durationMs: number) => Promise<boolean | undefined>;
+  isPaused?: () => boolean;
   shouldCancel?: () => boolean;
 }): Promise<void> {
-  const frames = Math.max(1, Math.ceil(input.durationMs / SCROLL_FRAME_MS));
   try {
-    for (let frame = 1; frame <= frames; frame += 1) {
+    const started = await input.contents.executeJavaScript(
+      startTargetScrollAnimationScript(input.token, input.durationMs),
+    );
+    if (started !== true) throw new TargetVisibilityPhaseError("scroll", "detached");
+    let animationPaused = false;
+    while (true) {
       await waitWithCancellation({
         wait: input.wait,
         shouldCancel: input.shouldCancel,
-        durationMs: Math.min(
-          SCROLL_FRAME_MS,
-          input.durationMs - ((frame - 1) * input.durationMs) / frames,
-        ),
+        durationMs: SCROLL_FRAME_MS,
       });
-      await input.contents.executeJavaScript(
-        applyTargetScrollFrameScript(input.token, frame / frames),
+      const paused = input.isPaused?.() === true;
+      if (paused !== animationPaused) {
+        const controlledStatus = await input.contents.executeJavaScript(
+          controlTargetScrollAnimationScript(input.token, paused),
+        );
+        if (controlledStatus === "missing") {
+          throw new TargetVisibilityPhaseError("scroll", "detached");
+        }
+        animationPaused = paused;
+      }
+      const status = await input.contents.executeJavaScript(
+        targetScrollAnimationStatusScript(input.token),
       );
+      if (status === "completed" || status === true) break;
+      if (status !== "running" && status !== "paused") {
+        throw new TargetVisibilityPhaseError("scroll", "detached");
+      }
     }
   } finally {
     if (!input.contents.isDestroyed()) {
@@ -282,6 +365,7 @@ async function runPreparedScroll(input: {
   distance: number;
   viewportDiagonal: number;
   wait: (durationMs: number) => Promise<boolean | undefined>;
+  isPaused?: () => boolean;
   shouldCancel?: () => boolean;
   now: () => number;
 }): Promise<SmoothScrollTiming> {
@@ -292,6 +376,7 @@ async function runPreparedScroll(input: {
     token: input.token,
     durationMs,
     wait: input.wait,
+    isPaused: input.isPaused,
     shouldCancel: input.shouldCancel,
   });
   const endedAtMs = input.now();
@@ -305,6 +390,8 @@ async function runPreparedScroll(input: {
 async function waitForStableObservation(input: {
   observe: () => Promise<InteractionObservation>;
   wait: (durationMs: number) => Promise<boolean | undefined>;
+  animationWait?: (durationMs: number) => Promise<boolean | undefined>;
+  isPaused?: () => boolean;
   shouldCancel?: () => boolean;
   timeoutMs?: number;
 }): Promise<Extract<InteractionObservation, { status: "ready" }>> {
@@ -347,6 +434,8 @@ export async function executeControlledScroll(input: {
   amount: number;
   unit: "px" | "vh";
   wait: (durationMs: number) => Promise<boolean | undefined>;
+  animationWait?: (durationMs: number) => Promise<boolean | undefined>;
+  isPaused?: () => boolean;
   shouldCancel?: () => boolean;
   now?: () => number;
 }): Promise<ExplicitScrollResult> {
@@ -386,7 +475,8 @@ export async function executeControlledScroll(input: {
     token,
     distance: Number(prepared.distance) || 0,
     viewportDiagonal: Number(prepared.viewportDiagonal) || 1,
-    wait: input.wait,
+    wait: input.animationWait ?? input.wait,
+    isPaused: input.isPaused,
     shouldCancel: input.shouldCancel,
     now: input.now ?? Date.now,
   });
@@ -404,6 +494,8 @@ export async function ensureTargetVisible(input: {
   selector?: string | null;
   observe: () => Promise<InteractionObservation>;
   wait: (durationMs: number) => Promise<boolean | undefined>;
+  animationWait?: (durationMs: number) => Promise<boolean | undefined>;
+  isPaused?: () => boolean;
   shouldCancel?: () => boolean;
   now?: () => number;
   timeoutMs?: number;

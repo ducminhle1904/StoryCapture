@@ -50,6 +50,17 @@ export class RecordingNativeBrowserSurface {
     return this.zoomFactor;
   }
 
+  outputCoordinateScale(): { x: number; y: number } {
+    const viewport = this.options.contentViewport ?? {
+      width: this.options.dimensions.logical_width / this.zoomFactor,
+      height: this.options.dimensions.logical_height / this.zoomFactor,
+    };
+    return {
+      x: this.options.dimensions.requested_output_width / viewport.width,
+      y: this.options.dimensions.requested_output_height / viewport.height,
+    };
+  }
+
   constructor(private readonly options: RecordingNativeBrowserSurfaceOptions) {
     const dimensions = options.dimensions;
     const partition = options.partition ?? `recording-native-${randomUUID()}`;

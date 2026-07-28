@@ -154,6 +154,48 @@ describe("smooth scroll helpers", () => {
     expect(contents.executeJavaScript.mock.calls[0]?.[0]).toContain("results");
   });
 
+  it("pauses and resumes the page-owned animation with the recording gate", async () => {
+    const statuses = ["paused", "completed"];
+    const contents = {
+      isDestroyed: () => false,
+      executeJavaScript: vi.fn(async (script: string) => {
+        if (script.includes("requestedAmount")) {
+          return {
+            distance: 400,
+            viewportDiagonal: 1_000,
+            planCount: 1,
+            requestedAmount: 400,
+            appliedAmount: 400,
+          };
+        }
+        if (script.includes("return animation?.status")) return statuses.shift();
+        if (script.includes("animation.pausedAt = performance.now()")) {
+          return script.includes("if (true)") ? "paused" : "running";
+        }
+        return true;
+      }),
+    };
+    const pausedStates = [true, false];
+    const wait = vi.fn(async () => true);
+    const animationWait = vi.fn(async () => true);
+
+    await executeControlledScroll({
+      contents: contents as never,
+      direction: "down",
+      amount: 400,
+      unit: "px",
+      wait,
+      animationWait,
+      isPaused: () => pausedStates.shift() ?? false,
+    });
+
+    expect(wait).not.toHaveBeenCalled();
+    expect(animationWait).toHaveBeenCalledTimes(2);
+    const scripts = contents.executeJavaScript.mock.calls.map(([script]) => String(script));
+    expect(scripts.some((script) => script.includes("if (true)"))).toBe(true);
+    expect(scripts.some((script) => script.includes("if (false)"))).toBe(true);
+  });
+
   it("uses bounded overlay reposition attempts", async () => {
     const contents = mockedContents(0);
     await expect(

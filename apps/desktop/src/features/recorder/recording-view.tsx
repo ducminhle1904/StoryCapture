@@ -505,12 +505,30 @@ export function RecordingView({
     setStatus("completed");
     setOutputPath(result.output_path);
     if (projectId) {
+      const strictV3 = "status" in result && result.version === 3 ? result : null;
+      const bundleSeparator = strictV3?.bundle_path.includes("\\") ? "\\" : "/";
       publishCompletedRecording(queryClient, projectId, {
         path: result.output_path,
         captured_at: Date.now(),
         duration_ms: result.duration_ms,
         width: "output_width" in result ? (result.output_width ?? null) : null,
         height: "output_height" in result ? (result.output_height ?? null) : null,
+        ...(strictV3
+          ? {
+              version: 3 as const,
+              bundle_path: strictV3.bundle_path,
+              master_path: strictV3.master_path,
+              proxy_path: strictV3.proxy_path,
+              cadence_evidence_path: `${strictV3.bundle_path}${bundleSeparator}evidence${bundleSeparator}cadence.json`,
+              quality_evidence_path: `${strictV3.bundle_path}${bundleSeparator}evidence${bundleSeparator}quality.json`,
+              actions_path: `${strictV3.bundle_path}${bundleSeparator}sidecars${bundleSeparator}actions.json`,
+              exact_source_fps: strictV3.cadence_evidence.requested_fps,
+              source_frame_count: strictV3.cadence_evidence.output_frames,
+              certified_tier: null,
+              quality_verdict: strictV3.quality_evidence.verdict,
+              validation: { status: "valid" as const },
+            }
+          : {}),
       });
     }
     if (!("status" in result) && result.cadence_warning) {

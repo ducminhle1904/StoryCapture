@@ -103,7 +103,9 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/electron/ipc/recording-strict-browser-lifecycle.ts`. The browser
   surface owns post-navigation page zoom and exposes its input-coordinate
   scale; `apps/desktop/electron/ipc/legacy/story-runner.ts` applies that scale
-  when dispatching pointer input.
+  when dispatching pointer input. `apps/desktop/electron/ipc/smooth-scroll.ts`
+  runs compositor-paced scroll animation in the page instead of driving frames
+  over host IPC.
 - Native backends and protocols:
   `apps/desktop/electron/ipc/macos-screen-capture-backend.ts`,
   `apps/desktop/electron/ipc/windows-capture-backend.ts`,
@@ -120,7 +122,9 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/electron/ipc/recording-quality-verifier.ts`, and
   `apps/desktop/electron/ipc/recording-discovery.ts`. Strict quality sampling
   aligns encoded frames to action references within the lifecycle before the
-  verifier applies the contract thresholds.
+  verifier applies the contract thresholds. V3 action sidecars must include a
+  completed encoded-media clock and output-pixel target coordinates; otherwise
+  the renderer rejects them and post-production cannot build cursor tracks.
 - V2 compatibility only: `packages/shared-types/src/recording-v2.ts`,
   `recording-certification-catalog.ts`, `capture-backend-v2-guard.ts`,
   `browser-capture-backend-v2.ts`, `recording-frame-ring.ts`, and

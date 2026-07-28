@@ -195,9 +195,14 @@ The strict surface keeps Electron's logical window size, the native physical
 capture size, and the encoder output size as separate contract dimensions.
 Page zoom is applied after navigation so authored CSS viewport geometry fits
 the fixed native surface; story-runner pointer coordinates are mapped through
-that zoom before Electron input dispatch. Quality comparison searches a small
-temporal neighborhood around each action landmark before applying the fixed
-SSIM, edge-contrast, and color thresholds.
+that zoom before Electron input dispatch. Smooth scrolling runs inside the page
+on `requestAnimationFrame`; host IPC observes completion, freezes and resumes the
+page animation with the recording pause gate, but does not drive each animation
+frame. V3 action sidecars carry the completed encoded-media clock and
+map CSS target coordinates into output pixels so post-production can recreate
+the virtual cursor. Quality comparison searches a small temporal neighborhood
+around each action landmark before applying the fixed SSIM, edge-contrast, and
+color thresholds.
 
 `recording-native-master-bundle.ts`, the cadence/quality verifiers, and
 `recording-bundle.ts` independently probe/full-decode the MP4, validate evidence,

@@ -95,6 +95,7 @@ describe("native recording BrowserWindow surface", () => {
 
     await surface.load();
     expect(window.webContents.setZoomFactor).toHaveBeenCalledWith(0.75);
+    expect(surface.outputCoordinateScale()).toEqual({ x: 1.5, y: 1.5 });
   });
 
   it("samples quality references at requested output resolution", async () => {
