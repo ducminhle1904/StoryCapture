@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   exactLosslessMasterQualityEvidence,
   RECORDING_STRICT_QUALITY_THRESHOLDS,
+  sampledFrameAlignmentError,
   verifyGenericRecordingQualityV3,
   verifyRecordingQuality,
   verifyRecordingQualityV3,
@@ -14,6 +15,15 @@ import {
 } from "./recording-verifier-fixture";
 
 describe("deterministic recording verifier fixture", () => {
+  it("selects the temporally aligned frame by sampled luma error", () => {
+    const reference = Buffer.alloc(8 * 8 * 4, 255);
+    const stale = Buffer.alloc(8 * 8 * 4, 0);
+    const aligned = Buffer.from(reference);
+
+    expect(sampledFrameAlignmentError(reference, aligned, 8, 8)).toBe(0);
+    expect(sampledFrameAlignmentError(reference, stale, 8, 8)).toBeGreaterThan(0);
+  });
+
   it("contains the required 1080p60 screen-content regions and per-frame ordinal", () => {
     const manifest = recordingVerifierFixtureManifest("motion");
     const sample = createRecordingVerifierFixtureSample(42, "motion");

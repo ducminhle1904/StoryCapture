@@ -47,6 +47,7 @@ import {
   setStrictBrowserRecordingActions,
   strictBrowserRecordingClockMs,
   strictBrowserRecordingContents,
+  strictBrowserRecordingInputCoordinateScale,
   strictBrowserRecordingSession,
 } from "../recording-strict-browser-lifecycle";
 import {
@@ -357,6 +358,7 @@ export async function executeParsedCommand(
     shouldCancel?: () => boolean;
     onInputSideEffect?: (kind: RecordedInputLandmarkKind) => void;
     beforeInputSideEffect?: () => void;
+    inputCoordinateScale?: number;
   } = {},
 ): Promise<ParsedCommandResult> {
   const executionProfile = options.executionProfile ?? storyBrowserExecutionProfile();
@@ -406,6 +408,12 @@ export async function executeParsedCommand(
       (await resolveElementTarget(contents, command.target, command.target_nth)))
     : null;
   const center = target?.center ?? null;
+  const inputCenter = center
+    ? {
+        x: center.x * (options.inputCoordinateScale ?? 1),
+        y: center.y * (options.inputCoordinateScale ?? 1),
+      }
+    : null;
   if (
     (command.verb === "wait-for-visible" || command.verb === "assert-visible") &&
     command.target &&
@@ -429,23 +437,23 @@ export async function executeParsedCommand(
   if (commandSupportsFallback(command) && !center) {
     throw new Error(`target not found for ${command.verb}: ${selectorSummary(command.target)}`);
   }
-  if ((command.verb === "click" || command.verb === "hover") && center) {
-    contents.sendInputEvent({ type: "mouseMove", x: center.x, y: center.y });
+  if ((command.verb === "click" || command.verb === "hover") && center && inputCenter) {
+    contents.sendInputEvent({ type: "mouseMove", x: inputCenter.x, y: inputCenter.y });
     if (command.verb === "click") {
       options.beforeInputSideEffect?.();
       options.onInputSideEffect?.("down");
       contents.sendInputEvent({
         type: "mouseDown",
-        x: center.x,
-        y: center.y,
+        x: inputCenter.x,
+        y: inputCenter.y,
         button: "left",
         clickCount: 1,
       });
       options.onInputSideEffect?.("up");
       contents.sendInputEvent({
         type: "mouseUp",
-        x: center.x,
-        y: center.y,
+        x: inputCenter.x,
+        y: inputCenter.y,
         button: "left",
         clickCount: 1,
       });
@@ -457,21 +465,25 @@ export async function executeParsedCommand(
       pointer: command.verb === "click" ? { button: "left", effect: "click" } : null,
     };
   }
-  if ((command.verb === "type" || command.verb === "fill" || command.verb === "select") && center) {
+  if (
+    (command.verb === "type" || command.verb === "fill" || command.verb === "select") &&
+    center &&
+    inputCenter
+  ) {
     options.beforeInputSideEffect?.();
     options.onInputSideEffect?.("down");
     contents.sendInputEvent({
       type: "mouseDown",
-      x: center.x,
-      y: center.y,
+      x: inputCenter.x,
+      y: inputCenter.y,
       button: "left",
       clickCount: 1,
     });
     options.onInputSideEffect?.("up");
     contents.sendInputEvent({
       type: "mouseUp",
-      x: center.x,
-      y: center.y,
+      x: inputCenter.x,
+      y: inputCenter.y,
       button: "left",
       clickCount: 1,
     });
@@ -1162,6 +1174,7 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
       const result = await executeParsedCommand(options.contents, command, options.projectFolder, {
         executionProfile,
         resolvedTarget,
+        inputCoordinateScale: options.inputCoordinateScale,
         pauseGate: options.pauseGate,
         shouldCancel: options.shouldCancel,
         beforeInputSideEffect: landmarkStarted
@@ -1521,6 +1534,9 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       recordingSessionId,
       recordingClockMs:
         strictSessionAtLaunch || recordingSessionAtLaunch ? currentRecordingClockMs : undefined,
+      inputCoordinateScale: strictSessionAtLaunch
+        ? (strictBrowserRecordingInputCoordinateScale(strictSessionAtLaunch.id) ?? undefined)
+        : undefined,
       requireRecordingReadiness: strictSessionAtLaunch
         ? (state) => requireStrictBrowserRecordingReadiness(strictSessionAtLaunch.id, state)
         : undefined,

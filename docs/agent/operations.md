@@ -80,6 +80,9 @@ migrations, generated files, or release tooling.
 - Production Strict V3 is fail-closed from per-take helper/protocol, permission,
   hardware encoder, storage, target-readiness, cadence, artifact, and visual
   evidence. It does not require a machine certification catalog entry.
+- macOS strict capture configures the hardware H.264 writer for a high-quality
+  master and preflight reserves ten-minute storage at the matching 100 Mbps
+  ceiling. Keep writer tuning and the reservation estimate synchronized.
 - `BUNDLED_RECORDING_CERTIFICATION_TIERS` and
   `STORYCAPTURE_DISABLE_RECORDING_TIER_IDS` apply only to legacy V2 admission.
 - Package smoke verifies signing/protocol/capabilities, not live capture,

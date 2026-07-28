@@ -38,10 +38,14 @@ import {
 import { recordingNativeGlobalPreflight } from "./recording-native-preflight";
 import { recordEngineLog } from "./recording-observability";
 import { RecordingPauseGate } from "./recording-pause-gate";
-import { verifyGenericRecordingQualityV3 } from "./recording-quality-verifier";
+import {
+  sampledFrameAlignmentError,
+  verifyGenericRecordingQualityV3,
+} from "./recording-quality-verifier";
 
 const STRICT_FPS = 60;
 const MAX_REFERENCE_SAMPLES = 12;
+const REFERENCE_ALIGNMENT_RADIUS_FRAMES = 6;
 
 class ActiveRecordingClock {
   private readonly startedNs = process.hrtime.bigint();
@@ -102,6 +106,11 @@ function strictDimensions(args: StartRecordingArgs): RecordingDimensionsV2 {
   );
 }
 
+function strictContentViewport(width: number, height: number): { width: number; height: number } {
+  const aspectUnit = Math.max(1, Math.floor(Math.min(width / 16, height / 9)));
+  return { width: aspectUnit * 16, height: aspectUnit * 9 };
+}
+
 function send(session: StrictBrowserSession, event: unknown): void {
   sendChannel(session.sender, session.eventChannelId, event);
 }
@@ -159,7 +168,11 @@ export async function startStrictBrowserRecording(
   let platformSession: RecordingNativePlatformSession | null = null;
   try {
     workspace = await RecordingBundleWorkspace.create(exportsDir, bundleName);
-    surface = new RecordingNativeBrowserSurface({ url, dimensions });
+    surface = new RecordingNativeBrowserSurface({
+      url,
+      dimensions,
+      contentViewport: strictContentViewport(args.width, args.height),
+    });
     await fs.mkdir(temporaryDir, { recursive: true });
     sendChannel(sender, eventChannelId, { type: "readiness", state: "global_ready" });
     await surface.load();
@@ -235,6 +248,10 @@ export function strictBrowserRecordingSession(id: string): StrictBrowserSession 
 
 export function strictBrowserRecordingContents(id: string): WebContents | null {
   return sessions.get(id)?.surface.contents ?? null;
+}
+
+export function strictBrowserRecordingInputCoordinateScale(id: string): number | null {
+  return sessions.get(id)?.surface.inputCoordinateScale() ?? null;
 }
 
 export function strictBrowserRecordingClockMs(id: string): number | null {
@@ -409,6 +426,7 @@ async function qualityComparisons(
   );
   try {
     const comparisons: Array<{ reference: Buffer; actual: Buffer }> = [];
+    let lastDecodedFrame = -1;
     for (const [frameIndex, sample] of [...byFrame].sort(([left], [right]) => left - right)) {
       if (
         sample.width !== session.dimensions.requested_output_width ||
@@ -416,10 +434,31 @@ async function qualityComparisons(
       ) {
         continue;
       }
-      comparisons.push({
-        reference: sample.pixels,
-        actual: Buffer.from(await decoder.readFrame(frameIndex)),
-      });
+      const firstCandidate = Math.max(
+        lastDecodedFrame + 1,
+        frameIndex - REFERENCE_ALIGNMENT_RADIUS_FRAMES,
+      );
+      const lastCandidate = Math.min(
+        evidence.output_frames - 1,
+        frameIndex + REFERENCE_ALIGNMENT_RADIUS_FRAMES,
+      );
+      let bestActual: Buffer | null = null;
+      let bestError = Number.POSITIVE_INFINITY;
+      for (let candidate = firstCandidate; candidate <= lastCandidate; candidate += 1) {
+        const actual = Buffer.from(await decoder.readFrame(candidate));
+        lastDecodedFrame = candidate;
+        const error = sampledFrameAlignmentError(
+          sample.pixels,
+          actual,
+          session.dimensions.requested_output_width,
+          session.dimensions.requested_output_height,
+        );
+        if (error < bestError) {
+          bestError = error;
+          bestActual = actual;
+        }
+      }
+      if (bestActual) comparisons.push({ reference: sample.pixels, actual: bestActual });
     }
     return comparisons;
   } finally {

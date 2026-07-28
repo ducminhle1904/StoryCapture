@@ -455,6 +455,48 @@ describe("RecordingView take lifecycle", () => {
     expect(mocks.setRecordingDeliveryPolicy).toHaveBeenCalledWith("best_effort");
   });
 
+  it("sends Retina-aware 1080p dimensions for Strict browser recording", async () => {
+    mocks.outputPrefs.recordingDeliveryPolicy = "strict";
+    mocks.acquireRecordingPreview.mockResolvedValue({ streamId: "preview-1", release: vi.fn() });
+    const retinaTargets = {
+      ...targets,
+      displays: [{ ...targets.displays[0], scale_factor: 2 }],
+    };
+    mocks.listCaptureTargets.mockResolvedValue(retinaTargets);
+    useRecorderStore.setState({ availableTargets: retinaTargets });
+
+    render(
+      <MemoryRouter>
+        <RecordingView
+          projectId="project-1"
+          projectName="Demo"
+          projectFolder="/tmp/demo"
+          storySource={'meta { app: "https://example.com" viewport: 1280x800 }'}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New take" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Start recording" }));
+
+    await waitFor(() => expect(mocks.startRecording).toHaveBeenCalledTimes(1));
+    expect(mocks.startRecording.mock.calls[0]?.[0]).toMatchObject({
+      delivery_policy: "strict",
+      capture_contract: {
+        exact_fps: { numerator: 60, denominator: 1 },
+        dimensions: {
+          logical_width: 960,
+          logical_height: 540,
+          capture_dpr: 2,
+          physical_width: 1920,
+          physical_height: 1080,
+          requested_output_width: 1920,
+          requested_output_height: 1080,
+        },
+      },
+    });
+  });
+
   it("finalizes from the returned automation outcome when channel events are missing", async () => {
     const release = vi.fn();
     mocks.acquireRecordingPreview.mockResolvedValue({ streamId: "preview-1", release });

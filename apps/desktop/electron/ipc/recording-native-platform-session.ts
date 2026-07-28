@@ -51,6 +51,8 @@ export function createRecordingNativePlatformSession(
           outputHeight: height,
           expectedLogicalWidth: options.dimensions.logical_width,
           expectedLogicalHeight: options.dimensions.logical_height,
+          expectedPhysicalWidth: options.dimensions.physical_width,
+          expectedPhysicalHeight: options.dimensions.physical_height,
           fps: { numerator: 60, denominator: 1 },
           showsCursor: true,
           dynamicSizePolicy: "fail_on_change",

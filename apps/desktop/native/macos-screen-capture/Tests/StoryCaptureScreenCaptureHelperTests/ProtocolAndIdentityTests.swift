@@ -6,11 +6,13 @@ import XCTest
 
 final class ProtocolAndIdentityTests: XCTestCase {
     func testNativeMasterV3CommandDecodesWithoutChangingV2Default() throws {
-        let json = #"{"version":3,"request_id":"r1","command":"start","session_id":"take","payload":{"target":{"kind":"window","windowID":42,"mediaSourceID":"window:42:0"},"outputWidth":1920,"outputHeight":1080,"expectedLogicalWidth":960,"expectedLogicalHeight":540,"artifactPath":"/tmp/video.mp4","fpsNumerator":60,"fpsDenominator":1}}"#
+        let json = #"{"version":3,"request_id":"r1","command":"start","session_id":"take","payload":{"target":{"kind":"window","windowID":42,"mediaSourceID":"window:42:0"},"outputWidth":1920,"outputHeight":1080,"expectedLogicalWidth":1280,"expectedLogicalHeight":720,"expectedPhysicalWidth":2560,"expectedPhysicalHeight":1440,"artifactPath":"/tmp/video.mp4","fpsNumerator":60,"fpsDenominator":1}}"#
         let command = try JSONDecoder().decode(HelperCommand.self, from: Data(json.utf8))
         XCTAssertEqual(command.version, nativeMasterProtocolVersion)
         XCTAssertEqual(command.payload?.target?.mediaSourceID, "window:42:0")
         XCTAssertEqual(command.payload?.artifactPath, "/tmp/video.mp4")
+        XCTAssertEqual(command.payload?.expectedPhysicalWidth, 2560)
+        XCTAssertEqual(command.payload?.expectedPhysicalHeight, 1440)
         XCTAssertEqual(
             HelperCommand(requestID: "v2", command: .hello).version,
             helperProtocolVersion

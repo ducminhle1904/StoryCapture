@@ -83,6 +83,8 @@ export interface MacNativeMasterStart {
   outputHeight: number;
   expectedLogicalWidth: number;
   expectedLogicalHeight: number;
+  expectedPhysicalWidth: number;
+  expectedPhysicalHeight: number;
   fps: { numerator: 60; denominator: 1 };
   showsCursor?: boolean;
   dynamicSizePolicy?: "fail_on_change" | "scale_to_contract";
@@ -511,6 +513,8 @@ function helperPayload(
     outputHeight: request.dimensions.physical_height,
     expectedLogicalWidth: request.dimensions.logical_width,
     expectedLogicalHeight: request.dimensions.logical_height,
+    expectedPhysicalWidth: request.dimensions.physical_width,
+    expectedPhysicalHeight: request.dimensions.physical_height,
     showsCursor: options.showsCursor ?? true,
     dynamicSizePolicy: options.dynamicSizePolicy ?? "fail_on_change",
     capturesSystemAudio: request.audio_roles.includes("system"),
@@ -763,6 +767,8 @@ export class MacOSNativeMasterBackend {
       input.outputHeight <= 0 ||
       input.expectedLogicalWidth <= 0 ||
       input.expectedLogicalHeight <= 0 ||
+      input.expectedPhysicalWidth <= 0 ||
+      input.expectedPhysicalHeight <= 0 ||
       input.fps.numerator !== 60 ||
       input.fps.denominator !== 1
     ) {
@@ -790,6 +796,8 @@ export class MacOSNativeMasterBackend {
         outputHeight: input.outputHeight,
         expectedLogicalWidth: input.expectedLogicalWidth,
         expectedLogicalHeight: input.expectedLogicalHeight,
+        expectedPhysicalWidth: input.expectedPhysicalWidth,
+        expectedPhysicalHeight: input.expectedPhysicalHeight,
         fpsNumerator: input.fps.numerator,
         fpsDenominator: input.fps.denominator,
         showsCursor: input.showsCursor ?? true,

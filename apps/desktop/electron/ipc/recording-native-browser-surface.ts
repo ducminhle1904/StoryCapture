@@ -2,13 +2,16 @@ import { randomUUID } from "node:crypto";
 import type { RecordingDimensionsV2 } from "@storycapture/shared-types/recording-v2";
 import { BrowserWindow, type NativeImage, type WebContents } from "electron";
 
+import identity from "../identity.json";
 import type { MacScreenCaptureTarget } from "./macos-screen-capture-backend";
 import type { WindowsCaptureTarget } from "./windows-capture-protocol";
 
 export interface RecordingNativeBrowserSurfaceOptions {
   url: string;
   dimensions: RecordingDimensionsV2;
+  contentViewport?: { width: number; height: number };
   partition?: string;
+  env?: NodeJS.ProcessEnv;
   windowFactory?: (options: Electron.BrowserWindowConstructorOptions) => BrowserWindow;
 }
 
@@ -41,6 +44,11 @@ function windowsHandle(handle: Buffer): string {
 export class RecordingNativeBrowserSurface {
   readonly window: BrowserWindow;
   readonly contents: WebContents;
+  private readonly zoomFactor: number;
+
+  inputCoordinateScale(): number {
+    return this.zoomFactor;
+  }
 
   constructor(private readonly options: RecordingNativeBrowserSurfaceOptions) {
     const dimensions = options.dimensions;
@@ -65,10 +73,29 @@ export class RecordingNativeBrowserSurface {
       },
     });
     this.contents = this.window.webContents;
+    const contentViewport = options.contentViewport ?? {
+      width: dimensions.logical_width,
+      height: dimensions.logical_height,
+    };
+    const horizontalZoom = dimensions.logical_width / contentViewport.width;
+    const verticalZoom = dimensions.logical_height / contentViewport.height;
+    if (
+      !Number.isFinite(horizontalZoom) ||
+      horizontalZoom <= 0 ||
+      Math.abs(horizontalZoom - verticalZoom) > 0.001
+    ) {
+      this.window.destroy();
+      throw new Error("recording content viewport must match the native surface aspect ratio");
+    }
+    this.zoomFactor = horizontalZoom;
   }
 
   async load(): Promise<void> {
     await this.window.loadURL(this.options.url);
+    this.contents.setZoomFactor(this.zoomFactor);
+    await this.contents.executeJavaScript(
+      "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+    );
     const bounds = this.window.getContentBounds();
     if (
       bounds.width !== this.options.dimensions.logical_width ||
@@ -83,10 +110,12 @@ export class RecordingNativeBrowserSurface {
 
   macTarget(): MacScreenCaptureTarget {
     const mediaSourceID = this.window.getMediaSourceId();
+    const env = this.options.env ?? process.env;
     return {
       kind: "window",
       windowID: macWindowId(mediaSourceID),
       ownerPID: process.pid,
+      ownerBundleID: env[identity.devAppEnv] === "1" ? identity.devBundleId : identity.prodBundleId,
       mediaSourceID,
     };
   }
@@ -105,10 +134,19 @@ export class RecordingNativeBrowserSurface {
     if (!Number.isSafeInteger(frameIndex) || frameIndex < 0) {
       throw new Error("recording quality reference frame index must be non-negative");
     }
-    const image: NativeImage = await this.contents.capturePage();
-    const scaleFactor = this.options.dimensions.capture_dpr;
-    const size = image.getSize(scaleFactor);
-    const pixels = image.toBitmap({ scaleFactor });
+    const captured: NativeImage = await this.contents.capturePage();
+    const width = this.options.dimensions.requested_output_width;
+    const height = this.options.dimensions.requested_output_height;
+    const capturedSize = captured.getSize();
+    const image =
+      capturedSize.width === width && capturedSize.height === height
+        ? captured
+        : captured.resize({ width, height, quality: "best" });
+    const size = image.getSize();
+    const pixels = image.toBitmap();
+    if (size.width !== width || size.height !== height) {
+      throw new Error("recording quality reference resize did not reach output dimensions");
+    }
     if (pixels.byteLength !== size.width * size.height * 4) {
       throw new Error("recording quality reference bitmap has an invalid byte length");
     }

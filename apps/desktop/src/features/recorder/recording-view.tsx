@@ -98,6 +98,27 @@ const initialPermissionReport: ScreenCapturePermissionReport = {
   debugBypassAllowed: false,
 };
 
+const STRICT_OUTPUT_WIDTH = 1920;
+const STRICT_OUTPUT_HEIGHT = 1080;
+
+function strictCaptureContract(scaleFactor: number) {
+  const captureDpr = Number.isFinite(scaleFactor) && scaleFactor > 0 ? scaleFactor : 1;
+  const logicalWidth = Math.round(STRICT_OUTPUT_WIDTH / captureDpr);
+  const logicalHeight = Math.round(STRICT_OUTPUT_HEIGHT / captureDpr);
+  return {
+    exact_fps: { numerator: 60, denominator: 1 },
+    dimensions: {
+      logical_width: logicalWidth,
+      logical_height: logicalHeight,
+      capture_dpr: captureDpr,
+      physical_width: Math.round(logicalWidth * captureDpr),
+      physical_height: Math.round(logicalHeight * captureDpr),
+      requested_output_width: STRICT_OUTPUT_WIDTH,
+      requested_output_height: STRICT_OUTPUT_HEIGHT,
+    },
+  };
+}
+
 function strictPreflightFailureMessage(code: string): string {
   switch (code) {
     case "permission_denied":
@@ -700,6 +721,10 @@ export function RecordingView({
           fps: prefs.fps,
           contract_version: 2,
           delivery_policy: recordingDeliveryPolicy,
+          capture_contract:
+            recordingDeliveryPolicy === "strict"
+              ? strictCaptureContract(display?.scale_factor ?? 1)
+              : undefined,
           audio_device_id: audioDeviceId ?? undefined,
           include_cursor: includeCursor,
           output_resolution: recordingOutputResolutionForStart(prefs, activePreset),

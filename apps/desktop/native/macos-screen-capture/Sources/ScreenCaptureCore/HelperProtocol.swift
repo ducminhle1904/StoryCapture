@@ -63,6 +63,8 @@ public struct HelperCommandPayload: Codable, Equatable, Sendable {
     public let outputHeight: Int?
     public let expectedLogicalWidth: Int?
     public let expectedLogicalHeight: Int?
+    public let expectedPhysicalWidth: Int?
+    public let expectedPhysicalHeight: Int?
     public let showsCursor: Bool?
     public let dynamicSizePolicy: DynamicSizePolicy?
     public let capturesSystemAudio: Bool?
@@ -77,6 +79,8 @@ public struct HelperCommandPayload: Codable, Equatable, Sendable {
         outputHeight: Int? = nil,
         expectedLogicalWidth: Int? = nil,
         expectedLogicalHeight: Int? = nil,
+        expectedPhysicalWidth: Int? = nil,
+        expectedPhysicalHeight: Int? = nil,
         showsCursor: Bool? = nil,
         dynamicSizePolicy: DynamicSizePolicy? = nil,
         capturesSystemAudio: Bool? = nil,
@@ -90,6 +94,8 @@ public struct HelperCommandPayload: Codable, Equatable, Sendable {
         self.outputHeight = outputHeight
         self.expectedLogicalWidth = expectedLogicalWidth
         self.expectedLogicalHeight = expectedLogicalHeight
+        self.expectedPhysicalWidth = expectedPhysicalWidth
+        self.expectedPhysicalHeight = expectedPhysicalHeight
         self.showsCursor = showsCursor
         self.dynamicSizePolicy = dynamicSizePolicy
         self.capturesSystemAudio = capturesSystemAudio

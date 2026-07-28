@@ -5,7 +5,7 @@ import type {
   RecordingV3FailureCode,
 } from "@storycapture/shared-types/recording-v3";
 import { app, systemPreferences } from "electron";
-
+import { isDevRuntime } from "../runtime";
 import {
   type MacNativeMasterCapability,
   MacOSNativeMasterBackend,
@@ -17,7 +17,7 @@ import {
 } from "./windows-capture-backend";
 import type { WindowsNativeCaptureCapabilities } from "./windows-capture-protocol";
 
-const TEN_MINUTE_H264_BYTES = Math.ceil((25_000_000 / 8) * 600);
+const TEN_MINUTE_H264_BYTES = Math.ceil((100_000_000 / 8) * 600);
 const STORAGE_RESERVE_BYTES = 1024 ** 3;
 
 export interface RecordingNativePreflightOptions {
@@ -28,6 +28,7 @@ export interface RecordingNativePreflightOptions {
   resourcesPath?: string;
   appPath?: string;
   env?: NodeJS.ProcessEnv;
+  executablePath?: string;
   statfs?: typeof fs.statfs;
   accessStatus?: () => "not-determined" | "granted" | "denied" | "restricted" | "unknown";
   helperExists?: (helperPath: string) => Promise<boolean>;
@@ -58,9 +59,12 @@ function permissionStatus(
 function helperPathFor(
   platform: NodeJS.Platform,
   arch: string,
-  input: Pick<RecordingNativePreflightOptions, "isPackaged" | "resourcesPath" | "appPath">,
+  input: Pick<
+    RecordingNativePreflightOptions,
+    "isPackaged" | "resourcesPath" | "appPath" | "env" | "executablePath"
+  >,
 ): string {
-  const isPackaged = input.isPackaged ?? app.isPackaged;
+  const isPackaged = input.isPackaged ?? !isDevRuntime(app, input.env, input.executablePath);
   const resourcesPath = input.resourcesPath ?? process.resourcesPath;
   const appPath = input.appPath ?? app.getAppPath();
   if (platform === "darwin") {

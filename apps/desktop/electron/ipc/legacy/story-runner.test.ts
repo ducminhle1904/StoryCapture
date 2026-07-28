@@ -265,6 +265,24 @@ describe("story browser cursor pacing", () => {
     expect(landmarks).toEqual([]);
   });
 
+  it("maps CSS target coordinates into a zoomed native surface", async () => {
+    const actionTarget = target("Control", { x: 240, y: 180 });
+    const contents = fakeContents([actionTarget]);
+
+    await executeParsedCommand(contents as never, command("click", "Control"), "/tmp", {
+      resolvedTarget: actionTarget,
+      inputCoordinateScale: 0.75,
+    });
+
+    expect(contents.sendInputEvent).toHaveBeenCalledWith({
+      type: "mouseDown",
+      x: 180,
+      y: 135,
+      button: "left",
+      clickCount: 1,
+    });
+  });
+
   it("uses browser-native grapheme insertion and re-resolves a reactive target", async () => {
     vi.useRealTimers();
     const contents = nativeTypeContents({ inactiveAfterInsert: true });

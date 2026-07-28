@@ -540,6 +540,7 @@ export interface StoryBrowserRunOptions {
   executionProfile?: StoryBrowserExecutionProfile;
   recordingSessionId?: string | null;
   recordingClockMs?: () => number;
+  inputCoordinateScale?: number;
   actionLandmarks?: RecordingActionLandmarkRecorder;
   requestFrameCommit?: () => Promise<FrameSyncOutcome>;
   requireRecordingReadiness?: (

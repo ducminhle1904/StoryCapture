@@ -427,6 +427,8 @@ describe("MacOSNativeMasterBackend V3", () => {
       outputHeight: 1_080,
       expectedLogicalWidth: 960,
       expectedLogicalHeight: 540,
+      expectedPhysicalWidth: 1_920,
+      expectedPhysicalHeight: 1_080,
       fps: { numerator: 60, denominator: 1 },
     });
     await capture.pause();
@@ -474,6 +476,8 @@ describe("MacOSNativeMasterBackend V3", () => {
         outputHeight: 1_080,
         expectedLogicalWidth: 960,
         expectedLogicalHeight: 540,
+        expectedPhysicalWidth: 1_920,
+        expectedPhysicalHeight: 1_080,
         fps: { numerator: 60, denominator: 1 },
       }),
     ).rejects.toMatchObject({ code: "contract_mismatch" });

@@ -100,19 +100,27 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/electron/ipc/recording-native-preflight.ts`,
   `apps/desktop/electron/ipc/recording-native-browser-surface.ts`,
   `apps/desktop/electron/ipc/recording-native-platform-session.ts`, and
-  `apps/desktop/electron/ipc/recording-strict-browser-lifecycle.ts`.
+  `apps/desktop/electron/ipc/recording-strict-browser-lifecycle.ts`. The browser
+  surface owns post-navigation page zoom and exposes its input-coordinate
+  scale; `apps/desktop/electron/ipc/legacy/story-runner.ts` applies that scale
+  when dispatching pointer input.
 - Native backends and protocols:
   `apps/desktop/electron/ipc/macos-screen-capture-backend.ts`,
   `apps/desktop/electron/ipc/windows-capture-backend.ts`,
   `apps/desktop/electron/ipc/windows-capture-protocol.ts`, and
   `apps/desktop/native/{macos-screen-capture,windows-capture}/`. The native MP4
   writers live in `NativeMasterWriter.swift` and `native_mp4_writer.{hpp,cpp}`.
+  Native start contracts distinguish expected physical surface dimensions from
+  encoder output dimensions; keep the TypeScript and native protocol fields in
+  sync.
 - Bundle and verification data plane:
   `apps/desktop/electron/ipc/recording-native-master-bundle.ts`,
   `apps/desktop/electron/ipc/recording-bundle.ts`,
   `apps/desktop/electron/ipc/recording-cadence-verifier.ts`,
   `apps/desktop/electron/ipc/recording-quality-verifier.ts`, and
-  `apps/desktop/electron/ipc/recording-discovery.ts`.
+  `apps/desktop/electron/ipc/recording-discovery.ts`. Strict quality sampling
+  aligns encoded frames to action references within the lifecycle before the
+  verifier applies the contract thresholds.
 - V2 compatibility only: `packages/shared-types/src/recording-v2.ts`,
   `recording-certification-catalog.ts`, `capture-backend-v2-guard.ts`,
   `browser-capture-backend-v2.ts`, `recording-frame-ring.ts`, and

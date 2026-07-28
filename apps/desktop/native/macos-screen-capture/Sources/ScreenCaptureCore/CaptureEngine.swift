@@ -623,6 +623,10 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
               payload.expectedLogicalWidth ?? 0 <= 16_384,
               payload.expectedLogicalHeight ?? 0 > 0,
               payload.expectedLogicalHeight ?? 0 <= 16_384,
+              payload.expectedPhysicalWidth ?? 0 > 0,
+              payload.expectedPhysicalWidth ?? 0 <= 16_384,
+              payload.expectedPhysicalHeight ?? 0 > 0,
+              payload.expectedPhysicalHeight ?? 0 <= 16_384,
               payload.target != nil else {
             throw HelperFailureCode.contractMismatch
         }
@@ -853,8 +857,8 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
     ) throws {
         guard identity.logicalWidth == payload.expectedLogicalWidth,
               identity.logicalHeight == payload.expectedLogicalHeight,
-              identity.physicalWidth == payload.outputWidth,
-              identity.physicalHeight == payload.outputHeight else {
+              identity.physicalWidth == payload.expectedPhysicalWidth,
+              identity.physicalHeight == payload.expectedPhysicalHeight else {
             throw HelperFailureCode.targetChanged
         }
     }

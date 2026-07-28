@@ -102,7 +102,7 @@ public final class NativeMasterWriter: @unchecked Sendable {
             withIntermediateDirectories: true
         )
         writer = try AVAssetWriter(outputURL: temporaryURL, fileType: .mp4)
-        let bitRate = max(20_000_000, width * height * 12)
+        let bitRate = max(100_000_000, width * height * 48)
         let outputSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: width,
@@ -112,9 +112,11 @@ public final class NativeMasterWriter: @unchecked Sendable {
             ],
             AVVideoCompressionPropertiesKey: [
                 AVVideoAverageBitRateKey: bitRate,
+                AVVideoQualityKey: 1.0,
                 AVVideoExpectedSourceFrameRateKey: fpsNumerator,
                 AVVideoMaxKeyFrameIntervalKey: fpsNumerator * 2,
                 AVVideoAllowFrameReorderingKey: false,
+                AVVideoH264EntropyModeKey: AVVideoH264EntropyModeCABAC,
                 AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
             ],
         ]

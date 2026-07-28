@@ -58,6 +58,27 @@ export const RECORDING_STRICT_QUALITY_THRESHOLDS = {
   },
 } as const;
 
+export function sampledFrameAlignmentError(
+  reference: Buffer,
+  actual: Buffer,
+  width: number,
+  height: number,
+): number {
+  const expectedBytes = width * height * 4;
+  if (reference.byteLength !== expectedBytes || actual.byteLength !== expectedBytes) {
+    return Number.POSITIVE_INFINITY;
+  }
+  let total = 0;
+  let samples = 0;
+  for (let y = 0; y < height; y += 8) {
+    for (let x = 0; x < width; x += 8) {
+      total += Math.abs(lumaAt(reference, width, x, y) - lumaAt(actual, width, x, y));
+      samples += 1;
+    }
+  }
+  return total / samples;
+}
+
 function lumaAt(frame: Buffer, width: number, x: number, y: number): number {
   const offset = (y * width + x) * 4;
   return 0.0722 * frame[offset] + 0.7152 * frame[offset + 1] + 0.2126 * frame[offset + 2];
