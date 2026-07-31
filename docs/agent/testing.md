@@ -22,6 +22,15 @@
   capabilities. `test:e2e:recording-v2-helper` remains a compatibility alias.
   Neither command certifies live capture, MP4 finalization/full decode, or a
   sustained release soak.
+- Recording V4 certification gates:
+  `pnpm --dir apps/desktop run test:e2e:recording-v4-live` and
+  `pnpm --dir apps/desktop run test:e2e:recording-v4-soak`. They package and
+  verify the platform helper, then validate the retained platform matrix under
+  `STORYCAPTURE_RECORDING_V4_EVIDENCE_DIR`. Evidence uses
+  `package_verified: true`; macOS does not require Apple Developer ID, while
+  Windows retains Authenticode verification. The live matrix covers required
+  audio roles, reload/pause, display/GPU pressure and fail-closed faults; soak
+  requires ten-minute video-only and combined-audio takes.
 - Cursor-sync Electron E2E: `pnpm --dir apps/desktop run test:e2e:cursor-sync`.
 - Smooth document/nested-container scroll Electron E2E:
   `pnpm --dir apps/desktop run test:e2e:scroll`.
@@ -104,6 +113,12 @@
   `apps/desktop/electron/channel-sequence.test.ts`,
   `apps/desktop/electron/ipc/legacy/story-runner.test.ts`, and
   `apps/desktop/src/features/recorder/recording-view-lifecycle.test.tsx`.
+- Recording V4 changes: focus `recording-v4-contract.test.ts`,
+  `recording-v4-{coordinator,journal,platform-session,verifier,fixture}.test.ts`,
+  both `*-recording-v4-backend.test.ts` suites, the automation-surface and
+  story-runner tests, plus the renderer session/lifecycle tests before the full
+  desktop suite. Run the Swift package tests on macOS and the CMake native tests
+  on Windows when their sources change.
 - Strict Recording V3 changes: focus `recording-v3-contract.test.ts`,
   `recording-native-{preflight,browser-surface,platform-session,master-bundle}.test.ts`,
   cadence/quality/bundle/discovery tests, both native backend/protocol suites,

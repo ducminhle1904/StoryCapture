@@ -1,13 +1,9 @@
 import type {
-  RecordingCadenceEvidenceV2,
-  RecordingPreflightV2Dto,
-  RecordingResultV2,
-} from "@storycapture/shared-types/recording-v2";
-import type {
-  RecordingCadenceEvidenceV3,
-  RecordingNativePreflightV3,
-  RecordingResultV3,
-} from "@storycapture/shared-types/recording-v3";
+  RecordingV4CadenceEvidence,
+  RecordingV4Preflight,
+  RecordingV4Result,
+  RecordingV4State,
+} from "@storycapture/shared-types/recording-v4";
 import { create } from "zustand";
 import type { AudioPickerValue } from "@/ipc/audio";
 import {
@@ -94,7 +90,7 @@ export interface RecorderData {
   error: string | null;
   outputPath: string | null;
   elapsedMs: number;
-  preflight: RecordingPreflightV2Dto | RecordingNativePreflightV3 | null;
+  preflight: RecordingV4Preflight | null;
   readiness:
     | "source_ready"
     | "first_frame_committed"
@@ -102,12 +98,12 @@ export interface RecorderData {
     | "global_ready"
     | "target_ready"
     | "initial_surface_received"
+    | RecordingV4State
     | null;
-  liveEvidence: RecordingCadenceEvidenceV2 | RecordingCadenceEvidenceV3 | null;
+  liveEvidence: RecordingV4CadenceEvidence | null;
   verificationProgress: number | null;
   qualityFailure:
-    | (RecordingResultV2 & { status: "quality_failed" })
-    | (RecordingResultV3 & { status: "quality_failed" })
+    | Extract<RecordingV4Result, { state: "quality_failed" }>
     | null;
 
   captureTarget: CaptureTarget | null;

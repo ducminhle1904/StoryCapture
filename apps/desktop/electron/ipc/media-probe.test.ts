@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import ffmpegPath from "ffmpeg-static";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parseFfmpegProbeOutput, parseFfprobeJsonOutput, probeRecording } from "./media-probe";
 import { discoverProjectRecordings } from "./recording-discovery";
@@ -176,21 +176,18 @@ describe("recording media probe", () => {
     });
   });
 
-  it("classifies a recording that disappears between discovery and probe", async () => {
+  it("does not admit loose MP4 files into V4 discovery", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-discovery-"));
     tempDirs.push(dir);
     const file = path.join(dir, "latest.mp4");
     await fs.writeFile(file, "pending");
 
-    const recordings = await discoverProjectRecordings(dir, async (candidate) => {
-      await fs.rm(candidate);
-      return probeRecording(candidate);
-    });
-
-    expect(recordings[0]?.validation).toEqual({ status: "invalid", reason: "missing" });
+    const probe = vi.fn();
+    await expect(discoverProjectRecordings(dir, probe)).resolves.toEqual([]);
+    expect(probe).not.toHaveBeenCalled();
   });
 
-  it("keeps an invalid latest recording first instead of silently falling back", async () => {
+  it("does not probe legacy candidates when multiple loose MP4 files exist", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-discovery-"));
     tempDirs.push(dir);
     const older = path.join(dir, "older.mp4");
@@ -200,37 +197,8 @@ describe("recording media probe", () => {
     await fs.utimes(older, 1, 1);
     await fs.utimes(latest, 2, 2);
 
-    const recordings = await discoverProjectRecordings(dir, async (file) =>
-      file === latest
-        ? { status: "invalid", reason: "unsupported_or_corrupt" }
-        : {
-            status: "valid",
-            duration_ms: 1,
-            width: 1,
-            height: 1,
-            codec: "h264",
-            profile: null,
-            pixel_format: "yuv420p",
-            color: { range: null, space: null, transfer: null, primaries: null },
-            container: "mov",
-            bitrate: null,
-            real_frame_rate: { numerator: 60, denominator: 1 },
-            average_frame_rate: { numerator: 60, denominator: 1 },
-            stream_time_base: { numerator: 1, denominator: 60_000 },
-            declared_frames: 1,
-            counted_frames: 1,
-            frames: [],
-            full_decode_succeeded: true,
-          },
-    );
-    expect(recordings.map((recording) => path.basename(recording.path))).toEqual([
-      "latest.mp4",
-      "older.mp4",
-    ]);
-    expect(recordings[0]?.validation).toEqual({
-      status: "invalid",
-      reason: "unsupported_or_corrupt",
-    });
-    expect(recordings[1]?.validation).toEqual({ status: "unvalidated" });
+    const probe = vi.fn();
+    await expect(discoverProjectRecordings(dir, probe)).resolves.toEqual([]);
+    expect(probe).not.toHaveBeenCalled();
   });
 });

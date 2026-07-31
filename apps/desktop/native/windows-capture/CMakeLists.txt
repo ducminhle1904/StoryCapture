@@ -12,6 +12,8 @@ add_executable(storycapture-wgc
   src/frame_ring.cpp
   src/native_mp4_writer.cpp
   src/target_resolver.cpp
+  src/v4_slot_scheduler.cpp
+  src/wasapi_audio_capture.cpp
   helper.manifest
 )
 
@@ -24,7 +26,8 @@ target_compile_definitions(storycapture-wgc PRIVATE
   STORYCAPTURE_WGC_VERSION="${PROJECT_VERSION}"
 )
 target_compile_options(storycapture-wgc PRIVATE /W4 /WX /permissive- /EHsc /utf-8)
-target_link_libraries(storycapture-wgc PRIVATE d3d11 dxgi windowsapp shcore mfplat mfreadwrite mfuuid)
+target_link_libraries(storycapture-wgc PRIVATE
+  d3d11 dxgi windowsapp shcore mfplat mfreadwrite mfuuid ole32 avrt uuid)
 set_target_properties(storycapture-wgc PROPERTIES
   MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
   LINK_FLAGS "/MANIFEST:EMBED /MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/helper.manifest"
@@ -48,4 +51,15 @@ if(STORYCAPTURE_NATIVE_ARTIFACT_TESTS)
   target_link_libraries(storycapture-wgc-native-mp4-test PRIVATE
     d3d11 dxgi windowsapp mfplat mfreadwrite mfuuid)
   add_test(NAME storycapture-wgc-native-mp4-test COMMAND storycapture-wgc-native-mp4-test)
+
+  add_executable(storycapture-wgc-v4-slot-scheduler-test
+    tests/v4_slot_scheduler_test.cpp
+    src/v4_slot_scheduler.cpp
+  )
+  target_include_directories(storycapture-wgc-v4-slot-scheduler-test PRIVATE src)
+  target_compile_features(storycapture-wgc-v4-slot-scheduler-test PRIVATE cxx_std_20)
+  target_compile_options(storycapture-wgc-v4-slot-scheduler-test PRIVATE
+    /W4 /WX /permissive- /EHsc /utf-8)
+  add_test(NAME storycapture-wgc-v4-slot-scheduler-test
+    COMMAND storycapture-wgc-v4-slot-scheduler-test)
 endif()

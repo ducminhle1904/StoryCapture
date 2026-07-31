@@ -26,10 +26,8 @@ export function RenderCategory() {
   const settings = useAppSettingsStore((s) => s.settings);
   const patchRender = useAppSettingsStore((s) => s.patchRender);
   const recordingKnobs = useOutputPrefsStore((s) => s.recordingKnobs);
-  const recordingDeliveryPolicy = useOutputPrefsStore((s) => s.recordingDeliveryPolicy);
   const exportKnobs = useOutputPrefsStore((s) => s.exportKnobs);
   const setRecordingKnob = useOutputPrefsStore((s) => s.setRecordingKnob);
-  const setRecordingDeliveryPolicy = useOutputPrefsStore((s) => s.setRecordingDeliveryPolicy);
   const setExportKnob = useOutputPrefsStore((s) => s.setExportKnob);
 
   const resoKey = resolutionKey(recordingKnobs.resolution);
@@ -59,23 +57,6 @@ export function RenderCategory() {
   return (
     <SettingsPanel title="Render defaults">
       <SettingsCard>
-        <SettingsRow
-          label="Recording policy"
-          hint="Strict publishes only verified 1080p60 takes; Standard completes with truthful degraded evidence."
-          control={
-            <ScSegmented
-              size="sm"
-              value={recordingDeliveryPolicy}
-              onValueChange={(value) =>
-                setRecordingDeliveryPolicy(value === "strict" ? "strict" : "best_effort")
-              }
-              options={[
-                { value: "best_effort", label: "Standard" },
-                { value: "strict", label: "Strict" },
-              ]}
-            />
-          }
-        />
         <SettingsRow
           label="Resolution"
           control={

@@ -3,7 +3,6 @@ import type {
   OutputResolutionDto,
   PadColorDto,
   QualityPresetDto,
-  RecordingDeliveryPolicy,
 } from "@storycapture/shared-types";
 import { create } from "zustand";
 
@@ -118,18 +117,15 @@ function padEqual(a: PadColorDto, b: PadColorDto): boolean {
 
 interface State {
   activePreset: PresetName;
-  recordingDeliveryPolicy: RecordingDeliveryPolicy;
   recordingKnobs: RecordingKnobs;
   recordingPacing: RecordingPacingProfile;
   exportKnobs: ExportKnobs;
   setRecordingKnob<K extends keyof RecordingKnobs>(k: K, v: RecordingKnobs[K]): void;
-  setRecordingDeliveryPolicy(v: RecordingDeliveryPolicy): void;
   setRecordingPacing(v: RecordingPacingProfile): void;
   setExportKnob<K extends keyof ExportKnobs>(k: K, v: ExportKnobs[K]): void;
   applyPreset(name: Exclude<PresetName, "Custom">): void;
   hydrate(s: {
     activePreset: PresetName;
-    recordingDeliveryPolicy: RecordingDeliveryPolicy;
     recordingKnobs: RecordingKnobs;
     recordingPacing: RecordingPacingProfile;
     exportKnobs: ExportKnobs;
@@ -138,7 +134,6 @@ interface State {
 
 export const useOutputPrefsStore = create<State>((set) => ({
   activePreset: "Standard",
-  recordingDeliveryPolicy: "best_effort",
   recordingKnobs: PRESET_BUNDLES.Standard,
   recordingPacing: DEFAULT_RECORDING_PACING,
   exportKnobs: DEFAULT_EXPORT_KNOBS,
@@ -149,7 +144,6 @@ export const useOutputPrefsStore = create<State>((set) => ({
       const matched = matchPreset(next);
       return { recordingKnobs: next, activePreset: matched ?? "Custom" };
     }),
-  setRecordingDeliveryPolicy: (recordingDeliveryPolicy) => set({ recordingDeliveryPolicy }),
   setExportKnob: (k, v) =>
     set((s) => {
       if (s.exportKnobs[k] === v) return s;
@@ -161,10 +155,9 @@ export const useOutputPrefsStore = create<State>((set) => ({
       return { recordingPacing: DEFAULT_RECORDING_PACING };
     }),
   applyPreset: (name) => set({ activePreset: name, recordingKnobs: PRESET_BUNDLES[name] }),
-  hydrate: ({ activePreset, recordingDeliveryPolicy, recordingKnobs, exportKnobs }) =>
+  hydrate: ({ activePreset, recordingKnobs, exportKnobs }) =>
     set({
       activePreset,
-      recordingDeliveryPolicy,
       recordingKnobs,
       recordingPacing: DEFAULT_RECORDING_PACING,
       exportKnobs,

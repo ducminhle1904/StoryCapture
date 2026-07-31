@@ -99,6 +99,8 @@ export interface LaunchAutomationArgs {
    * UI having to call `stopRecording` itself.
    */
   recordingSessionId?: string;
+  /** Attach to the host-owned V4 author-preview without transferring finalization ownership. */
+  recordingV4SessionId?: string;
 }
 
 /**
@@ -151,6 +153,7 @@ export async function launchAutomation(
     chromeHiding: args.chromeHiding ?? false,
     pacingProfile: args.pacingProfile ?? DEFAULT_RECORDING_PACING,
     recordingSessionId: args.recordingSessionId ?? null,
+    recordingV4SessionId: args.recordingV4SessionId ?? null,
     recordingDisplay: args.recordingDisplay ?? null,
     recordingViewport: args.recordingViewport ?? null,
   });

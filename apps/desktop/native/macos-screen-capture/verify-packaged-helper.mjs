@@ -66,5 +66,30 @@ if (
 ) {
   throw new Error("packaged ScreenCaptureKit helper reported an invalid V3 native-master contract");
 }
-await request("shutdown", "packaged-v3-shutdown", 3);
-process.stdout.write("packaged ScreenCaptureKit helper signature and V2/V3 protocols passed\n");
+const recordingV4 = await request("hello", "packaged-v4-hello", 4);
+if (
+  recordingV4.version !== 4 ||
+  recordingV4.data?.backend_id !== "screen-capture-kit" ||
+  recordingV4.data?.backend_version !== "4.0.0" ||
+  recordingV4.data?.profile !== "verified_1080p60" ||
+  recordingV4.data?.supports_monotonic_60hz_scheduler !== true ||
+  recordingV4.data?.supports_frame_ledger !== true ||
+  recordingV4.data?.supports_encoder_envelope !== true ||
+  recordingV4.data?.supports_terminal_backpressure !== true ||
+  recordingV4.data?.supports_shared_audio_clock !== true ||
+  !recordingV4.data?.supported_audio_roles?.includes("microphone") ||
+  !recordingV4.data?.supported_audio_roles?.includes("system")
+) {
+  throw new Error("packaged ScreenCaptureKit helper reported an invalid V4 contract");
+}
+let incompatibleRejected = false;
+try {
+  await request("hello", "packaged-invalid-hello", 5);
+} catch (error) {
+  incompatibleRejected = String(error).includes("contract_mismatch");
+}
+if (!incompatibleRejected) {
+  throw new Error("packaged ScreenCaptureKit helper did not reject an incompatible protocol");
+}
+await request("shutdown", "packaged-v4-shutdown", 4);
+process.stdout.write("packaged ScreenCaptureKit helper signature and V2/V3/V4 protocols passed\n");

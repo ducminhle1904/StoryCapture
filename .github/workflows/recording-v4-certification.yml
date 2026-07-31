@@ -1,0 +1,65 @@
+name: Recording V4 certification
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Certification duration
+        required: true
+        default: live
+        type: choice
+        options: [live, soak]
+  schedule:
+    - cron: "17 3 * * *"
+
+concurrency:
+  group: recording-v4-certification-${{ github.event.inputs.mode || 'live' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS packaged live capture
+    runs-on: [self-hosted, recording-v4, macOS]
+    env:
+      STORYCAPTURE_RECORDING_V4_EVIDENCE_DIR: ${{ vars.RECORDING_V4_MACOS_EVIDENCE_DIR }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-toolchain
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Validate packaged live evidence
+        shell: bash
+        run: |
+          if [[ "${{ github.event.inputs.mode || 'live' }}" == "soak" ]]; then
+            pnpm --dir apps/desktop run test:e2e:recording-v4-soak
+          else
+            pnpm --dir apps/desktop run test:e2e:recording-v4-live
+          fi
+
+  windows:
+    name: Windows signed live capture
+    runs-on: [self-hosted, recording-v4, Windows]
+    env:
+      STORYCAPTURE_RECORDING_V4_EVIDENCE_DIR: ${{ vars.RECORDING_V4_WINDOWS_EVIDENCE_DIR }}
+      STORYCAPTURE_REQUIRE_SIGNED_NATIVE_HELPERS: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-toolchain
+      - name: Install dependencies
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+      - name: Validate signed live evidence
+        shell: pwsh
+        run: |
+          if ("${{ github.event.inputs.mode || 'live' }}" -eq "soak") {
+            pnpm --dir apps/desktop run test:e2e:recording-v4-soak
+          } else {
+            pnpm --dir apps/desktop run test:e2e:recording-v4-live
+          }

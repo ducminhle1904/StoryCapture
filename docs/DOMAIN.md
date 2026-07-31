@@ -142,8 +142,19 @@ Main files live under `apps/desktop/src/features/editor`.
 
 ## Automation And Recording
 
-The Electron host owns automation and capture behavior. Recording has two
-explicit policies:
+The Electron host owns automation and capture behavior. Recording V4 is the
+development-only replacement path: one fixed verified profile captures only a
+host-owned author-preview surface at 1920×1080 exact CFR 60/1. The host owns
+preflight, native audio roles, cadence/held-frame ledgers, automation action
+time, verification, journal recovery, and atomic terminal publication across
+renderer reloads. Requested microphone/system audio is a hard quality contract;
+missing, discontinuous, or out-of-sync audio fails the take. The renderer sends
+intents and subscribes to snapshots/events; it does not capture production
+microphone audio or finalize the take.
+
+Until packaged macOS and Windows live/soak evidence passes, the existing system
+still contains two compatibility policies and V4 remains internal. The macOS
+matrix does not require Apple Developer ID; Windows retains Authenticode:
 
 - **Standard** is `best_effort` and preserves the legacy recording path. It can
   complete on uncertified hardware, but its result and UI must remain visibly

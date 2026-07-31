@@ -77,6 +77,44 @@ migrations, generated files, or release tooling.
 
 ### Recording V3 Release Controls And V2 Compatibility
 
+Recording V4 is the development-only candidate write path. Do not remove V2/V3
+or call V4 release-ready until both packaged platform matrices pass.
+
+- `STORYCAPTURE_ENABLE_RECORDING_V4=1` enables the internal host route. There is
+  no runtime fallback inside an active V4 take.
+- `STORYCAPTURE_RECORDING_V4_CERTIFICATION_PATH` must point to validated
+  platform calibration and quality evidence before the native platform factory
+  can initialize. Do not substitute synthetic evidence for release gates.
+- V4 records only its host-owned author-preview BrowserWindow. The coordinator
+  owns journal, heartbeat, automation action timing, native helper lifecycle,
+  verification, and exactly-once terminal publication across renderer reloads.
+- The exact macOS Retina capture surface is 960×540 logical / 1920×1080
+  physical. Keep its 1280×720 CSS viewport and 0.75 page zoom synchronized with
+  automation coordinate mapping; do not resize the native surface to obtain a
+  desktop layout.
+- Cadence `source_updates + held_frames` must equal `output_frames`.
+  `source_updates` counts non-held ledger entries, not every source callback;
+  multiple callbacks inside one output slot may supersede each other.
+- Runtime V4 quality uses `recording-v4-runtime-quality.ts` for marker-free
+  author content. Deterministic certification fixtures continue to use their
+  declared marker bounds and chroma sample manifest.
+- Native helper resolution must use `isPackagedRuntime(app)`. The generated
+  `.electron-dev` bundle is a development runtime and loads helpers from the
+  source build even though Electron reports `app.isPackaged` as true.
+- `test:e2e:recording-v4-live` validates all required 60-second success/fault
+  cases; `test:e2e:recording-v4-soak` validates both ten-minute cases. Set
+  `STORYCAPTURE_RECORDING_V4_EVIDENCE_DIR` to a retained directory containing
+  `<platform>-<mode>-matrix.json` plus every referenced completed or diagnostic
+  bundle. The validator writes `<platform>-<mode>-certification-summary.json`.
+- The matrix must set `package_verified: true` and retain OS, hardware, GPU,
+  helper, app, cadence, bitrate, decode/quality, requested-audio drift, and
+  failure evidence. Encoder envelopes and final audio tolerances may only be
+  set from passing macOS and Windows evidence with documented headroom.
+- The macOS gate verifies packaged-helper integrity with ad-hoc signing and does
+  not require Apple Developer ID or Team ID. Windows keeps its Authenticode
+  gate. A missing evidence directory, platform runner, or failed scenario
+  blocks release and P8 cleanup.
+
 - Production Strict V3 is fail-closed from per-take helper/protocol, permission,
   hardware encoder, storage, target-readiness, cadence, artifact, and visual
   evidence. It does not require a machine certification catalog entry.

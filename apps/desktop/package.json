@@ -25,6 +25,8 @@
     "test:e2e:export": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && node scripts/export-compositor-artifact-smoke.mjs",
     "test:e2e:recording-v2-helper": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && pnpm native:verify:packaged",
     "test:e2e:recording-v3-helper": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && pnpm native:verify:packaged",
+    "test:e2e:recording-v4-live": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && pnpm native:verify:packaged && node scripts/recording-v4-certification.mjs --live",
+    "test:e2e:recording-v4-soak": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && pnpm native:verify:packaged && node scripts/recording-v4-certification.mjs --soak",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit"
   },

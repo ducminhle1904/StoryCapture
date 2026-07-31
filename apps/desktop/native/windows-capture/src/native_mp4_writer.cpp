@@ -2,6 +2,8 @@
 
 #include <filesystem>
 #include <format>
+#include <algorithm>
+#include <map>
 #include <vector>
 
 #include <codecapi.h>
@@ -49,6 +51,47 @@ Microsoft::WRL::ComPtr<IMFMediaType> media_type() {
   return value;
 }
 
+struct BitrateMeasurement {
+  std::uint32_t average_bps{};
+  std::uint32_t peak_bps{};
+};
+
+BitrateMeasurement measure_encoded_bitrate(const std::wstring& path) {
+  Microsoft::WRL::ComPtr<IMFSourceReader> reader;
+  winrt::check_hresult(
+      MFCreateSourceReaderFromURL(path.c_str(), nullptr, reader.ReleaseAndGetAddressOf()));
+  std::uint64_t total_bytes = 0;
+  LONGLONG duration_100ns = 0;
+  std::map<LONGLONG, std::uint64_t> bytes_by_second;
+  for (;;) {
+    DWORD flags = 0;
+    LONGLONG timestamp = 0;
+    Microsoft::WRL::ComPtr<IMFSample> sample;
+    winrt::check_hresult(reader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, nullptr,
+                                            &flags, &timestamp, sample.ReleaseAndGetAddressOf()));
+    if (flags & MF_SOURCE_READERF_ENDOFSTREAM) break;
+    if (!sample) continue;
+    DWORD bytes = 0;
+    winrt::check_hresult(sample->GetTotalLength(&bytes));
+    LONGLONG sample_duration = 0;
+    if (FAILED(sample->GetSampleDuration(&sample_duration)) || sample_duration <= 0) {
+      sample_duration = frame_time_100ns(1);
+    }
+    total_bytes += bytes;
+    duration_100ns = std::max(duration_100ns, timestamp + sample_duration);
+    bytes_by_second[timestamp / 10'000'000] += bytes;
+  }
+  if (total_bytes == 0 || duration_100ns <= 0) {
+    throw ProtocolError("artifact_probe_failed", "finalized MP4 contains no encoded video samples");
+  }
+  const auto average = std::min<std::uint64_t>(
+      UINT32_MAX, (total_bytes * 8ULL * 10'000'000ULL) / static_cast<std::uint64_t>(duration_100ns));
+  std::uint64_t peak = 0;
+  for (const auto& entry : bytes_by_second) peak = std::max(peak, entry.second * 8ULL);
+  return {static_cast<std::uint32_t>(average),
+          static_cast<std::uint32_t>(std::min<std::uint64_t>(UINT32_MAX, peak))};
+}
+
 void verify_hardware_encoder_selected(IMFSinkWriter* writer, DWORD stream_index) {
   Microsoft::WRL::ComPtr<IMFSinkWriterEx> extended;
   winrt::check_hresult(writer->QueryInterface(IID_PPV_ARGS(extended.ReleaseAndGetAddressOf())));
@@ -82,13 +125,17 @@ void verify_hardware_encoder_selected(IMFSinkWriter* writer, DWORD stream_index)
 std::wstring require_hardware_h264_encoder() { return select_hardware_h264_encoder(); }
 
 NativeMp4Writer::NativeMp4Writer(ID3D11Device* device, std::wstring output_path,
-                                 std::uint32_t width, std::uint32_t height)
+                                 std::uint32_t width, std::uint32_t height,
+                                 std::uint32_t target_bitrate_bps, bool measure_bitrate)
     : output_path_(std::move(output_path)),
       temporary_path_(output_path_ + L".partial"),
       width_(width),
       height_(height),
+      target_bitrate_bps_(target_bitrate_bps),
+      measure_bitrate_(measure_bitrate),
       device_(device) {
-  if (output_path_.empty() || width_ == 0 || height_ == 0 || width_ % 2 != 0 || height_ % 2 != 0) {
+  if (output_path_.empty() || width_ == 0 || height_ == 0 || width_ % 2 != 0 || height_ % 2 != 0 ||
+      target_bitrate_bps_ == 0) {
     throw ProtocolError("contract_mismatch", "invalid native MP4 output contract");
   }
   std::filesystem::create_directories(std::filesystem::path(output_path_).parent_path());
@@ -114,7 +161,7 @@ NativeMp4Writer::NativeMp4Writer(ID3D11Device* device, std::wstring output_path,
     auto output = media_type();
     winrt::check_hresult(output->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video));
     winrt::check_hresult(output->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264));
-    winrt::check_hresult(output->SetUINT32(MF_MT_AVG_BITRATE, 24'000'000));
+    winrt::check_hresult(output->SetUINT32(MF_MT_AVG_BITRATE, target_bitrate_bps_));
     winrt::check_hresult(output->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive));
     winrt::check_hresult(MFSetAttributeSize(output.Get(), MF_MT_FRAME_SIZE, width_, height_));
     winrt::check_hresult(MFSetAttributeRatio(output.Get(), MF_MT_FRAME_RATE, 60, 1));
@@ -178,7 +225,12 @@ void NativeMp4Writer::write(ID3D11Texture2D* texture, std::uint64_t frame_index)
   winrt::check_hresult(sample->SetSampleTime(sample_time));
   winrt::check_hresult(sample->SetSampleDuration(sample_end - sample_time));
   const auto result = writer_->WriteSample(stream_index_, sample.Get());
-  if (FAILED(result)) throw ProtocolError("encoder_rejected_frame", "hardware H.264 encoder rejected frame");
+  if (result == MF_E_NOTACCEPTING) {
+    throw ProtocolError("encoder_backpressure", "hardware H.264 encoder reported backpressure");
+  }
+  if (FAILED(result)) {
+    throw ProtocolError("encoder_rejected_frame", "hardware H.264 encoder rejected frame");
+  }
 }
 
 void NativeMp4Writer::finalize() {
@@ -188,6 +240,16 @@ void NativeMp4Writer::finalize() {
   if (FAILED(result)) throw ProtocolError("artifact_finalize_failed", "Media Foundation MP4 finalization failed");
   if (!MoveFileExW(temporary_path_.c_str(), output_path_.c_str(), MOVEFILE_WRITE_THROUGH)) {
     throw ProtocolError("artifact_finalize_failed", "finalized MP4 could not be promoted atomically");
+  }
+  std::error_code error;
+  artifact_bytes_ = std::filesystem::file_size(output_path_, error);
+  if (error || artifact_bytes_ == 0) {
+    throw ProtocolError("artifact_finalize_failed", "finalized MP4 is empty or unreadable");
+  }
+  if (measure_bitrate_) {
+    const auto bitrate = measure_encoded_bitrate(output_path_);
+    average_bitrate_bps_ = bitrate.average_bps;
+    peak_bitrate_bps_ = bitrate.peak_bps;
   }
   finalized_ = true;
 }

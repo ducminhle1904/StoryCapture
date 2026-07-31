@@ -1,4 +1,8 @@
-import { listen } from "@tauri-apps/api/event";
+import type {
+  RecordingV4Event,
+  RecordingV4Result,
+  RecordingV4Snapshot,
+} from "@storycapture/shared-types/recording-v4";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -14,7 +18,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
-import { TargetPicker } from "@/features/capture/TargetPicker";
 import type { ProjectWorkflowSnapshot } from "@/features/project-workflow/project-stage";
 import { ProjectStageHeader } from "@/features/project-workflow/project-stage-header";
 import {
@@ -23,25 +26,13 @@ import {
   launchAutomation,
 } from "@/ipc/automation";
 import {
-  type CaptureTarget,
   checkScreenCapturePermission,
-  type DisplayInfo,
   isStageManagerEnabled,
   openScreenCapturePrefs,
   relaunchApp,
   requestScreenCaptureAccess,
   type ScreenCapturePermissionReport,
 } from "@/ipc/capture";
-import {
-  pauseRecording,
-  type RecordingCompletedResult,
-  type RecordingEvent,
-  type RecordingSessionId,
-  type RecordingStopResult,
-  resumeRecording,
-  startRecording,
-  stopRecording,
-} from "@/ipc/encode";
 import { parseStory } from "@/ipc/parse";
 import { publishCompletedRecording } from "@/ipc/projects";
 import { queryClient } from "@/ipc/query-client";
@@ -54,26 +45,19 @@ import { useAppSettingsStore } from "@/state/app-settings";
 import {
   applyCaptureFpsDefault,
   DEFAULT_RECORDING_PACING,
-  recordingOutputResolutionForStart,
-  useOutputPrefsStore,
 } from "@/state/output-prefs";
 import { type RecorderStatus, type StepProgress, useRecorderStore } from "@/state/recorder";
 
 // The recorder-side element picker has been removed. Element picking
 // lives exclusively in the Preview panel via
 // `apps/desktop/src/features/editor/PreviewPickerButton.tsx`.
-import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
 import { formatIpcError } from "./ipc-error";
 import { parsePrimaryMiss, RECORD_PATH_MISS_BODY } from "./primary-miss-copy";
-import { acquireRecordingPreview, type RecordingPreviewLease } from "./recording-preview";
-import { canFinalizeOwnedRecording } from "./recording-session-lifecycle";
-import { authorPreviewRecordingPlan } from "./recording-target";
-import { storyInitialUrlForRecording, storyViewportSize } from "./recording-viewport";
+import { storyInitialUrlForRecording } from "./recording-viewport";
 import { TccPrompt } from "./tcc-prompt";
-import { OutputSummaryBadge } from "./video-output/output-summary-badge";
-import { useIsRecordingBlocked, VideoOutputSection } from "./video-output/video-output-section";
+import { useRecordingV4Session } from "./use-recording-v4-session";
 
 interface RecordingViewProps {
   projectId: string | null;
@@ -98,43 +82,24 @@ const initialPermissionReport: ScreenCapturePermissionReport = {
   debugBypassAllowed: false,
 };
 
-const STRICT_OUTPUT_WIDTH = 1920;
-const STRICT_OUTPUT_HEIGHT = 1080;
-
-function strictCaptureContract(scaleFactor: number) {
-  const captureDpr = Number.isFinite(scaleFactor) && scaleFactor > 0 ? scaleFactor : 1;
-  const logicalWidth = Math.round(STRICT_OUTPUT_WIDTH / captureDpr);
-  const logicalHeight = Math.round(STRICT_OUTPUT_HEIGHT / captureDpr);
-  return {
-    exact_fps: { numerator: 60, denominator: 1 },
-    dimensions: {
-      logical_width: logicalWidth,
-      logical_height: logicalHeight,
-      capture_dpr: captureDpr,
-      physical_width: Math.round(logicalWidth * captureDpr),
-      physical_height: Math.round(logicalHeight * captureDpr),
-      requested_output_width: STRICT_OUTPUT_WIDTH,
-      requested_output_height: STRICT_OUTPUT_HEIGHT,
-    },
-  };
-}
-
 function strictPreflightFailureMessage(code: string): string {
   switch (code) {
     case "permission_denied":
       return "Allow Screen Recording in system settings";
-    case "backend_unavailable":
+    case "helper_unavailable":
       return "Native capture helper is unavailable";
-    case "backend_capability_mismatch":
+    case "helper_protocol_mismatch":
       return "Native capture helper needs an update";
-    case "encoder_unavailable":
+    case "hardware_encoder_unavailable":
       return "A hardware H.264 encoder is required";
-    case "storage_estimate_failed":
+    case "storage_probe_failed":
       return "Available storage could not be verified";
-    case "storage_reserve_exhausted":
-      return "Free storage before starting Strict recording";
-    case "preflight_failed":
-      return "Strict recording is disabled by policy";
+    case "storage_insufficient":
+      return "Free storage before starting verified recording";
+    case "write_throughput_insufficient":
+      return "The selected drive is too slow for verified recording";
+    case "audio_device_unavailable":
+      return "The requested native audio source is unavailable";
     default:
       return code.replaceAll("_", " ");
   }
@@ -161,19 +126,6 @@ function formatTime(ms: number): string {
   return `${hours}:${minutes}:${seconds}`;
 }
 
-/** True if a Tauri IPC error is the typed `NotFound` variant. */
-function isNotFoundIpcError(e: unknown): boolean {
-  if (typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === "NotFound") {
-    return true;
-  }
-  const message = e instanceof Error ? e.message : typeof e === "string" ? e : "";
-  return /recording session .* not found/i.test(message);
-}
-
-function displayId(display: DisplayInfo): number {
-  return typeof display.id === "bigint" ? Number(display.id) : display.id;
-}
-
 export function RecordingView({
   projectId,
   projectName,
@@ -194,10 +146,7 @@ export function RecordingView({
     preflight,
     readiness,
     liveEvidence,
-    verificationProgress,
     qualityFailure,
-    captureTarget,
-    availableTargets,
     audioDeviceId,
     setAudioDeviceId,
     includeCursor,
@@ -215,19 +164,10 @@ export function RecordingView({
     setPreflight,
     setReadiness,
     setLiveEvidence,
-    setVerificationProgress,
     setQualityFailure,
     resetTake,
-    reset,
-    loadCaptureTargets,
-    setCaptureTarget,
     setPrimaryMiss,
   } = useRecorderStore();
-
-  // Audio-negotiation failure persists a session-scoped flag so a
-  // "video-only" badge stays visible next to the Live pill until the user
-  // starts a new recording.
-  const [audioUnavailable, setAudioUnavailable] = useState(false);
 
   // Host heartbeat watchdog. `lastHeartbeatRef` is last-tick epoch-ms
   // (null before first heartbeat). `desynced` surfaces the "out of sync" UI.
@@ -240,8 +180,6 @@ export function RecordingView({
   // Mirror the active browser preset for ChromeHidingToggle.
   const [browserPreset, setBrowserPreset] = useState<string | null>(null);
   const appSettings = useAppSettingsStore((s) => s.settings);
-  const recordingDeliveryPolicy = useOutputPrefsStore((s) => s.recordingDeliveryPolicy);
-  const setRecordingDeliveryPolicy = useOutputPrefsStore((s) => s.setRecordingDeliveryPolicy);
 
   const applyRecorderDefaults = () => {
     const capture = useAppSettingsStore.getState().settings?.capture;
@@ -272,90 +210,32 @@ export function RecordingView({
   // before recording, matching Screen Studio / CleanShot X UX.
   const [stageManagerWarning, setStageManagerWarning] = useState(false);
 
-  const sessionRef = useRef<RecordingSessionId | null>(null);
+  const sessionRef = useRef<string | null>(null);
   const completedSessionRef = useRef<string | null>(null);
-  const previewLeaseRef = useRef<RecordingPreviewLease | null>(null);
-  const previewSessionRef = useRef<string | null>(null);
   const startInFlightRef = useRef(false);
   const stopInFlightRef = useRef<string | null>(null);
   const startedAtRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
-  const automationOwnsStopRef = useRef(false);
   const automationSessionRef = useRef<string | null>(null);
   const automationFailedOrdinalRef = useRef<number | null>(null);
   const handleRecordRef = useRef<(() => Promise<void>) | null>(null);
   const handleStopRef = useRef<((expectedSessionId?: string) => Promise<void>) | null>(null);
-  const videoOutputSectionRef = useRef<HTMLDivElement | null>(null);
-  const isOutputBlocked = useIsRecordingBlocked();
 
-  const displays = availableTargets?.displays ?? [];
-  const selectedDisplay: number | null =
-    captureTarget?.kind === "display"
-      ? typeof captureTarget.display_id === "bigint"
-        ? Number(captureTarget.display_id)
-        : captureTarget.display_id
-      : null;
-  const selectedDisplayInfo = useMemo(
-    () =>
-      selectedDisplay == null
-        ? undefined
-        : displays.find((display) => displayId(display) === selectedDisplay),
-    [displays, selectedDisplay],
-  );
-  const storyRecordingInfo = useMemo(() => {
-    const initialUrl = storyInitialUrlForRecording(storySource);
-    return {
-      initialUrl,
-      hasBrowser: initialUrl != null || /\bapp\s*:\s*["']https?:\/\//i.test(storySource),
-      viewport: storyViewportSize(storySource),
-    };
-  }, [storySource]);
-  const storyHasBrowser = storyRecordingInfo.hasBrowser;
-  const storyViewport = storyRecordingInfo.viewport;
-  const storyInitialUrl = storyRecordingInfo.initialUrl;
-  const selectedCaptureDims = useMemo(() => {
-    const dims = storyHasBrowser
-      ? { w: storyViewport.width, h: storyViewport.height }
-      : selectedDisplayInfo
-        ? { w: selectedDisplayInfo.width_px, h: selectedDisplayInfo.height_px }
-        : null;
-    if (
-      !dims ||
-      !Number.isFinite(dims.w) ||
-      !Number.isFinite(dims.h) ||
-      dims.w <= 0 ||
-      dims.h <= 0
-    ) {
-      return undefined;
-    }
-    return dims;
-  }, [selectedDisplayInfo, storyHasBrowser, storyViewport.height, storyViewport.width]);
-
+  const storyInitialUrl = useMemo(() => storyInitialUrlForRecording(storySource), [storySource]);
   const currentStepEntry = steps.length > 0 ? steps[Math.min(currentStep, steps.length - 1)] : null;
   const completedSteps = steps.filter((s) => s.status === "succeeded").length;
 
-  const releasePreviewLease = () => {
-    previewLeaseRef.current?.release();
-    previewLeaseRef.current = null;
-    previewSessionRef.current = null;
-  };
-
-  const sessionKey = (session: RecordingSessionId): string =>
-    typeof (session as unknown) === "string" ? (session as unknown as string) : session.id;
-
   const ownsActiveSession = (ownerSessionId: string): boolean =>
-    sessionRef.current != null && sessionKey(sessionRef.current) === ownerSessionId;
+    sessionRef.current === ownerSessionId;
 
   const cleanupSessionResources = (ownerSessionId: string) => {
     if (automationSessionRef.current === ownerSessionId) {
       if (automationChannelRef.current) automationChannelRef.current.onmessage = null;
       automationChannelRef.current = null;
       automationSessionRef.current = null;
-      automationOwnsStopRef.current = false;
       automationFailedOrdinalRef.current = null;
     }
     if (stopInFlightRef.current === ownerSessionId) stopInFlightRef.current = null;
-    if (previewSessionRef.current === ownerSessionId) releasePreviewLease();
   };
 
   // Detect Stage Manager once on mount (user can toggle it at any time
@@ -377,41 +257,17 @@ export function RecordingView({
           report = await requestScreenCaptureAccess();
         }
         setPermissionReport(report);
-        if (report.state === "granted") {
-          try {
-            await loadCaptureTargets();
-          } catch (e) {
-            setError(`loadCaptureTargets failed: ${formatIpcError(e)}`);
-          }
-        }
       } catch (e) {
         setError(formatIpcError(e));
       }
     })();
-    // Unmount teardown. Cleanup MUST be synchronous; the detached
-    // stopRecording promise handles any backend teardown.
+    // The V4 hook detaches renderer channels on unmount. The host transaction
+    // remains alive and is reattached by the next renderer instance.
     return () => {
-      // (a) null the automation Channel handler so no stale event
-      //     dispatch runs against an unmounted tree.
       if (automationChannelRef.current) {
         automationChannelRef.current.onmessage = null;
       }
-      // (b) if a session is live server-side, fire-and-forget a stop so
-      //     the host drain doesn't leak a session. Capture the id before
-      //     nulling the ref so a re-mount can't double-free.
-      const sid = sessionRef.current;
       sessionRef.current = null;
-      if (sid) {
-        void stopRecording(sid).catch((e) => {
-          frontendLog.warn("RecordingView", "stopRecording on unmount failed", {
-            error: e,
-            fields: { session_id: sid },
-          });
-        });
-      }
-      previewLeaseRef.current?.release();
-      previewLeaseRef.current = null;
-      reset();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -439,27 +295,6 @@ export function RecordingView({
     };
   }, [setSteps, storySource]);
 
-  // Surface non-fatal mic degradation events.
-  useEffect(() => {
-    let unlisten: (() => void) | null = null;
-    listen<string>("audio://disconnected", (event) => {
-      const msg =
-        typeof event.payload === "string"
-          ? event.payload
-          : "Microphone disconnected — continuing video-only.";
-      toast.warning(msg);
-    })
-      .then((fn) => {
-        unlisten = fn;
-      })
-      .catch(() => {
-        /* non-fatal */
-      });
-    return () => {
-      if (unlisten) unlisten();
-    };
-  }, []);
-
   // Elapsed timer.
   useEffect(() => {
     if (status !== "recording") return;
@@ -486,18 +321,14 @@ export function RecordingView({
     return () => window.clearInterval(handle);
   }, [status]);
 
-  const finalizeRecording = (ownerSessionId: string, result: RecordingCompletedResult) => {
-    if (
-      !canFinalizeOwnedRecording({
-        ownerSessionId,
-        activeSessionId: sessionRef.current ? sessionKey(sessionRef.current) : null,
-        completedSessionId: completedSessionRef.current,
-      })
-    ) {
-      return;
-    }
+  const finalizeRecording = (
+    ownerSessionId: string,
+    result: Extract<RecordingV4Result, { state: "completed" }>,
+  ) => {
+    if (!ownsActiveSession(ownerSessionId) || completedSessionRef.current === ownerSessionId) return;
     completedSessionRef.current = ownerSessionId;
     cleanupSessionResources(ownerSessionId);
+    recordingV4.releaseTerminal(ownerSessionId);
     sessionRef.current = null;
     startedAtRef.current = null;
     pausedAtRef.current = null;
@@ -505,45 +336,32 @@ export function RecordingView({
     setStatus("completed");
     setOutputPath(result.output_path);
     if (projectId) {
-      const strictV3 = "status" in result && result.version === 3 ? result : null;
-      const bundleSeparator = strictV3?.bundle_path.includes("\\") ? "\\" : "/";
+      const bundleSeparator = result.bundle_path.includes("\\") ? "\\" : "/";
       publishCompletedRecording(queryClient, projectId, {
         path: result.output_path,
         captured_at: Date.now(),
-        duration_ms: result.duration_ms,
-        width: "output_width" in result ? (result.output_width ?? null) : null,
-        height: "output_height" in result ? (result.output_height ?? null) : null,
-        ...(strictV3
-          ? {
-              version: 3 as const,
-              bundle_path: strictV3.bundle_path,
-              master_path: strictV3.master_path,
-              proxy_path: strictV3.proxy_path,
-              cadence_evidence_path: `${strictV3.bundle_path}${bundleSeparator}evidence${bundleSeparator}cadence.json`,
-              quality_evidence_path: `${strictV3.bundle_path}${bundleSeparator}evidence${bundleSeparator}quality.json`,
-              actions_path: `${strictV3.bundle_path}${bundleSeparator}sidecars${bundleSeparator}actions.json`,
-              exact_source_fps: strictV3.cadence_evidence.requested_fps,
-              source_frame_count: strictV3.cadence_evidence.output_frames,
-              certified_tier: null,
-              quality_verdict: strictV3.quality_evidence.verdict,
-              validation: { status: "valid" as const },
-            }
-          : {}),
+        duration_ms: liveEvidence && "active_duration_us" in liveEvidence
+          ? Math.round(liveEvidence.active_duration_us / 1_000)
+          : null,
+        width: 1920,
+        height: 1080,
+        version: 4,
+        bundle_path: result.bundle_path,
+        master_path: result.output_path,
+        proxy_path: null,
+        cadence_evidence_path: `${result.bundle_path}${bundleSeparator}evidence${bundleSeparator}cadence.json`,
+        quality_evidence_path: `${result.bundle_path}${bundleSeparator}evidence${bundleSeparator}quality.json`,
+        actions_path: `${result.bundle_path}${bundleSeparator}sidecars${bundleSeparator}actions.json`,
+        exact_source_fps: { numerator: 60, denominator: 1 },
+        source_frame_count: liveEvidence && "output_frames" in liveEvidence
+          ? liveEvidence.output_frames
+          : null,
+        certified_tier: null,
+        quality_verdict: "passed",
+        validation: { status: "valid" },
       });
     }
-    if (!("status" in result) && result.cadence_warning) {
-      const cadence =
-        typeof result.actual_capture_fps === "number" && typeof result.requested_fps === "number"
-          ? `${result.actual_capture_fps} / ${result.requested_fps} fps`
-          : null;
-      toast.warning("Recording complete with low cadence", {
-        description: [result.cadence_warning_message, cadence, result.output_path]
-          .filter(Boolean)
-          .join(" · "),
-      });
-    } else {
-      toast.success("Recording complete", { description: result.output_path });
-    }
+    toast.success("Verified recording complete", { description: result.output_path });
     if (autoOpenPostProduction && projectId) {
       navigate(`/post-production/${projectId}`, { replace: true });
     }
@@ -553,6 +371,7 @@ export function RecordingView({
     if (!ownsActiveSession(ownerSessionId) || completedSessionRef.current === ownerSessionId)
       return;
     cleanupSessionResources(ownerSessionId);
+    recordingV4.releaseTerminal(ownerSessionId);
     sessionRef.current = null;
     startedAtRef.current = null;
     pausedAtRef.current = null;
@@ -564,11 +383,12 @@ export function RecordingView({
 
   const failQualityRecording = (
     ownerSessionId: string,
-    result: Extract<RecordingStopResult, { status: "quality_failed" }>,
+    result: Extract<RecordingV4Result, { state: "quality_failed" }>,
   ) => {
     if (completedSessionRef.current === ownerSessionId) return;
     completedSessionRef.current = ownerSessionId;
     cleanupSessionResources(ownerSessionId);
+    recordingV4.releaseTerminal(ownerSessionId);
     sessionRef.current = null;
     startedAtRef.current = null;
     pausedAtRef.current = null;
@@ -576,52 +396,74 @@ export function RecordingView({
     setStatus("quality_failed");
     setQualityFailure(result);
     setOutputPath(result.diagnostic_bundle_path);
-    const message = [
-      ...result.cadence_evidence.failure_codes,
-      ...result.quality_evidence.failure_codes,
-    ].join(", ");
-    setError(message || "Strict verification failed");
-    toast.error("Strict verification failed", {
+    const message = result.failure_codes.join(", ");
+    setError(message || "Verified recording did not pass quality checks");
+    toast.error("Take was not published", {
       description: message || result.diagnostic_bundle_path || undefined,
     });
   };
 
-  const dispatch = (ownerSessionId: string, event: RecordingEvent) => {
-    if (!ownsActiveSession(ownerSessionId)) return;
+  const applySnapshot = (snapshot: RecordingV4Snapshot) => {
+    sessionRef.current = snapshot.session_id;
+    setSession(snapshot.session_id);
+    setElapsed(Math.round(snapshot.active_media_time_us / 1_000));
+    if (snapshot.state === "capturing" && startedAtRef.current === null) {
+      startedAtRef.current = Date.now() - Math.round(snapshot.active_media_time_us / 1_000);
+    }
+    if (snapshot.cadence) setLiveEvidence(snapshot.cadence);
+    setReadiness(snapshot.state);
+    const stateStatus: Partial<Record<typeof snapshot.state, RecorderStatus>> = {
+      idle: "starting", preflighting: "preflight", warming_up: "preflight", ready: "starting",
+      capturing: "recording", paused: "paused", stopping: "stopping", verifying: "verifying",
+      completed: "completed", quality_failed: "quality_failed", failed: "failed",
+    };
+    const next = stateStatus[snapshot.state];
+    if (next) setStatus(next);
+    if (snapshot.terminal_result) dispatchTerminal(snapshot.terminal_result);
+  };
+
+  const dispatchTerminal = (result: RecordingV4Result) => {
+    const ownerSessionId = result.session_id;
+    if (result.state === "completed") finalizeRecording(ownerSessionId, result);
+    else if (result.state === "quality_failed") failQualityRecording(ownerSessionId, result);
+    else if (result.state === "failed") {
+      failRecording(ownerSessionId, result.failure_codes.join(", ") || "Native recording failed");
+    } else {
+      cleanupSessionResources(ownerSessionId);
+      recordingV4.releaseTerminal(ownerSessionId);
+      sessionRef.current = null;
+      setSession(null);
+      setStatus("idle");
+    }
+  };
+
+  const dispatch = (event: RecordingV4Event) => {
     switch (event.type) {
-      case "completed":
-        finalizeRecording(ownerSessionId, event.result);
+      case "snapshot":
+        applySnapshot(event.snapshot);
         break;
       case "preflight":
         setPreflight(event.result);
-        if (!event.result.strict_eligible) {
-          setError(`Strict preflight blocked: ${event.result.failure_codes.join(", ")}`);
+        if (!event.result.passed) {
+          setError(event.result.failure_codes.map(strictPreflightFailureMessage).join(" · "));
         }
         break;
-      case "readiness":
-        setReadiness(event.state);
+      case "state-changed":
+        setReadiness(event.to);
+        applySnapshot({
+          version: 4, session_id: sessionRef.current ?? "", state: event.to,
+          revision: event.revision, active_media_time_us: elapsedMs * 1_000,
+          requested_audio_roles: audioDeviceId ? ["microphone"] : [], cadence: null,
+          terminal_result: null,
+        });
         break;
       case "live-evidence":
-        setLiveEvidence(event.evidence);
+        setLiveEvidence(event.cadence);
         break;
-      case "verifying":
-        setStatus("verifying");
-        setVerificationProgress(Math.max(0, Math.min(1, event.progress)));
-        break;
-      case "quality-failed": {
-        failQualityRecording(ownerSessionId, event.result);
-        break;
-      }
-      case "failed":
-        failRecording(ownerSessionId, event.message);
-        break;
-      case "audio-unavailable":
-        // Mic negotiation failed; recording continues video-only.
-        toast.error(`Audio unavailable: ${event.reason}`);
-        setAudioUnavailable(true);
+      case "terminal":
+        dispatchTerminal(event.result);
         break;
       case "heartbeat":
-        // Host liveness signal; watchdog clears any desync banner.
         lastHeartbeatRef.current = Date.now();
         setDesynced(false);
         break;
@@ -630,14 +472,23 @@ export function RecordingView({
     }
   };
 
+  const recordingV4 = useRecordingV4Session(projectFolder, {
+    onEvent: dispatch,
+    onReattached: (id) => {
+      sessionRef.current = id;
+      setSession(id);
+      completedSessionRef.current = null;
+    },
+    onReattachError: (error) => {
+      setStatus("failed");
+      setError(`Could not reattach recording; reload to retry: ${formatIpcError(error)}`);
+    },
+  });
+
   const handleRecord = async () => {
-    // Double-start guard. Synchronous status flip before any await so a
-    // 10 ms double-click cannot enter this function twice.
     if (startInFlightRef.current || useRecorderStore.getState().status !== "idle") return;
     startInFlightRef.current = true;
     setStatus("starting");
-    // Fresh per-session UX state for the audio/heartbeat badges.
-    setAudioUnavailable(false);
     setDesynced(false);
     lastHeartbeatRef.current = null;
     if (permission !== "granted") {
@@ -645,146 +496,50 @@ export function RecordingView({
       startInFlightRef.current = false;
       return;
     }
-    if (selectedDisplay == null) {
-      toast.error("Pick a Target before recording.");
+    if (!storyInitialUrl) {
+      toast.error("Verified recording requires a browser URL in meta.app.");
       setStatus("idle");
       startInFlightRef.current = false;
       return;
     }
     startedAtRef.current = Date.now();
     pausedAtRef.current = null;
-    automationOwnsStopRef.current = false;
     automationFailedOrdinalRef.current = null;
-    const display = selectedDisplayInfo;
-    // Seed with display dims; browser stories overwrite this with the
-    // author-preview webContents viewport.
-    let width = display?.width_px ?? 1920;
-    let height = display?.height_px ?? 1080;
     try {
       const pacingProfile = DEFAULT_RECORDING_PACING;
-      const recordingDisplay = display ? { x: display.x, y: display.y } : null;
-      const recordingViewport = storyHasBrowser ? storyViewport : null;
-      // Output knobs from useOutputPrefsStore (one-shot read).
-      const {
-        activePreset,
-        recordingDeliveryPolicy,
-        recordingKnobs: prefs,
-      } = useOutputPrefsStore.getState();
-      if (storyHasBrowser) {
-        frontendLog.info("RecordingView", "browser recording viewport plan", {
-          fields: {
-            selected_display_id: display ? displayId(display) : null,
-            selected_display_name: display?.name ?? null,
-            selected_display_scale: display?.scale_factor ?? null,
-            requested_viewport_width: storyViewport.width,
-            requested_viewport_height: storyViewport.height,
-            effective_viewport_width: storyViewport.width,
-            effective_viewport_height: storyViewport.height,
-            target_kind: "author_preview",
-          },
-        });
+      const recordingViewport = { width: 960, height: 540 };
+      const ownerSessionId = await recordingV4.start({
+        project_path: projectFolder,
+        source_url: storyInitialUrl,
+        logical_width: recordingViewport.width,
+        logical_height: recordingViewport.height,
+        requested_audio_roles: audioDeviceId ? ["microphone"] : [],
+        include_cursor: includeCursor,
+      });
+      if (!ownerSessionId) {
+        startInFlightRef.current = false;
+        return;
       }
-      const shouldAutoFollow = storyHasBrowser;
-      let recordingTarget: CaptureTarget = {
-        kind: "display" as const,
-        display_id: selectedDisplay,
-      };
-      let frameCrop: {
-        x: number;
-        y: number;
-        w: number;
-        h: number;
-        basis_w?: number | null;
-        basis_h?: number | null;
-        scale_hint?: number | null;
-      } | null = null;
-      let browserStreamId: string | null = null;
-      if (shouldAutoFollow) {
-        const appUrl = storyInitialUrl;
-        if (!appUrl) throw new Error("Browser story is missing a valid meta.app URL");
-        releasePreviewLease();
-        const lease = await acquireRecordingPreview({
-          appUrl,
-          viewport: recordingViewport ?? storyViewport,
-          fps: prefs.fps,
-          placement: recordingDisplay,
-          reason: "recording-start",
-        });
-        previewLeaseRef.current = lease;
-        browserStreamId = lease.streamId;
-        const authorViewport = recordingViewport ?? storyViewport;
-        const targetPlan = authorPreviewRecordingPlan(browserStreamId, authorViewport);
-        recordingTarget = targetPlan.target;
-        width = targetPlan.width;
-        height = targetPlan.height;
-        frameCrop = targetPlan.frameCrop;
-        frontendLog.info("RecordingView", "browser author-preview recording target", {
-          fields: {
-            stream_id: browserStreamId,
-            viewport_width: targetPlan.width,
-            viewport_height: targetPlan.height,
-            target_kind: recordingTarget.kind,
-          },
-        });
-        toast.info("Recording browser preview content");
-      }
-      let ownerSessionId: string | null = null;
-      const pendingRecordingEvents: RecordingEvent[] = [];
-      const id = await startRecording(
-        {
-          project_folder: projectFolder,
-          target: recordingTarget,
-          width,
-          height,
-          fps: prefs.fps,
-          contract_version: 2,
-          delivery_policy: recordingDeliveryPolicy,
-          capture_contract:
-            recordingDeliveryPolicy === "strict"
-              ? strictCaptureContract(display?.scale_factor ?? 1)
-              : undefined,
-          audio_device_id: audioDeviceId ?? undefined,
-          include_cursor: includeCursor,
-          output_resolution: recordingOutputResolutionForStart(prefs, activePreset),
-          fit_mode: prefs.fit,
-          pad_color: prefs.pad,
-          quality_preset: prefs.quality,
-          scale_algo: "lanczos",
-          frame_crop: frameCrop,
-        },
-        (event) => {
-          if (ownerSessionId) dispatch(ownerSessionId, event);
-          else pendingRecordingEvents.push(event);
-        },
-      );
-      ownerSessionId = sessionKey(id);
-      sessionRef.current = id;
+      sessionRef.current = ownerSessionId;
       completedSessionRef.current = null;
-      previewSessionRef.current = ownerSessionId;
       setSession(ownerSessionId);
-      for (const event of pendingRecordingEvents) dispatch(ownerSessionId, event);
       if (!ownsActiveSession(ownerSessionId)) {
         startInFlightRef.current = false;
         return;
       }
-      // Transition starting -> recording only after the host has
-      // confirmed the session. If we error out above, the catch arm
-      // resets to "idle" so the Start button re-enables.
       setStatus("recording");
       startInFlightRef.current = false;
 
-      automationOwnsStopRef.current = true;
       automationSessionRef.current = ownerSessionId;
       launchAutomation(
         {
           storySource,
           projectFolder,
-          streamId: browserStreamId,
+          streamId: null,
           chromeHiding,
-          recordingDisplay,
           recordingViewport,
           pacingProfile,
-          recordingSessionId: ownerSessionId,
+          recordingV4SessionId: ownerSessionId,
         },
         (evt) => dispatchAutomation(ownerSessionId, evt),
         (ch) => {
@@ -805,31 +560,17 @@ export function RecordingView({
               `Story finished with ${outcome.story.failed} failure(s) at step ${outcome.story.failed_ordinal}`,
             );
           }
-          automationOwnsStopRef.current = false;
-          if (outcome.recording.status === "finalized") {
-            finalizeRecording(ownerSessionId, outcome.recording.result);
-          } else if (outcome.recording.status === "quality_failed") {
-            failQualityRecording(ownerSessionId, outcome.recording.result);
-          } else if (
-            outcome.recording.status === "ready_to_finalize" ||
-            outcome.recording.status === "not_requested"
-          ) {
-            void handleStop(ownerSessionId);
-          }
+          void handleStop(ownerSessionId);
         })
         .catch((e) => {
           if (!ownsActiveSession(ownerSessionId)) return;
-          automationOwnsStopRef.current = false;
           const msg = formatIpcError(e);
           toast.error(`Automation failed: ${msg}`);
           setError(msg);
           void handleStop(ownerSessionId);
         });
     } catch (e) {
-      releasePreviewLease();
       setError(formatIpcError(e));
-      // Error path resets to idle so the Start button re-enables; the
-      // toast + error banner still surface the failure to the user.
       setStatus("idle");
       startInFlightRef.current = false;
       toast.error(`Recording failed to start: ${formatIpcError(e)}`);
@@ -892,13 +633,9 @@ export function RecordingView({
         if (evt.status.failed > 0) {
           toast.warning(`Story finished with ${evt.status.failed} failure(s)`);
         }
-        if (!automationOwnsStopRef.current) {
-          // Stop capture after the DSL finishes when the host isn't already
-          // attached to the recording session.
-          window.setTimeout(() => {
-            void handleStop(ownerSessionId);
-          }, 500);
-        }
+        window.setTimeout(() => {
+          void handleStop(ownerSessionId);
+        }, 500);
         break;
       default:
         break;
@@ -907,27 +644,15 @@ export function RecordingView({
 
   const handleStop = async (expectedSessionId?: string) => {
     if (!sessionRef.current) return;
-    const session = sessionRef.current;
-    const ownerSessionId = sessionKey(session);
+    const ownerSessionId = sessionRef.current;
     if (expectedSessionId && expectedSessionId !== ownerSessionId) return;
     if (stopInFlightRef.current === ownerSessionId) return;
     stopInFlightRef.current = ownerSessionId;
     setStatus("stopping");
     try {
-      const result = await stopRecording(session, (event) => dispatch(ownerSessionId, event));
-      if ("status" in result && result.status === "quality_failed") {
-        failQualityRecording(ownerSessionId, result);
-      } else {
-        finalizeRecording(ownerSessionId, result);
-      }
+      await recordingV4.command("stop");
     } catch (e) {
       if (!ownsActiveSession(ownerSessionId)) return;
-      if (isNotFoundIpcError(e) && automationOwnsStopRef.current) return;
-      cleanupSessionResources(ownerSessionId);
-      sessionRef.current = null;
-      startedAtRef.current = null;
-      pausedAtRef.current = null;
-      setSession(null);
       const message = formatIpcError(e);
       setStatus("failed");
       setError(message);
@@ -937,40 +662,23 @@ export function RecordingView({
     }
   };
 
-  // "Force stop" escape hatch surfaced when the heartbeat watchdog
-  // declares a desync. Always resets local state to idle regardless of
-  // IPC outcome — NotFound is treated as success (session already gone).
   const forceStop = async () => {
-    const sid = sessionRef.current;
-    const ownerSessionId = sid ? sessionKey(sid) : null;
-    sessionRef.current = null;
-    setSession(null);
     setDesynced(false);
     try {
-      if (sid) {
-        await stopRecording(sid);
-      }
+      await recordingV4.command("stop");
     } catch (e) {
-      if (!isNotFoundIpcError(e)) {
-        frontendLog.warn("RecordingView", "forceStop: stopRecording error", {
-          error: e,
-          fields: { ipc_error: formatIpcError(e) },
-        });
-      }
+      frontendLog.warn("RecordingView", "forceStop: V4 stop error", {
+        error: e,
+        fields: { ipc_error: formatIpcError(e) },
+      });
+      setError(`Stop retry failed: ${formatIpcError(e)}`);
     }
-    startedAtRef.current = null;
-    pausedAtRef.current = null;
-    if (ownerSessionId) cleanupSessionResources(ownerSessionId);
-    else releasePreviewLease();
-    setStatus("idle");
-    setElapsed(0);
   };
 
   const handlePause = async () => {
     if (!sessionRef.current || status !== "recording") return;
     try {
-      const acknowledgement = await pauseRecording(sessionRef.current);
-      if (acknowledgement.status !== "paused") throw new Error("recording session not found");
+      await recordingV4.command("pause");
       pausedAtRef.current = Date.now();
       setStatus("paused");
     } catch (e) {
@@ -983,8 +691,7 @@ export function RecordingView({
   const handleResume = async () => {
     if (!sessionRef.current || status !== "paused") return;
     try {
-      const acknowledgement = await resumeRecording(sessionRef.current);
-      if (acknowledgement.status !== "recording") throw new Error("recording session not found");
+      await recordingV4.command("resume");
       if (startedAtRef.current && pausedAtRef.current) {
         startedAtRef.current += Date.now() - pausedAtRef.current;
       }
@@ -1015,15 +722,8 @@ export function RecordingView({
     return () => window.removeEventListener("keydown", onKey);
   }, [status]);
 
-  const canRecord = permission === "granted" && captureTarget != null;
-  // Display-only code path for `handleRecord`.
-  const canRecordDisplay = canRecord && selectedDisplay != null;
-  const targetControlsLocked =
-    permission !== "granted" ||
-    status === "recording" ||
-    status === "paused" ||
-    status === "stopping" ||
-    status === "verifying";
+  const canRecord = permission === "granted" && storyInitialUrl != null;
+  const canRecordDisplay = canRecord;
   const permissionDenied = permission === "denied";
   const permissionPending = permission === "undetermined";
   const navigationLocked =
@@ -1047,8 +747,8 @@ export function RecordingView({
       return {
         label: "Start recording",
         onClick: () => void handleRecord(),
-        disabled: !canRecordDisplay || isOutputBlocked,
-        title: !canRecordDisplay ? "Resolve permissions and select a capture target" : undefined,
+        disabled: !canRecordDisplay,
+        title: !canRecordDisplay ? "Resolve permissions and add a browser URL" : undefined,
       };
     }
     if (status === "recording") {
@@ -1086,7 +786,7 @@ export function RecordingView({
       <ProjectStageHeader
         projectId={projectId ?? ""}
         projectName={projectName}
-        workflowLabel={`${recordingDeliveryPolicy === "strict" ? "Strict" : "Standard"} recording`}
+        workflowLabel="Verified 1080p60 recording"
         currentStage="record"
         snapshot={workflowSnapshot}
         navigationLocked={navigationLocked}
@@ -1095,8 +795,7 @@ export function RecordingView({
 
       {status === "recording" ||
       status === "paused" ||
-      status === "verifying" ||
-      audioUnavailable ? (
+      status === "verifying" ? (
         <div className="flex min-h-9 shrink-0 items-center gap-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4">
           {status === "recording" || status === "paused" ? (
             <LiveRecordingBadge paused={status === "paused"} reduceMotion={!!reduceMotion} />
@@ -1104,16 +803,7 @@ export function RecordingView({
           {status === "verifying" ? (
             <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--color-accent)]">
               <Loader2 size={12} className="animate-spin" aria-hidden="true" />
-              Verifying {Math.round((verificationProgress ?? 0) * 100)}%
-            </span>
-          ) : null}
-          {audioUnavailable ? (
-            <span
-              role="status"
-              className="inline-flex items-center gap-1.5 text-[12px] text-[var(--color-warning)]"
-            >
-              <AlertTriangle size={12} aria-hidden="true" />
-              Audio unavailable — recording video only
+              Verifying native evidence
             </span>
           ) : null}
           {sessionId ? (
@@ -1132,13 +822,6 @@ export function RecordingView({
             try {
               const report = await requestScreenCaptureAccess();
               setPermissionReport(report);
-              if (report.state === "granted") {
-                try {
-                  await loadCaptureTargets();
-                } catch (e) {
-                  toast.error(`loadCaptureTargets failed: ${formatIpcError(e)}`);
-                }
-              }
             } catch {
               /* non-fatal; still open Settings */
             }
@@ -1153,11 +836,6 @@ export function RecordingView({
             const next = await checkScreenCapturePermission();
             setPermissionReport(next);
             if (next.state === "granted") {
-              try {
-                await loadCaptureTargets();
-              } catch (e) {
-                toast.error(`loadCaptureTargets failed: ${formatIpcError(e)}`);
-              }
               toast.success("Screen recording permission granted");
             } else {
               toast.message("Permission still needed", {
@@ -1174,52 +852,41 @@ export function RecordingView({
                     reason: "Debug TCC bypass enabled",
                   });
                   setTccOpen(false);
-                  try {
-                    await loadCaptureTargets();
-                    toast.success("Debug permission bypassed");
-                  } catch (e) {
-                    toast.error(`Could not load capture targets: ${formatIpcError(e)}`);
-                  }
+                  toast.success("Debug permission bypassed");
                 }
               : undefined
           }
         />
       ) : null}
 
-      {recordingDeliveryPolicy === "strict" && preflight ? (
+      {preflight ? (
         <div
           role="status"
           className={`flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2 text-xs ${
-            preflight.strict_eligible
+            preflight.passed
               ? "border-[var(--color-success)]/30 bg-[var(--color-success)]/10"
               : "border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10"
           }`}
         >
           <div className="flex min-w-0 items-center gap-2">
-            {preflight.strict_eligible ? (
+            {preflight.passed ? (
               <CheckCircle2 size={13} className="text-[var(--color-success)]" aria-hidden="true" />
             ) : (
               <AlertTriangle size={13} className="text-[var(--color-danger)]" aria-hidden="true" />
             )}
             <span className="font-medium text-[var(--color-fg-primary)]">
-              {preflight.strict_eligible ? "Strict preflight passed" : "Strict preflight blocked"}
+              {preflight.passed ? "Verified preflight passed" : "Verified preflight blocked"}
             </span>
             <span className="text-[var(--color-fg-secondary)]">
-              {preflight.version === 3
-                ? `${preflight.platform === "darwin" ? "ScreenCaptureKit" : "Windows Graphics Capture"} · ${preflight.encoder_id ?? "hardware H.264 unavailable"}`
-                : `${preflight.backend_id} ${preflight.backend_version}${
-                    preflight.certification ? ` · ${preflight.certification.id}` : " · uncertified"
-                  }`}
+              {`${preflight.platform === "darwin" ? "ScreenCaptureKit" : "Windows Graphics Capture"} · ${preflight.encoder?.encoder_id ?? "hardware H.264 unavailable"}`}
             </span>
           </div>
           <span className="font-mono text-[11px] text-[var(--color-fg-secondary)]">
             {liveEvidence
-              ? liveEvidence.version === 3
-                ? `${liveEvidence.output_frames} frames · ${liveEvidence.held_frames} held`
-                : `${liveEvidence.encoder_acked_frames}/${liveEvidence.expected_slots} committed`
+              ? `${liveEvidence.output_frames} frames · ${liveEvidence.held_frames} held`
               : preflight.failure_codes.join(", ") || "60/1 · 1920×1080"}
           </span>
-          {!preflight.strict_eligible ? (
+          {!preflight.passed ? (
             <div className="flex w-full flex-wrap items-center justify-between gap-2 border-t border-[var(--color-danger)]/20 pt-2">
               <span className="text-[var(--color-fg-secondary)]">
                 {preflight.failure_codes.map(strictPreflightFailureMessage).join(" · ")}
@@ -1227,12 +894,11 @@ export function RecordingView({
               <button
                 type="button"
                 onClick={() => {
-                  setRecordingDeliveryPolicy("best_effort");
                   resetTake();
                 }}
                 className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)]"
               >
-                Use Standard recording
+                Retry preflight
               </button>
             </div>
           ) : null}
@@ -1243,13 +909,10 @@ export function RecordingView({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-2 text-xs">
           <div className="min-w-0">
             <div className="font-medium text-[var(--color-fg-primary)]">
-              Strict take was not published
+              Take was not published
             </div>
             <div className="truncate text-[var(--color-fg-secondary)]">
-              {[
-                ...qualityFailure.cadence_evidence.failure_codes,
-                ...qualityFailure.quality_evidence.failure_codes,
-              ].join(", ") || "Verification failed"}
+              {qualityFailure.failure_codes.join(", ") || "Verification failed"}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -1386,14 +1049,9 @@ export function RecordingView({
 
             <div className="flex items-center gap-2">
               {status === "idle" && (
-                <OutputSummaryBadge
-                  onActivate={() => {
-                    videoOutputSectionRef.current?.scrollIntoView({
-                      behavior: reduceMotion ? "auto" : "smooth",
-                      block: "center",
-                    });
-                  }}
-                />
+                <span className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] px-2 py-1 text-[11px] text-[var(--color-fg-secondary)]">
+                  Verified 1080p · 60 fps
+                </span>
               )}
               {status === "recording" && (
                 <button
@@ -1453,12 +1111,15 @@ export function RecordingView({
                 k="Permission"
                 v={permission === "granted" ? "Ready" : "Needs attention"}
               />
-              <SettingsRow k="Target" v={captureTarget ? "Selected" : "Choose target"} />
-              {recordingDeliveryPolicy === "strict" && status !== "idle" ? (
+              <SettingsRow
+                k="Source"
+                v={storyInitialUrl ? "Author preview" : "Missing meta.app URL"}
+              />
+              {status !== "idle" ? (
                 <SettingsRow k="Native capture" v={nativeReadinessLabel(readiness)} />
               ) : null}
-              <SettingsRow k="Audio" v={audioDeviceId ? "Enabled" : "Video only"} />
-              <SettingsRow k="Output" v={isOutputBlocked ? "Needs attention" : "Ready"} />
+              <SettingsRow k="Audio" v={audioDeviceId ? "Native microphone requested" : "Video only"} />
+              <SettingsRow k="Output" v="Verified 1920×1080 · 60 fps" />
             </div>
           </section>
 
@@ -1467,44 +1128,15 @@ export function RecordingView({
               Advanced settings
             </summary>
             <div className="flex flex-col gap-4 border-t border-[var(--color-border-subtle)] px-3 py-3">
-              <SettingsGroup label="Source" icon={<Monitor size={13} />}>
-                <label
-                  htmlFor="target-select"
-                  className="mb-1.5 block text-xs text-[var(--color-fg-muted)]"
-                >
-                  Target
-                </label>
-                <TargetPicker
-                  availableTargets={availableTargets}
-                  value={captureTarget}
-                  onValueChange={(t) => {
-                    void setCaptureTarget(t);
-                  }}
-                  onRefresh={() => loadCaptureTargets()}
-                  disabled={targetControlsLocked}
-                />
-              </SettingsGroup>
-
-              <SettingsGroup label="Microphone" icon={<SettingsIcon size={13} />}>
-                <label
-                  htmlFor="audio-device-select"
-                  className="mb-1.5 block text-xs text-[var(--color-fg-muted)]"
-                >
-                  Audio input
-                </label>
-                <AudioDevicePicker
-                  value={audioDeviceId}
-                  onValueChange={setAudioDeviceId}
-                  disabled={
-                    status === "recording" ||
-                    status === "paused" ||
-                    status === "stopping" ||
-                    status === "verifying"
-                  }
+              <SettingsGroup label="Audio" icon={<SettingsIcon size={13} />}>
+                <Toggle
+                  label="Native microphone"
+                  checked={audioDeviceId !== null}
+                  onChange={(enabled) => setAudioDeviceId(enabled ? "default" : null)}
                 />
                 <p className="mt-1.5 text-[10px] text-[var(--color-fg-muted)]">
-                  Default is off; choose "System default" to include voice-over. Resets every
-                  recording.
+                  Captured by the native helper. Recording fails closed when the requested audio
+                  role cannot pass preflight.
                 </p>
               </SettingsGroup>
 
@@ -1545,16 +1177,6 @@ export function RecordingView({
                 </div>
               </SettingsGroup>
 
-              <VideoOutputSection
-                ref={videoOutputSectionRef}
-                disabled={
-                  status === "recording" ||
-                  status === "paused" ||
-                  status === "stopping" ||
-                  status === "verifying"
-                }
-                captureDims={selectedCaptureDims}
-              />
             </div>
           </details>
 

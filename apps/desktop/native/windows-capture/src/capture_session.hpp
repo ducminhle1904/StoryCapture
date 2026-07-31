@@ -52,6 +52,8 @@ class CaptureSession final {
                         const winrt::Windows::Foundation::IInspectable&);
   void terminal_failure(std::wstring_view code, std::wstring_view message) noexcept;
   void watchdog(std::stop_token stop_token);
+  void v4_scheduler_loop(std::stop_token stop_token);
+  void write_v4_slot(std::uint64_t slot, std::int64_t submitted_at_us);
   std::int64_t qpc_us() const noexcept;
 
   CaptureOptions options_;
@@ -69,6 +71,7 @@ class CaptureSession final {
   winrt::event_token frame_token_{};
   winrt::event_token closed_token_{};
   std::jthread watchdog_;
+  std::jthread slot_scheduler_thread_;
   mutable std::mutex mutex_;
   std::condition_variable initial_surface_cv_;
   std::atomic_bool running_{};
@@ -85,6 +88,11 @@ class CaptureSession final {
   std::uint64_t output_frame_index_{};
   std::uint64_t held_frames_{};
   std::uint64_t encoder_dropped_frames_{};
+  std::uint64_t latest_source_sequence_{};
+  std::int64_t latest_source_timestamp_us_{};
+  V4SlotScheduler slot_scheduler_;
+  V4FrameLedger v4_frame_ledger_;
+  std::vector<std::unique_ptr<WasapiAudioCapture>> audio_captures_;
   std::int64_t started_monotonic_us_{};
   std::int64_t ended_monotonic_us_{};
   ProbeObservation observation_;

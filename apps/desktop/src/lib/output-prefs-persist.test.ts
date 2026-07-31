@@ -18,7 +18,6 @@ describe("migrate", () => {
   it("returns a valid shape unchanged", () => {
     const input: PersistShape = {
       activePreset: "Lossless",
-      recordingDeliveryPolicy: "strict",
       recordingKnobs: PRESET_BUNDLES.Lossless,
       recordingPacing: DEFAULT_RECORDING_PACING,
       exportKnobs: DEFAULT_EXPORT_KNOBS,
@@ -39,7 +38,6 @@ describe("migrate", () => {
     expect(out.recordingPacing).toBe("normal");
     expect(out.recordingKnobs).toEqual(PRESET_BUNDLES.Standard);
     expect(out.exportKnobs).toEqual(SEED.exportKnobs);
-    expect(out.recordingDeliveryPolicy).toBe("best_effort");
     expect(out.version).toBe(3);
   });
 
@@ -57,7 +55,7 @@ describe("migrate", () => {
     expect(out.recordingPacing).toBe(DEFAULT_RECORDING_PACING);
   });
 
-  it("bumps version from 0 to 3 and defaults legacy policy to best-effort", () => {
+  it("bumps version from 0 to 3", () => {
     const out = migrate({
       activePreset: "Standard",
       recordingKnobs: PRESET_BUNDLES.Standard,
@@ -65,13 +63,11 @@ describe("migrate", () => {
       version: 0,
     } as unknown);
     expect(out.version).toBe(3);
-    expect(out.recordingDeliveryPolicy).toBe("best_effort");
   });
 
-  it("preserves a valid strict policy and rejects malformed values", () => {
-    expect(migrate({ recordingDeliveryPolicy: "strict" }).recordingDeliveryPolicy).toBe("strict");
-    expect(migrate({ recordingDeliveryPolicy: "unsafe" }).recordingDeliveryPolicy).toBe(
-      "best_effort",
+  it("drops the removed legacy recording policy", () => {
+    expect(migrate({ recordingDeliveryPolicy: "strict" })).not.toHaveProperty(
+      "recordingDeliveryPolicy",
     );
   });
 

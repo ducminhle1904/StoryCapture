@@ -57,9 +57,9 @@ video.
   and simulator behavior is desktop IPC/host code, not a shared parser package.
 - `packages/shared-types` publicly exports browser presets, web account types,
   the checked-in IPC compatibility surface, and the JSON-safe post-production
-  composition/preflight/job and Recording V2/V3 contracts. Electron/Node runtime
-  consumers use `@storycapture/shared-types/recording-v3` for production Strict
-  recording and `@storycapture/shared-types/recording-v2` for compatibility;
+  composition/preflight/job and Recording V2/V3/V4 contracts. Recording V4
+  consumers use `@storycapture/shared-types/recording-v4`; V2/V3 remain until
+  the signed macOS and Windows V4 certification gates permit their removal;
   consumers of
   composition values use `@storycapture/shared-types/export-composition`, not
   the package-root barrel.
@@ -161,6 +161,21 @@ file explicitly says otherwise.
   `apps/desktop/electron/ipc/legacy/story-runner.ts`,
   `apps/desktop/src/ipc/automation.ts`, and
   `apps/desktop/src/features/recorder/recording-view.tsx`.
+- Recording V4: start with `packages/shared-types/src/recording-v4.ts`, then
+  read `apps/desktop/electron/ipc/recording-v4-coordinator.ts`,
+  `recording-v4-platform-session.ts`, `recording-v4-automation-surface.ts`,
+  `recording-v4-runtime-quality.ts`, `recording-v4-verifier.ts`, and
+  `recording-v4-bundle.ts`. Platform adapters
+  are `macos-recording-v4-backend.ts`, `windows-recording-v4-backend.ts`, and
+  `apps/desktop/native/`; for macOS cadence evidence read
+  `ScreenCaptureCore/RecordingV4Evidence.swift` and `NativeMasterWriter.swift`.
+  Helper path selection also depends on
+  `apps/desktop/electron/runtime.ts`. Renderer ownership is in
+  `apps/desktop/src/ipc/recording-v4.ts`,
+  `features/recorder/use-recording-v4-session.ts`, and `recording-view.tsx`.
+  V4 remains development-only until both packaged live/soak gates pass; Apple
+  Developer ID is not required for the macOS gate. Use
+  `docs/agent/operations.md` for certification evidence and release controls.
 - Strict Recording V3: start with
   `packages/shared-types/src/recording-v3.ts`, then read
   `apps/desktop/electron/ipc/recording-native-preflight.ts`,
@@ -214,10 +229,16 @@ file explicitly says otherwise.
 - Packaged native capture helper gate:
   `pnpm --dir apps/desktop run test:e2e:recording-v3-helper`; keep
   `test:e2e:recording-v2-helper` for compatibility until V2 readers retire.
+- Recording V4 certification gates:
+  `pnpm --dir apps/desktop run test:e2e:recording-v4-live` and
+  `test:e2e:recording-v4-soak`; both require retained platform evidence and are
+  release blockers, not ordinary local smokes. macOS accepts ad-hoc helper
+  signing and does not require Apple Developer ID; Windows keeps Authenticode.
 - Web Prisma commands live in `apps/web/package.json`: `db:generate`,
   `db:migrate`, `db:push`, and `db:seed`.
-- CI is `.github/workflows/ci.yml` and runs typecheck, desktop/UI/web tests,
-  Electron smokes, and the packaged export parity gate on macOS and Windows.
+- CI is `.github/workflows/ci.yml`; packaged V4 evidence validation is scheduled
+  separately by `.github/workflows/recording-v4-certification.yml` on labeled
+  self-hosted macOS and Windows hardware.
 
 ## Guardrails
 

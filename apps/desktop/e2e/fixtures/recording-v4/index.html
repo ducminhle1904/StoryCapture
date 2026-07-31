@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>StoryCapture Recording V4 Fixture</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+      body { background: #f4f1e8; color: #181713; font: 16px/1.4 system-ui, sans-serif; }
+      main { position: relative; width: 100%; height: 100%; padding: 64px; }
+      h1 { max-width: 720px; margin: 0; font: 700 56px/0.96 Georgia, serif; letter-spacing: -2px; }
+      p { max-width: 560px; margin: 24px 0 0; color: #565149; }
+      .hairlines { position: absolute; inset: 32px; border: 1px solid #171717; pointer-events: none; }
+      .hairlines::before, .hairlines::after { content: ""; position: absolute; background: #171717; }
+      .hairlines::before { width: 1px; top: 0; bottom: 0; left: 33.333%; }
+      .hairlines::after { height: 1px; left: 0; right: 0; top: 66.666%; }
+      .swatches { position: absolute; right: 64px; top: 64px; display: grid; grid-template-columns: repeat(3, 80px); }
+      .swatch { height: 80px; }
+      .red { background: #e43b2f; } .green { background: #19a66a; } .blue { background: #2764df; }
+      .motion-stage { position: absolute; inset: auto 64px 64px; height: 210px; border: 1px solid #171717; overflow: hidden; }
+      .motion-object { position: absolute; width: 92px; height: 92px; background: #171717; transform-origin: center; }
+      .motion-bars { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(24, 1fr); opacity: 0.16; }
+      .motion-bars > i:nth-child(odd) { background: #2764df; }
+      body[data-scene="static"] .motion-stage { visibility: hidden; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="hairlines" aria-hidden="true"></div>
+      <h1>Precision survives the recording path.</h1>
+      <p>Static typography, single-pixel rules, and exact color patches provide stable quality checkpoints.</p>
+      <div class="swatches" aria-label="Reference colors">
+        <div class="swatch red"></div><div class="swatch green"></div><div class="swatch blue"></div>
+      </div>
+      <div class="motion-stage" aria-label="Deterministic high motion">
+        <div class="motion-bars" aria-hidden="true"></div>
+        <div class="motion-object" aria-hidden="true"></div>
+      </div>
+    </main>
+    <script>
+      const scene = new URL(location.href).searchParams.get("scene") === "motion" ? "motion" : "static";
+      document.body.dataset.scene = scene;
+      const bars = document.querySelector(".motion-bars");
+      for (let index = 0; index < 24; index += 1) bars.append(document.createElement("i"));
+      const object = document.querySelector(".motion-object");
+      const startedAt = performance.now();
+      const metadata = Object.freeze({
+        version: 4,
+        scene,
+        checkpoints: Object.freeze([
+          { reference_id: "static-text-hairline-color", frame_slot: 0 },
+          { reference_id: "motion-quarter", frame_slot: 15 },
+          { reference_id: "motion-half", frame_slot: 30 },
+          { reference_id: "motion-three-quarter", frame_slot: 45 },
+        ]),
+        frameAt(elapsedMs) {
+          const slot = Math.max(0, Math.round((elapsedMs * 60) / 1000));
+          return { frame_slot: slot, pts_us: Math.round((slot * 1000000) / 60) };
+        },
+      });
+      Object.defineProperty(window, "__STORYCAPTURE_RECORDING_V4_FIXTURE__", {
+        value: metadata,
+        configurable: false,
+        enumerable: false,
+        writable: false,
+      });
+      function render(now) {
+        const elapsed = Math.max(0, now - startedAt);
+        const phase = (elapsed % 1000) / 1000;
+        const x = 24 + phase * Math.max(0, document.querySelector(".motion-stage").clientWidth - 140);
+        const y = 24 + (0.5 + Math.sin(phase * Math.PI * 2) * 0.5) * 70;
+        object.style.transform = `translate3d(${x}px, ${y}px, 0) rotate(${phase * 360}deg)`;
+        requestAnimationFrame(render);
+      }
+      if (scene === "motion") requestAnimationFrame(render);
+    </script>
+  </body>
+</html>

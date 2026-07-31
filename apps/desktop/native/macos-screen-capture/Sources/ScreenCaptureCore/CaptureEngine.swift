@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import CoreGraphics
 import CoreMedia
 import CoreVideo
@@ -64,16 +65,27 @@ private final class NativeMasterStreamOutput: NSObject, SCStreamOutput, SCStream
     private let lock = NSLock()
     private var lifecycle = CaptureLifecycle()
     private var failure: HelperFailureCode?
+    private let protocolVersion: Int
+    private var videoSequence: UInt64 = 0
+    private let microphone: RecordingV4Microphone?
 
-    init(control: ControlChannel, writer: NativeMasterWriter) {
+    init(
+        control: ControlChannel,
+        writer: NativeMasterWriter,
+        protocolVersion: Int = nativeMasterProtocolVersion,
+        capturesMicrophone: Bool = false
+    ) {
         self.control = control
         self.writer = writer
+        self.protocolVersion = protocolVersion
+        microphone = capturesMicrophone ? RecordingV4Microphone(writer: writer) : nil
     }
 
     func start() throws {
         lock.lock()
         defer { lock.unlock() }
         try lifecycle.start()
+        try microphone?.start()
     }
 
     func pause() throws {
@@ -95,6 +107,7 @@ private final class NativeMasterStreamOutput: NSObject, SCStreamOutput, SCStream
         defer { lock.unlock() }
         if lifecycle.state == .stopped { return }
         try lifecycle.stop()
+        microphone?.stop()
     }
 
     func waitForInitialSurface(timeoutMS: Int = 5_000) async throws {
@@ -109,6 +122,12 @@ private final class NativeMasterStreamOutput: NSObject, SCStreamOutput, SCStream
 
     func finish() async throws -> NativeMasterResult {
         try await writer.finish()
+    }
+
+    func cancel() {
+        try? stop()
+        microphone?.stop()
+        writer.cancel()
     }
 
     private func capturedFailure() -> HelperFailureCode? {
@@ -126,10 +145,7 @@ private final class NativeMasterStreamOutput: NSObject, SCStreamOutput, SCStream
         didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
         of outputType: SCStreamOutputType
     ) {
-        guard outputType == .screen,
-              sampleBuffer.isValid,
-              sampleBuffer.isCompleteFrame,
-              let pixelBuffer = sampleBuffer.imageBuffer else {
+        guard sampleBuffer.isValid else {
             return
         }
         lock.lock()
@@ -137,7 +153,26 @@ private final class NativeMasterStreamOutput: NSObject, SCStreamOutput, SCStream
         lock.unlock()
         guard running else { return }
         do {
-            try writer.append(pixelBuffer)
+            if outputType == .audio {
+                try writer.appendSystemAudio(sampleBuffer)
+                return
+            }
+            guard outputType == .screen,
+                  sampleBuffer.isCompleteFrame,
+                  let pixelBuffer = sampleBuffer.imageBuffer else { return }
+            if protocolVersion == recordingV4ProtocolVersion {
+                videoSequence += 1
+                guard let timestampUS = sampleBuffer.nativeDisplayPTSUS else {
+                    throw HelperFailureCode.outputPTSInvalid
+                }
+                try writer.append(
+                    pixelBuffer,
+                    sourceSequence: videoSequence,
+                    sourceTimestampUS: timestampUS
+                )
+            } else {
+                try writer.append(pixelBuffer)
+            }
         } catch let code as HelperFailureCode {
             fail(code, code.rawValue)
         } catch {
@@ -159,7 +194,7 @@ private final class NativeMasterStreamOutput: NSObject, SCStreamOutput, SCStream
             nil,
             code: code,
             message: message,
-            version: nativeMasterProtocolVersion
+            version: protocolVersion
         )
     }
 }
@@ -498,8 +533,15 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
     }
 
     public func handle(_ command: HelperCommand) async -> Bool {
-        guard command.version == helperProtocolVersion || command.version == nativeMasterProtocolVersion else {
-            control.fail(command.requestID, code: .contractMismatch, message: "helper protocol version must be 2 or 3")
+        guard command.version == helperProtocolVersion ||
+                command.version == nativeMasterProtocolVersion ||
+                command.version == recordingV4ProtocolVersion else {
+            control.fail(
+                command.requestID,
+                code: .contractMismatch,
+                message: "unsupported helper protocol version",
+                version: recordingV4ProtocolVersion
+            )
             return true
         }
         do {
@@ -520,8 +562,21 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
                     data: probeData(result, version: command.version),
                     version: command.version
                 )
+            case .warmup:
+                guard command.version == recordingV4ProtocolVersion else {
+                    throw HelperFailureCode.contractMismatch
+                }
+                let payload = try requiredPayload(command)
+                let data = try await warmup(payload)
+                control.reply(
+                    command.requestID,
+                    event: "warmed-up",
+                    data: data,
+                    version: command.version
+                )
             case .start:
-                if command.version == nativeMasterProtocolVersion {
+                if command.version == nativeMasterProtocolVersion ||
+                    command.version == recordingV4ProtocolVersion {
                     try await startNativeMaster(command)
                 } else {
                     try await start(command)
@@ -554,9 +609,25 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
             case .stop:
                 let stats = nativeMasterOutput == nil ? try await stop() : try await stopNativeMaster()
                 control.reply(command.requestID, event: "stopped", data: stats, version: command.version)
+            case .cancel:
+                guard command.version == recordingV4ProtocolVersion else {
+                    throw HelperFailureCode.contractMismatch
+                }
+                if stream != nil {
+                    if command.version == recordingV4ProtocolVersion, nativeMasterOutput != nil {
+                        try await cancelNativeMaster()
+                    } else if nativeMasterOutput == nil {
+                        _ = try await stop()
+                    } else {
+                        _ = try await stopNativeMaster()
+                    }
+                }
+                control.reply(command.requestID, event: "cancelled", version: command.version)
             case .shutdown:
                 if stream != nil {
-                    if nativeMasterOutput == nil {
+                    if command.version == recordingV4ProtocolVersion, nativeMasterOutput != nil {
+                        try await cancelNativeMaster()
+                    } else if nativeMasterOutput == nil {
                         _ = try await stop()
                     } else {
                         _ = try await stopNativeMaster()
@@ -575,7 +646,9 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
         } catch {
             control.fail(
                 command.requestID,
-                code: .backendUnavailable,
+                code: command.version == recordingV4ProtocolVersion
+                    ? .helperUnavailable
+                    : .backendUnavailable,
                 message: error.localizedDescription,
                 version: command.version
             )
@@ -586,9 +659,9 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
     private func capabilities(version: Int) -> [String: Any] {
         var value: [String: Any] = [
             "backend_id": helperBackendID,
-            "backend_version": version == nativeMasterProtocolVersion
-                ? nativeMasterBackendVersion
-                : helperBackendVersion,
+            "backend_version": version == recordingV4ProtocolVersion
+                ? recordingV4BackendVersion
+                : (version == nativeMasterProtocolVersion ? nativeMasterBackendVersion : helperBackendVersion),
             "platform": "darwin",
             "arch": architecture(),
             "supports_native_timestamps": true,
@@ -597,7 +670,7 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
             "supports_cursor_policy": true,
             "supports_pause_resume": true,
         ]
-        if version == nativeMasterProtocolVersion {
+        if version == nativeMasterProtocolVersion || version == recordingV4ProtocolVersion {
             let hardwareEncoderAvailable = NativeMasterWriter.hardwareEncoderAvailable()
             value.merge([
                 "supports_native_master": true,
@@ -610,7 +683,115 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
                 ],
             ]) { _, new in new }
         }
+        if version == recordingV4ProtocolVersion {
+            value.merge([
+                "contract_version": recordingV4ProtocolVersion,
+                "profile": "verified_1080p60",
+                "supports_monotonic_60hz_scheduler": true,
+                "supports_frame_ledger": true,
+                "supports_encoder_envelope": true,
+                "supports_terminal_backpressure": true,
+                "supports_shared_audio_clock": true,
+                "supported_audio_roles": RecordingV4AudioRole.allCases.map(\.rawValue),
+                "requires_exact_surface": ["physical_width": 1_920, "physical_height": 1_080],
+            ]) { _, new in new }
+        }
         return value
+    }
+
+    private func warmup(_ payload: HelperCommandPayload) async throws -> [String: Any] {
+        guard stream == nil else { throw HelperFailureCode.contractMismatch }
+        guard CGPreflightScreenCaptureAccess() else { throw HelperFailureCode.permissionDenied }
+        guard payload.outputWidth == 1_920,
+              payload.outputHeight == 1_080,
+              payload.expectedPhysicalWidth == 1_920,
+              payload.expectedPhysicalHeight == 1_080,
+              payload.fpsNumerator == 60,
+              payload.fpsDenominator == 1,
+              let target = payload.target else {
+            throw HelperFailureCode.surfaceNot1080p
+        }
+        guard NativeMasterWriter.hardwareEncoderAvailable() else {
+            throw HelperFailureCode.hardwareEncoderUnavailable
+        }
+        guard let envelope = payload.encoderEnvelope else {
+            throw HelperFailureCode.contractMismatch
+        }
+        try envelope.validate()
+        let resolved = try await resolve(target)
+        try validateDimensions(resolved.identity, payload: payload)
+        let requested = Set(payload.requestedAudioRoles ?? [])
+        if requested.contains(.microphone) {
+            let permission = AVCaptureDevice.authorizationStatus(for: .audio)
+            guard permission == .authorized else { throw HelperFailureCode.audioDeviceUnavailable }
+        }
+        let calibrationDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("storycapture-v4-calibration-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: calibrationDirectory) }
+        let configuration = try streamConfiguration(payload)
+        configuration.capturesAudio = false
+        configuration.showsCursor = false
+        let calibrationWriter = try NativeMasterWriter(
+            artifactPath: calibrationDirectory.appendingPathComponent("calibration.mp4").path,
+            width: 1_920,
+            height: 1_080,
+            v4Envelope: envelope
+        )
+        let calibrationOutput = NativeMasterStreamOutput(
+            control: control,
+            writer: calibrationWriter,
+            protocolVersion: recordingV4ProtocolVersion
+        )
+        let calibrationStream = SCStream(
+            filter: resolved.filter,
+            configuration: configuration,
+            delegate: calibrationOutput
+        )
+        try calibrationStream.addStreamOutput(
+            calibrationOutput,
+            type: .screen,
+            sampleHandlerQueue: videoQueue
+        )
+        try calibrationOutput.start()
+        do {
+            try await calibrationStream.startCapture()
+            try await calibrationOutput.waitForInitialSurface()
+            try await Task.sleep(nanoseconds: 350_000_000)
+            try await calibrationStream.stopCapture()
+            try calibrationOutput.stop()
+        } catch {
+            calibrationOutput.cancel()
+            try? await calibrationStream.stopCapture()
+            throw HelperFailureCode.encoderWarmupFailed
+        }
+        let calibration: NativeMasterResult
+        do {
+            calibration = try await calibrationOutput.finish()
+        } catch {
+            throw HelperFailureCode.encoderWarmupFailed
+        }
+        guard let encoderEvidence = calibration.encoderEvidence else {
+            throw HelperFailureCode.encoderWarmupFailed
+        }
+        return capabilities(version: recordingV4ProtocolVersion).merging([
+            "permission_granted": true,
+            "target_identity": resolved.identity.fingerprint,
+            "physical_width": resolved.identity.physicalWidth,
+            "physical_height": resolved.identity.physicalHeight,
+            "requested_audio_roles": requested.map(\.rawValue).sorted(),
+            "available_audio_roles": RecordingV4AudioRole.allCases.map(\.rawValue),
+            "encoder": encoderEvidence.dictionary,
+            "encoder_envelope": payload.encoderEnvelope.map { envelope in
+                [
+                    "source": envelope.source,
+                    "encoder_id": envelope.encoderID,
+                    "minimum_bitrate_bps": envelope.minimumBitrateBPS,
+                    "target_bitrate_bps": envelope.targetBitrateBPS,
+                    "maximum_bitrate_bps": envelope.maximumBitrateBPS,
+                    "safety_headroom_ratio": envelope.safetyHeadroomRatio,
+                ] as [String: Any]
+            } ?? NSNull(),
+        ]) { _, new in new }
     }
 
     private func requiredPayload(_ command: HelperCommand) throws -> HelperCommandPayload {
@@ -701,6 +882,17 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
               let target = payload.target else {
             throw HelperFailureCode.contractMismatch
         }
+        let isV4 = command.version == recordingV4ProtocolVersion
+        if isV4 {
+            guard width == 1_920,
+                  height == 1_080,
+                  payload.expectedPhysicalWidth == 1_920,
+                  payload.expectedPhysicalHeight == 1_080,
+                  payload.encoderEnvelope != nil else {
+                throw HelperFailureCode.surfaceNot1080p
+            }
+            try payload.encoderEnvelope?.validate()
+        }
         if target.kind == .window {
             guard let mediaSourceID = target.mediaSourceID,
                   windowIDFromMediaSourceID(mediaSourceID) == target.windowID else {
@@ -710,17 +902,43 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
         let resolved = try await resolve(target)
         try validateDimensions(resolved.identity, payload: payload)
         let configuration = try streamConfiguration(payload)
-        configuration.capturesAudio = false
+        let requestedAudioRoles = isV4 ? Array(Set(payload.requestedAudioRoles ?? [])) : []
+        configuration.capturesAudio = requestedAudioRoles.contains(.system)
+        let failureHandler: (@Sendable (HelperFailureCode, String) -> Void)?
+        if isV4 {
+            let channel = control
+            failureHandler = { code, message in
+                channel.fail(
+                    nil,
+                    code: code,
+                    message: message,
+                    version: recordingV4ProtocolVersion
+                )
+            }
+        } else {
+            failureHandler = nil
+        }
         let writer = try NativeMasterWriter(
             artifactPath: artifactPath,
             width: width,
             height: height,
             fpsNumerator: payload.fpsNumerator ?? 60,
-            fpsDenominator: payload.fpsDenominator ?? 1
+            fpsDenominator: payload.fpsDenominator ?? 1,
+            v4Envelope: isV4 ? payload.encoderEnvelope : nil,
+            requestedAudioRoles: requestedAudioRoles,
+            terminalFailureHandler: failureHandler
         )
-        let output = NativeMasterStreamOutput(control: control, writer: writer)
+        let output = NativeMasterStreamOutput(
+            control: control,
+            writer: writer,
+            protocolVersion: command.version,
+            capturesMicrophone: requestedAudioRoles.contains(.microphone)
+        )
         let stream = SCStream(filter: resolved.filter, configuration: configuration, delegate: output)
         try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: videoQueue)
+        if configuration.capturesAudio {
+            try stream.addStreamOutput(output, type: .audio, sampleHandlerQueue: audioQueue)
+        }
         try output.start()
         do {
             try await stream.startCapture()
@@ -769,6 +987,19 @@ public final class ScreenCaptureHelperController: @unchecked Sendable {
         }
         let result = try await output.finish()
         return result.dictionary
+    }
+
+    private func cancelNativeMaster() async throws {
+        guard let stream, let output = nativeMasterOutput else {
+            throw HelperFailureCode.contractMismatch
+        }
+        try await stream.stopCapture()
+        output.cancel()
+        self.stream = nil
+        nativeMasterOutput = nil
+        activeTarget = nil
+        activeIdentity = nil
+        sessionID = nil
     }
 
     private func validateActiveTarget() async throws {

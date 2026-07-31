@@ -16,9 +16,18 @@ import type {
   RecordingNativePreflightV3,
   RecordingResultV3,
 } from "./recording-v3";
+import type {
+  RecordingV4AudioRole,
+  RecordingV4Command,
+  RecordingV4Event,
+  RecordingV4Result,
+  RecordingV4Snapshot,
+  RecordingV4TargetIdentity,
+} from "./recording-v4";
 
 export type * from "./recording-v2";
 export type * from "./recording-v3";
+export type * from "./recording-v4";
 
 /** user-defined commands **/
 
@@ -831,6 +840,49 @@ export const commands = {
   ): Promise<Result<RecordingStopResult, AppError>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("stop_recording", { session, onEvent }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async startRecordingV4(
+    args: StartRecordingV4Args,
+    onEvent: TAURI_CHANNEL<RecordingV4Event>,
+  ): Promise<Result<RecordingV4SessionId, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("recording_v4_start", { args, onEvent }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async commandRecordingV4(
+    session: RecordingV4SessionId,
+    command: RecordingV4Command,
+  ): Promise<Result<RecordingV4Result | null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("recording_v4_command", { session, command }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async getRecordingV4Snapshot(
+    session: RecordingV4SessionId,
+  ): Promise<Result<RecordingV4Snapshot, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("recording_v4_snapshot", { session }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async subscribeRecordingV4(
+    session: RecordingV4SessionId,
+    onEvent: TAURI_CHANNEL<RecordingV4Event>,
+  ): Promise<Result<RecordingV4Snapshot, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("recording_v4_subscribe", { session, onEvent }) };
     } catch (e) {
       if (e instanceof Error) throw e;
       else return { status: "error", error: e as any };
@@ -2493,7 +2545,7 @@ export type RecordingInfoDto = {
         status: "invalid";
         reason: "empty" | "not_file" | "missing" | "timeout" | "unsupported_or_corrupt";
       };
-  version?: 2 | 3;
+  version?: 2 | 3 | 4;
   master_path?: string | null;
   proxy_path?: string | null;
   cadence_evidence_path?: string | null;
@@ -2508,6 +2560,7 @@ export type RecordingInfoDto = {
   bundle_path?: string | null;
 };
 export type RecordingSessionId = { id: string };
+export type RecordingV4SessionId = { id: string };
 export type RecordingStepTimingDto = {
   ordinal: number;
   stepId: string | null;
@@ -2715,6 +2768,14 @@ export type StartRecordingArgs = {
    * actual native frame size.
    */
   frame_crop?: FrameCropRectDto | null;
+};
+export type StartRecordingV4Args = {
+  project_path: string;
+  source_url: string;
+  logical_width: number;
+  logical_height: number;
+  requested_audio_roles: RecordingV4AudioRole[];
+  include_cursor: boolean;
 };
 export type StartupBehavior = "welcome" | "last_project" | "new_story";
 /**

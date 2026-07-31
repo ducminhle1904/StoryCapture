@@ -11,6 +11,7 @@ import { projectsHandlers } from "./projects";
 import { recordingHandlers } from "./recording";
 import { recordingFailedBundleHandlers } from "./recording-failed-bundle-actions";
 import { recordingMasterDecoderHandlers } from "./recording-master-decoder";
+import { recordingV4Handlers } from "./recording-v4";
 import { renderHandlers } from "./render";
 import { secretsHandlers } from "./secrets";
 import { settingsHandlers } from "./settings";
@@ -25,6 +26,7 @@ export const handlers = {
   ...logsHandlers,
   ...updatesHandlers,
   ...recordingHandlers,
+  ...recordingV4Handlers,
   ...recordingFailedBundleHandlers,
   ...recordingMasterDecoderHandlers,
   ...previewHandlers,

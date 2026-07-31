@@ -181,6 +181,33 @@ emits typed JSONL V2 events through `ipc/recording-observability.ts`, while
 `ipc/log-store.ts` owns redaction, rotation, and diagnostic-bundle inclusion.
 Logging is best-effort and cannot change the recording result it describes.
 
+Recording V4 is an internal, fail-closed candidate path defined by
+`packages/shared-types/src/recording-v4.ts`. `recording-v4-coordinator.ts` and
+its atomic journal own the session beyond renderer lifetime;
+`recording-v4-platform-session.ts` owns the exact-size author-preview surface,
+native backend and final bundle; `recording-v4-automation-surface.ts` ensures
+the story runner drives the same WebContents being captured. Renderer code
+sends intents and reattaches through `use-recording-v4-session.ts`; it does not
+own native finalization or microphone MediaRecorder state. Completed V4 bundles
+are the only recording artifacts admitted by the new discovery path, while
+failed bundles remain diagnostic-only. V2/V3 code remains until packaged live
+and soak certification passes on both platforms; the macOS gate does not
+require Apple Developer ID. V4 helper lookup uses `isPackagedRuntime(app)` so
+the generated `.electron-dev` app resolves source-built helpers while release
+bundles resolve helpers from Electron resources.
+
+On Retina macOS displays, the V4 BrowserWindow stays at the exact 960×540
+logical capture surface required for a 1920×1080 native image while exposing a
+1280×720 CSS content viewport at 0.75 page zoom. Automation coordinates are
+therefore resolved against the desktop viewport without changing the native
+capture contract. Cadence `source_updates` counts only source frames represented
+by non-held ledger entries; source frames superseded inside one 60 Hz slot are
+not published as output updates. Runtime quality comparison excludes native
+rounded-window corners, measures p99 edge-spread growth across real high-
+contrast edges, and samples color only from stable interior regions; the
+marker-specific fixture verifier remains reserved for deterministic
+certification fixtures.
+
 Production Strict Recording uses the V3 contract in
 `packages/shared-types/src/recording-v3.ts`.
 `recording-native-preflight.ts` admits a take from runtime helper/protocol,

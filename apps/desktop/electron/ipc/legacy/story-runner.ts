@@ -41,6 +41,7 @@ import { readJson, writeJsonAtomic } from "../json-store";
 import { sameNavigationUrl } from "../navigation-url";
 import { userDataPath } from "../paths";
 import { recordEngineLog } from "../recording-observability";
+import { recordingV4AutomationSurface } from "../recording-v4-automation-surface";
 import { RecordingPauseCancelledError } from "../recording-pause-gate";
 import {
   requireStrictBrowserRecordingReadiness,
@@ -1468,6 +1469,14 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
   const streamId = typeof args.streamId === "string" ? args.streamId : null;
   const recordingSessionId =
     typeof args.recordingSessionId === "string" ? args.recordingSessionId : null;
+  const recordingV4SessionId =
+    typeof args.recordingV4SessionId === "string" ? args.recordingV4SessionId : null;
+  const recordingV4Surface = recordingV4SessionId
+    ? recordingV4AutomationSurface(recordingV4SessionId)
+    : null;
+  if (recordingV4SessionId && !recordingV4Surface) {
+    throw new Error(`Recording V4 automation surface ${recordingV4SessionId} is unavailable.`);
+  }
   const strictSessionAtLaunch = recordingSessionId
     ? strictBrowserRecordingSession(recordingSessionId)
     : null;
@@ -1485,7 +1494,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
     }),
   });
   const ownedWindow =
-    streamId == null && !strictSessionAtLaunch
+    streamId == null && !strictSessionAtLaunch && !recordingV4Surface
       ? new BrowserWindow({
           show: false,
           width: 1280,
@@ -1500,6 +1509,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
         })
       : null;
   const contents =
+    recordingV4Surface?.contents ??
     (recordingSessionId ? strictBrowserRecordingContents(recordingSessionId) : null) ??
     (streamId ? authorSession(streamId).window.webContents : ownedWindow?.webContents);
   if (!contents) throw new Error("browser session unavailable for automation");
@@ -1511,10 +1521,26 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
   const stepTimings: RecordingStepTiming[] = [];
   const actionStepStartMs = new Map<number, number>();
   const actionRunStartedAt =
-    strictSessionAtLaunch?.startedAt ?? recordingSessionAtLaunch?.startedAt ?? Date.now();
+    strictSessionAtLaunch?.startedAt ?? recordingSessionAtLaunch?.startedAt ??
+    (recordingV4Surface ? Date.now() - recordingV4Surface.currentMediaTimeMs() : Date.now());
   const currentRecordingClockMs = () =>
+    recordingV4Surface?.currentMediaTimeMs() ??
     (recordingSessionId ? strictBrowserRecordingClockMs(recordingSessionId) : null) ??
     (recordingSessionAtLaunch ? recordingFrameClockMs(recordingSessionAtLaunch) : 0);
+  const recordV4Action = (
+    action: Parameters<NonNullable<typeof recordingV4Surface>["recordAction"]>[0],
+  ) => {
+    if (!recordingV4Surface) return;
+    void recordingV4Surface.recordAction(action).catch((error) =>
+      recordEngineLog({
+        level: "warn",
+        event: "recording.backend.delivery_failed",
+        context: { session_id: recordingV4SessionId ?? undefined, phase: "automation" },
+        details: { ordinal: action.ordinal, action_phase: action.phase },
+        error,
+      }),
+    );
+  };
   const executionProfile = storyBrowserExecutionProfile({
     captureRecordingFrames: Boolean(recordingSessionId),
     captureSize: strictSessionAtLaunch
@@ -1543,10 +1569,14 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       failureFrameDir,
       recordingSessionId,
       recordingClockMs:
-        strictSessionAtLaunch || recordingSessionAtLaunch ? currentRecordingClockMs : undefined,
-      inputCoordinateScale: strictSessionAtLaunch
-        ? (strictBrowserRecordingInputCoordinateScale(strictSessionAtLaunch.id) ?? undefined)
-        : undefined,
+        strictSessionAtLaunch || recordingSessionAtLaunch || recordingV4Surface
+          ? currentRecordingClockMs
+          : undefined,
+      inputCoordinateScale:
+        recordingV4Surface?.inputCoordinateScale ??
+        (strictSessionAtLaunch
+          ? (strictBrowserRecordingInputCoordinateScale(strictSessionAtLaunch.id) ?? undefined)
+          : undefined),
       requireRecordingReadiness: strictSessionAtLaunch
         ? (state) => requireStrictBrowserRecordingReadiness(strictSessionAtLaunch.id, state)
         : undefined,
@@ -1565,12 +1595,20 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
         ? () => strictBrowserRecordingSession(strictSessionAtLaunch.id) !== strictSessionAtLaunch
         : recordingSessionAtLaunch
           ? () => recordingSessions.get(recordingSessionAtLaunch.id) !== recordingSessionAtLaunch
-          : undefined,
+          : recordingV4Surface
+            ? () => !recordingV4Surface.isActive()
+            : undefined,
       hooks: {
         onStepStarted: (ordinal, command) => {
-          if (strictSessionAtLaunch || recordingSessionAtLaunch) {
+          if (strictSessionAtLaunch || recordingSessionAtLaunch || recordingV4Surface) {
             actionStepStartMs.set(ordinal, currentRecordingClockMs());
           }
+          recordV4Action({
+            step_id: command.step_id ?? null,
+            ordinal,
+            phase: "started",
+            payload: { verb: command.verb },
+          });
           sendChannel(sender, onEvent, {
             json: JSON.stringify({
               type: "step_started",
@@ -1589,7 +1627,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
           timing,
         }) => {
           const fallbackStepEndedAtMs =
-            strictSessionAtLaunch || recordingSessionAtLaunch
+            strictSessionAtLaunch || recordingSessionAtLaunch || recordingV4Surface
               ? currentRecordingClockMs()
               : Math.max(0, Date.now() - actionRunStartedAt);
           const stepEndedAtMs = timing?.stepEndedAtMs ?? fallbackStepEndedAtMs;
@@ -1640,6 +1678,16 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
               }),
             );
           }
+          recordV4Action({
+            step_id: command.step_id ?? null,
+            ordinal,
+            phase: "succeeded",
+            payload: {
+              verb: command.verb,
+              cursor_x: stepResult.cursor?.x ?? 0,
+              cursor_y: stepResult.cursor?.y ?? 0,
+            },
+          });
           sendChannel(sender, onEvent, {
             json: JSON.stringify({
               type: "step_succeeded",
@@ -1674,6 +1722,12 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
         onStepFailed: (ordinal, error, screenshotPath) => {
           failedOrdinal ??= ordinal;
           const command = commands[ordinal - 1];
+          recordV4Action({
+            step_id: command?.step_id ?? null,
+            ordinal,
+            phase: "failed",
+            payload: { error_message: error instanceof Error ? error.message : String(error) },
+          });
           const stepStartedAtMs = actionStepStartMs.get(ordinal);
           actionStepStartMs.delete(ordinal);
           if ((strictSessionAtLaunch || recordingSessionAtLaunch) && stepStartedAtMs != null) {

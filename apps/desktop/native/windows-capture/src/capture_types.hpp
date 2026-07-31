@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 
+#include "v4_slot_scheduler.hpp"
+#include "wasapi_audio_capture.hpp"
+
 namespace storycapture::wgc {
 
 enum class TargetKind { display, window };
@@ -29,6 +32,15 @@ struct CaptureOptions {
   bool native_mp4{};
   bool microphone_audio{};
   bool system_audio{};
+  bool v4_mode{};
+  std::wstring target_stable_id;
+  std::wstring target_initial_title;
+  std::wstring encoder_envelope_id;
+  std::wstring encoder_envelope_source;
+  std::uint32_t minimum_bitrate_bps{};
+  std::uint32_t target_bitrate_bps{};
+  std::uint32_t maximum_bitrate_bps{};
+  double safety_headroom_ratio{};
 };
 
 struct NativeCaptureEvidence {
@@ -49,6 +61,14 @@ struct NativeCaptureEvidence {
   std::int64_t started_monotonic_us{};
   std::int64_t ended_monotonic_us{};
   std::int64_t finalized_duration_us{};
+  std::uint32_t requested_bitrate_bps{};
+  std::uint64_t artifact_bytes{};
+  std::uint32_t average_bitrate_bps{};
+  std::uint32_t peak_bitrate_bps{};
+  std::uint32_t ring_high_water_mark{};
+  std::vector<V4FrameLedgerEntry> frame_ledger;
+  std::vector<V4PauseInterval> pause_intervals;
+  std::vector<V4AudioEvidence> audio;
 };
 
 struct CommittedFrame {

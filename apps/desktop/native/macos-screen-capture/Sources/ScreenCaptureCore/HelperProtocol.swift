@@ -3,16 +3,34 @@ import Foundation
 
 public let helperProtocolVersion = 2
 public let nativeMasterProtocolVersion = 3
+public let recordingV4ProtocolVersion = 4
 public let helperBackendID = "screen-capture-kit"
 public let helperBackendVersion = "2.0.0"
 public let nativeMasterBackendVersion = "3.0.0"
+public let recordingV4BackendVersion = "4.0.0"
 
 public enum HelperFailureCode: String, Codable, Error, Sendable {
     case backendUnavailable = "backend_unavailable"
+    case helperUnavailable = "helper_unavailable"
     case contractMismatch = "contract_mismatch"
     case permissionDenied = "permission_denied"
     case sourceRateMismatch = "source_rate_mismatch"
     case submittedFrameDropped = "submitted_frame_dropped"
+    case encoderBackpressure = "encoder_backpressure"
+    case encoderRejectedFrame = "encoder_rejected_frame"
+    case encoderWarmupFailed = "encoder_warmup_failed"
+    case hardwareEncoderUnavailable = "hardware_encoder_unavailable"
+    case surfaceNot1080p = "surface_not_1080p"
+    case audioDeviceUnavailable = "audio_device_unavailable"
+    case audioFormatInvalid = "audio_format_invalid"
+    case audioContinuityFailed = "audio_continuity_failed"
+    case frameSlotMissing = "frame_slot_missing"
+    case frameLedgerInvalid = "frame_ledger_invalid"
+    case outputFrameCountMismatch = "output_frame_count_mismatch"
+    case outputPTSInvalid = "output_pts_invalid"
+    case artifactFinalizeFailed = "artifact_finalize_failed"
+    case artifactProbeFailed = "artifact_probe_failed"
+    case artifactDecodeFailed = "artifact_decode_failed"
     case targetAmbiguous = "target_ambiguous"
     case targetChanged = "target_changed"
     case targetLost = "target_lost"
@@ -57,6 +75,57 @@ public enum DynamicSizePolicy: String, Codable, Sendable {
     case scaleToContract = "scale_to_contract"
 }
 
+public enum RecordingV4AudioRole: String, Codable, CaseIterable, Sendable {
+    case microphone
+    case system
+}
+
+public struct RecordingV4EncoderEnvelope: Codable, Equatable, Sendable {
+    public let source: String
+    public let encoderID: String
+    public let minimumBitrateBPS: Int
+    public let targetBitrateBPS: Int
+    public let maximumBitrateBPS: Int
+    public let safetyHeadroomRatio: Double
+
+    enum CodingKeys: String, CodingKey {
+        case source
+        case encoderID = "encoder_id"
+        case minimumBitrateBPS = "minimum_bitrate_bps"
+        case targetBitrateBPS = "target_bitrate_bps"
+        case maximumBitrateBPS = "maximum_bitrate_bps"
+        case safetyHeadroomRatio = "safety_headroom_ratio"
+    }
+
+    public init(
+        source: String,
+        encoderID: String,
+        minimumBitrateBPS: Int,
+        targetBitrateBPS: Int,
+        maximumBitrateBPS: Int,
+        safetyHeadroomRatio: Double
+    ) {
+        self.source = source
+        self.encoderID = encoderID
+        self.minimumBitrateBPS = minimumBitrateBPS
+        self.targetBitrateBPS = targetBitrateBPS
+        self.maximumBitrateBPS = maximumBitrateBPS
+        self.safetyHeadroomRatio = safetyHeadroomRatio
+    }
+
+    public func validate() throws {
+        guard source == "live_calibration" || source == "certified_evidence",
+              encoderID == "videotoolbox-h264",
+              minimumBitrateBPS > 0,
+              minimumBitrateBPS <= targetBitrateBPS,
+              targetBitrateBPS <= maximumBitrateBPS,
+              safetyHeadroomRatio > 0,
+              safetyHeadroomRatio < 1 else {
+            throw HelperFailureCode.contractMismatch
+        }
+    }
+}
+
 public struct HelperCommandPayload: Codable, Equatable, Sendable {
     public let target: HelperTarget?
     public let outputWidth: Int?
@@ -72,6 +141,8 @@ public struct HelperCommandPayload: Codable, Equatable, Sendable {
     public let artifactPath: String?
     public let fpsNumerator: Int?
     public let fpsDenominator: Int?
+    public let requestedAudioRoles: [RecordingV4AudioRole]?
+    public let encoderEnvelope: RecordingV4EncoderEnvelope?
 
     public init(
         target: HelperTarget? = nil,
@@ -87,7 +158,9 @@ public struct HelperCommandPayload: Codable, Equatable, Sendable {
         probeDurationMS: Int? = nil,
         artifactPath: String? = nil,
         fpsNumerator: Int? = nil,
-        fpsDenominator: Int? = nil
+        fpsDenominator: Int? = nil,
+        requestedAudioRoles: [RecordingV4AudioRole]? = nil,
+        encoderEnvelope: RecordingV4EncoderEnvelope? = nil
     ) {
         self.target = target
         self.outputWidth = outputWidth
@@ -103,6 +176,8 @@ public struct HelperCommandPayload: Codable, Equatable, Sendable {
         self.artifactPath = artifactPath
         self.fpsNumerator = fpsNumerator
         self.fpsDenominator = fpsDenominator
+        self.requestedAudioRoles = requestedAudioRoles
+        self.encoderEnvelope = encoderEnvelope
     }
 }
 
@@ -110,10 +185,12 @@ public struct HelperCommand: Codable, Equatable, Sendable {
     public enum Name: String, Codable, Sendable {
         case hello
         case probe
+        case warmup
         case start
         case pause
         case resume
         case stop
+        case cancel
         case shutdown
     }
 

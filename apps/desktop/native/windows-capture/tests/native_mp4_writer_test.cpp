@@ -18,6 +18,7 @@ namespace {
 constexpr std::uint32_t k_width = 320;
 constexpr std::uint32_t k_height = 180;
 constexpr std::uint32_t k_frames = 6;
+constexpr std::uint32_t k_target_bitrate_bps = 12'000'000;
 
 }  // namespace
 
@@ -48,9 +49,13 @@ int wmain() {
     winrt::check_hresult(
         device->CreateTexture2D(&descriptor, &initial, texture.ReleaseAndGetAddressOf()));
     {
-      storycapture::wgc::NativeMp4Writer writer(device.Get(), output.wstring(), k_width, k_height);
+      storycapture::wgc::NativeMp4Writer writer(device.Get(), output.wstring(), k_width, k_height,
+                                                 k_target_bitrate_bps, true);
+      if (writer.requested_bitrate_bps() != k_target_bitrate_bps) return 3;
       for (std::uint64_t frame = 0; frame < k_frames; ++frame) writer.write(texture.Get(), frame);
       writer.finalize();
+      if (writer.artifact_bytes() == 0 || writer.average_bitrate_bps() == 0 ||
+          writer.peak_bitrate_bps() == 0) return 4;
     }
 
     winrt::check_hresult(MFStartup(MF_VERSION, MFSTARTUP_FULL));
