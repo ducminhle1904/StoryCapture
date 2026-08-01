@@ -74,6 +74,7 @@ import {
 } from "../state/zoom-motion";
 import { CanonicalPreviewAdapter, fitCanonicalCompositionRect } from "./canonical-preview-adapter";
 import { PresentedMediaClock } from "./presented-media-clock";
+import { SequentialPreviewMediaController } from "./sequential-preview-media-controller";
 import { TransportControls } from "./transport-controls";
 import { samplePreparedVirtualCursor, sampleTrajectoryCursor } from "./virtual-cursor-path";
 
@@ -603,6 +604,7 @@ export function PreviewPlayer({
   const ambientDisplayedPaletteRef = useRef<AmbientPalette>(DEFAULT_AMBIENT_PALETTE);
   const ambientTargetPaletteRef = useRef<AmbientPalette>(DEFAULT_AMBIENT_PALETTE);
   const engineRef = useRef<CanonicalPreviewAdapter | null>(null);
+  const sequentialMediaControllerRef = useRef<SequentialPreviewMediaController | null>(null);
   const rafRef = useRef<number | null>(null);
   const ambientRafRef = useRef<number | null>(null);
   const ambientLastSampleTimeRef = useRef(0);
@@ -770,7 +772,10 @@ export function PreviewPlayer({
 
   const requestCanonicalFrame = useCallback((timestampMs: number) => {
     canonicalRenderPendingRef.current = Math.max(0, timestampMs);
-    if (canonicalRenderActiveRef.current) return;
+    if (canonicalRenderActiveRef.current) {
+      sequentialMediaControllerRef.current?.recordCoalescedRequest();
+      return;
+    }
 
     const generation = canonicalRenderGenerationRef.current;
     canonicalRenderActiveRef.current = true;
@@ -810,6 +815,7 @@ export function PreviewPlayer({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: changing the resolved source intentionally resets retry state.
   useEffect(() => {
+    sequentialMediaControllerRef.current?.reset("source-switch");
     clearMediaRetryTimer();
     mediaRetryCountRef.current = 0;
     lastMediaErrorGenerationRef.current = null;
@@ -1006,13 +1012,18 @@ export function PreviewPlayer({
   }, [useDomAmbientBackdrop]);
 
   const seekPreviewToPlayhead = useCallback(
-    (targetMs: number) => {
+    (targetMs: number, reason: "initial" | "scrub" | "loop" = "scrub") => {
       const video = videoRef.current;
       if (!video) return;
       const nextMs = Math.max(0, targetMs);
       const nextSeconds = mediaSecondsForPlayhead(video, nextMs, sourceTimeMapRef.current);
 
-      video.currentTime = nextSeconds;
+      const controller = sequentialMediaControllerRef.current;
+      if (useCompositedCanvas && controller) {
+        controller.hardSeek(Math.round(nextSeconds * 1_000_000), reason);
+      } else {
+        video.currentTime = nextSeconds;
+      }
       if (!useCompositedCanvas) {
         syncAmbientVideo(nextSeconds);
         if (sampleAmbientPalette()) {
@@ -1071,7 +1082,11 @@ export function PreviewPlayer({
     canonicalRenderActiveRef.current = false;
     setEngineReady(false);
     setCanonicalError(false);
-    const engine = new CanonicalPreviewAdapter(canvas);
+    const sequentialMediaController = new SequentialPreviewMediaController(() => videoRef.current);
+    sequentialMediaControllerRef.current = sequentialMediaController;
+    const engine = new CanonicalPreviewAdapter(canvas, {
+      mediaPool: sequentialMediaController,
+    });
     const stageBounds = stageRef.current?.getBoundingClientRect();
     if (stageBounds && stageBounds.width > 0 && stageBounds.height > 0) {
       engine.setPresentationViewport({
@@ -1106,6 +1121,13 @@ export function PreviewPlayer({
       canonicalRenderPendingRef.current = null;
       canonicalRenderActiveRef.current = false;
       if (engineRef.current === engine) engineRef.current = null;
+      const diagnostics = sequentialMediaController.diagnosticsSnapshot();
+      frontendLog.debug("post-production/PreviewPlayer", "sequential preview transport stopped", {
+        fields: { ...diagnostics },
+      });
+      if (sequentialMediaControllerRef.current === sequentialMediaController) {
+        sequentialMediaControllerRef.current = null;
+      }
       engine.dispose();
       setEngineReady(false);
     };
@@ -1260,7 +1282,7 @@ export function PreviewPlayer({
 
     const renderLoadedFrame = () => {
       const currentPlayheadMs = useEditorStore.getState().playheadMs;
-      seekPreviewToPlayhead(currentPlayheadMs);
+      seekPreviewToPlayhead(currentPlayheadMs, "initial");
     };
 
     if (video.readyState >= 2) {
@@ -1325,6 +1347,11 @@ export function PreviewPlayer({
 
     const onVideoFrame = (now: number, metadata: VideoFrameCallbackMetadata) => {
       if (disposed) return;
+      sequentialMediaControllerRef.current?.recordPresentedFrame(
+        now,
+        1000 / Math.max(1, canonicalGraph.output_fps),
+        metadata.presentedFrames,
+      );
       commitPresented(metadata.mediaTime, now);
       callbackId = video.requestVideoFrameCallback(onVideoFrame);
     };
@@ -1359,6 +1386,7 @@ export function PreviewPlayer({
     };
   }, [
     applyPreviewZoom,
+    canonicalGraph.output_fps,
     renderCursorOverlay,
     requestCanonicalFrame,
     mediaElementSrc,
@@ -1449,7 +1477,7 @@ export function PreviewPlayer({
     video.addEventListener("pause", stopPlayback);
     video.addEventListener("ended", stopPlayback);
 
-    seekPreviewToPlayhead(playbackStartMs);
+    seekPreviewToPlayhead(playbackStartMs, "initial");
     const sourceDurationMs = mediaDurationMs(video);
     if (sourceDurationMs > 0 && playbackStartMs >= sourceDurationMs) {
       holdingSourceFrame = true;
@@ -1542,6 +1570,7 @@ export function PreviewPlayer({
       } else if (video.ended || video.paused) {
         const finalPlayheadMs = video.currentTime * 1000;
         commitPlayhead(finalPlayheadMs);
+        sequentialMediaControllerRef.current?.reset(video.ended ? "ended" : "pause");
         setPlaying(false);
         return;
       } else {
@@ -1604,7 +1633,7 @@ export function PreviewPlayer({
       rafRef.current = requestAnimationFrame(tick);
     };
 
-    seekPreviewToPlayhead(playbackStartMs);
+    seekPreviewToPlayhead(playbackStartMs, "initial");
     const sourceDurationMs = mediaDurationMs(video);
     if (sourceDurationMs > 0 && playbackStartMs >= sourceDurationMs) {
       holdingSourceFrame = true;
@@ -1634,6 +1663,7 @@ export function PreviewPlayer({
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
       video.pause();
+      sequentialMediaControllerRef.current?.reset("pause");
       if (holdingSourceFrame) {
         setPlayhead(lastRenderedPlayheadMs);
         lastPlayheadCommitRef.current = lastRenderedPlayheadMs;
@@ -1659,7 +1689,7 @@ export function PreviewPlayer({
   const resetPreviewToStart = useCallback(() => {
     setPlayhead(0);
     lastPlayheadCommitRef.current = 0;
-    seekPreviewToPlayhead(0);
+    seekPreviewToPlayhead(0, "loop");
     applyPreviewZoom(0);
     renderCursorOverlay(0);
   }, [applyPreviewZoom, renderCursorOverlay, seekPreviewToPlayhead, setPlayhead]);
@@ -1720,6 +1750,7 @@ export function PreviewPlayer({
     const err = video?.error;
     playingRef.current = false;
     setPlaying(false);
+    sequentialMediaControllerRef.current?.reset("error");
     frontendLog.warn("post-production/PreviewPlayer", "video element failed", {
       fields: {
         retry_count: mediaRetryCountRef.current,

@@ -9,6 +9,7 @@ import type { CursorClip } from "../../state/timeline-slice";
 import { resolveZoomMotion, sampleResolvedZoom } from "../../state/zoom-motion";
 import { CanonicalPreviewAdapter } from "../canonical-preview-adapter";
 import { PreviewPlayer } from "../preview-player";
+import { SequentialPreviewMediaController } from "../sequential-preview-media-controller";
 import { ACTIONS } from "./fixtures";
 
 const requestVideoFrameCallbackDescriptor = Object.getOwnPropertyDescriptor(
@@ -93,7 +94,9 @@ function mockCompositedPlaybackClock() {
   let videoFrameCallback: VideoFrameRequestCallback | null = null;
   let nextVideoFrameId = 1;
 
-  vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async () => undefined);
+  const play = vi
+    .spyOn(HTMLMediaElement.prototype, "play")
+    .mockImplementation(async () => undefined);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
   vi.spyOn(window.performance, "now").mockReturnValue(0);
   vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
@@ -114,6 +117,7 @@ function mockCompositedPlaybackClock() {
   });
 
   return {
+    play,
     animationFrame: (now: number) => animationFrameCallback?.(now),
     presentedFrame: (now: number, mediaTime: number) =>
       videoFrameCallback?.(now, { mediaTime } as VideoFrameCallbackMetadata),
@@ -195,6 +199,10 @@ describe("PreviewPlayer", () => {
     expect(screen.getByLabelText("Canonical composited preview canvas")).toBeInTheDocument();
     expect(screen.queryByLabelText("Source video preview")).not.toBeInTheDocument();
     await waitFor(() => expect(CanonicalPreviewAdapter).toHaveBeenCalled());
+    expect(CanonicalPreviewAdapter).toHaveBeenCalledWith(
+      expect.any(HTMLCanvasElement),
+      expect.objectContaining({ mediaPool: expect.any(SequentialPreviewMediaController) }),
+    );
     const adapter = vi.mocked(CanonicalPreviewAdapter).mock.results[0]?.value as {
       configure: ReturnType<typeof vi.fn>;
       setPresentationViewport: ReturnType<typeof vi.fn>;
@@ -595,6 +603,7 @@ describe("PreviewPlayer", () => {
     act(() => clock.animationFrame(150));
 
     await waitFor(() => expect(engine.renderFrame).toHaveBeenLastCalledWith(100));
+    expect(clock.play).toHaveBeenCalledTimes(1);
   });
 
   it("does not move backward when presented-frame callbacks recover", async () => {
