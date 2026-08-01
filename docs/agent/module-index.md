@@ -80,7 +80,7 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/electron/ipc/post-production.ts`,
   `apps/desktop/electron/ipc/preview.ts`,
   `apps/desktop/electron/ipc/projects.ts`,
-  `apps/desktop/electron/ipc/recording.ts`,
+  `apps/desktop/electron/ipc/recording-v4.ts`,
   `apps/desktop/electron/ipc/render.ts`, `apps/desktop/electron/ipc/secrets.ts`,
   `apps/desktop/electron/ipc/settings.ts`,
   `apps/desktop/electron/ipc/simulator.ts`,
@@ -93,53 +93,37 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/electron/ipc/legacy-command.ts`.
 - Renderer IPC facades: `apps/desktop/src/ipc/*.ts`.
 
-### Strict Recording V3 And V2 Compatibility
+### Recording V4
 
-- Production contract: `packages/shared-types/src/recording-v3.ts`.
-- Admission and lifecycle:
-  `apps/desktop/electron/ipc/recording-native-preflight.ts`,
-  `apps/desktop/electron/ipc/recording-native-browser-surface.ts`,
-  `apps/desktop/electron/ipc/recording-native-platform-session.ts`, and
-  `apps/desktop/electron/ipc/recording-strict-browser-lifecycle.ts`. The browser
-  surface owns post-navigation page zoom and exposes its input-coordinate
-  scale; `apps/desktop/electron/ipc/legacy/story-runner.ts` applies that scale
-  when dispatching pointer input. `apps/desktop/electron/ipc/smooth-scroll.ts`
-  runs compositor-paced scroll animation in the page instead of driving frames
-  over host IPC.
-- Native backends and protocols:
-  `apps/desktop/electron/ipc/macos-screen-capture-backend.ts`,
-  `apps/desktop/electron/ipc/windows-capture-backend.ts`,
-  `apps/desktop/electron/ipc/windows-capture-protocol.ts`, and
-  `apps/desktop/native/{macos-screen-capture,windows-capture}/`. The native MP4
-  writers live in `NativeMasterWriter.swift` and `native_mp4_writer.{hpp,cpp}`.
-  Native start contracts distinguish expected physical surface dimensions from
-  encoder output dimensions; keep the TypeScript and native protocol fields in
-  sync.
-- Bundle and verification data plane:
-  `apps/desktop/electron/ipc/recording-native-master-bundle.ts`,
-  `apps/desktop/electron/ipc/recording-bundle.ts`,
-  `apps/desktop/electron/ipc/recording-cadence-verifier.ts`,
-  `apps/desktop/electron/ipc/recording-quality-verifier.ts`, and
-  `apps/desktop/electron/ipc/recording-discovery.ts`. Strict quality sampling
-  aligns encoded frames to action references within the lifecycle before the
-  verifier applies the contract thresholds. V3 action sidecars must include a
-  completed encoded-media clock and output-pixel target coordinates; otherwise
-  the renderer rejects them and post-production cannot build cursor tracks.
-- V2 compatibility only: `packages/shared-types/src/recording-v2.ts`,
-  `recording-certification-catalog.ts`, `capture-backend-v2-guard.ts`,
-  `browser-capture-backend-v2.ts`, `recording-frame-ring.ts`, and
-  `recording-master-pipeline.ts`.
-- Discovery, retention, and diagnostics:
-  `apps/desktop/electron/ipc/recording-discovery.ts`,
-  `apps/desktop/electron/ipc/recording-evidence-retention.ts`,
-  `apps/desktop/electron/ipc/recording-failed-bundle-retention.ts`, and
-  `apps/desktop/electron/ipc/recording-failed-bundle-actions.ts`.
-- Renderer policy/result integration:
-  `apps/desktop/src/state/output-prefs.ts`,
-  `apps/desktop/src/state/recorder.ts`,
-  `apps/desktop/src/features/recorder/recording-view.tsx`,
-  `apps/desktop/src/ipc/recording-failure.ts`, and
-  `apps/desktop/src/ipc/recording-master.ts`.
+- Canonical contract: `packages/shared-types/src/recording-v4.ts`.
+- Setup and lifecycle:
+  `apps/desktop/electron/ipc/recording-v4.ts`,
+  `recording-v4-coordinator.ts`, `recording-v4-channel.ts`,
+  `recording-v4-journal.ts`, `recording-v4-browser-surface.ts`, and
+  `recording-v4-automation-surface.ts`. The browser surface owns
+  post-navigation zoom and its input-coordinate scale; the story runner applies
+  that scale when dispatching pointer input.
+- Platform sessions and backends:
+  `recording-v4-platform-session.ts`, `macos-recording-v4-backend.ts`, and
+  `windows-recording-v4-backend.ts`.
+- Bundle, quality, discovery, and diagnostics:
+  `recording-v4-bundle.ts`, `recording-v4-runtime-quality.ts`,
+  `recording-v4-verifier.ts`, `recording-discovery.ts`, and
+  `recording-observability.ts`. Completed bundles require canonical action and
+  cursor sidecars.
+- Native macOS ownership:
+  `HelperProtocol.swift`, `RecordingV4Evidence.swift`,
+  `RecordingV4Writer.swift`, `RecordingV4Microphone.swift`, and
+  `CaptureEngine.swift` under
+  `apps/desktop/native/macos-screen-capture/Sources/ScreenCaptureCore/`.
+- Native Windows ownership:
+  `protocol.hpp`, `capture_session.{hpp,cpp}`, `capture_types.hpp`, and
+  `native_mp4_writer.{hpp,cpp}` under
+  `apps/desktop/native/windows-capture/src/`.
+- Renderer ownership:
+  `apps/desktop/src/ipc/recording-v4.ts`,
+  `apps/desktop/src/features/recorder/use-recording-v4-session.ts`, and
+  `apps/desktop/src/features/recorder/recording-view.tsx`.
 
 ## DSL, Capture, Render, Export
 
@@ -152,24 +136,28 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/electron/ipc/interaction-readiness.ts`, and runner integration in
   `apps/desktop/electron/ipc/legacy/story-runner.ts`.
 - Recorded action/cursor timing crosses host and renderer:
-  `apps/desktop/electron/ipc/action-timeline.ts`,
+  `packages/shared-types/src/recording-v4.ts`,
+  `apps/desktop/electron/ipc/automation-action.ts`,
   `apps/desktop/electron/ipc/cursor-timing.ts`,
   `apps/desktop/electron/ipc/legacy/story-runner.ts`,
+  `apps/desktop/electron/ipc/recording-v4-automation-surface.ts`,
+  `apps/desktop/src/ipc/recording-v4-sidecars.ts`,
   `apps/desktop/src/ipc/actions.ts`,
+  `apps/desktop/src/features/post-production/state/build-timeline-from-story.ts`,
   `apps/desktop/src/features/post-production/state/virtual-cursor-scheduler.ts`,
+  `apps/desktop/src/features/post-production/export-compositor/recording-v4-cursor.ts`,
   and `apps/desktop/src/features/post-production/preview/virtual-cursor-path.ts`.
-- Recording diagnostics use typed JSONL V2 events from
+- Recording diagnostics use typed JSONL V4 events from
   `apps/desktop/electron/ipc/recording-observability.ts`, local stream
   rotation/export from `apps/desktop/electron/ipc/log-store.ts`, and the
   session/process reader in `apps/desktop/scripts/recording-diagnostics.mjs`.
-  The legacy recorder emits only events that match its current lifecycle;
   `hostLog` remains for general Electron and simulator diagnostics.
 - Browser picker and authoring sidecars:
   `apps/desktop/src/features/editor/`, `apps/desktop/src/ipc/picker.ts`,
   `apps/desktop/electron/ipc/picker.ts`.
 - Capture/recording/render/export host paths:
   `apps/desktop/electron/ipc/capture.ts`,
-  `apps/desktop/electron/ipc/recording.ts`,
+  `apps/desktop/electron/ipc/recording-v4.ts`,
   `apps/desktop/electron/ipc/render.ts`,
   `apps/desktop/electron/ipc/export.ts`,
   `apps/desktop/electron/ipc/export-compositor-host.ts`,
@@ -242,12 +230,12 @@ Use this for task routing after reading the short root guide.
 
 - Shared package exports: `packages/shared-types/src/index.ts`.
 - IPC compatibility surface: `packages/shared-types/src/ipc.ts`.
-- Recording V3 preflight, cadence, quality, bundle, result, event, and V2/V3
-  reader contracts: `packages/shared-types/src/recording-v3.ts`, exported as
-  `@storycapture/shared-types/recording-v3`.
-- Recording V2 policy, backend, evidence, bundle, result, and compatibility
-  contracts: `packages/shared-types/src/recording-v2.ts`, exported as
-  `@storycapture/shared-types/recording-v2`.
+- Recording V4 profile, cadence, quality, bundle, result, action, cursor, and
+  event contracts: `packages/shared-types/src/recording-v4.ts`, exported as
+  `@storycapture/shared-types/recording-v4`.
+- Post-production composition contracts:
+  `packages/shared-types/src/export-composition.ts`, exported as
+  `@storycapture/shared-types/export-composition`.
 - Public `WebAccountInfo` is defined by `packages/shared-types/src/ipc.ts` and
   re-exported from `packages/shared-types/src/index.ts`;
   `packages/shared-types/src/web-account.ts` is currently not exported.
@@ -255,17 +243,13 @@ Use this for task routing after reading the short root guide.
   `packages/shared-types/src/browser-presets.ts`.
 - Generated effect types:
   `packages/shared-types/src/generated/effects.ts`.
-- Authoritative recording synchronization: `apps/desktop/electron/ipc/action-landmarks.ts`
-  samples cursor/input/presentation state only at committed media frames;
-  `cursor-sync-mode.ts` resolves the internal `legacy`, `shadow`, and `unified`
-  rollout modes.
-  Frame/PTS arithmetic remains owned by
-  `apps/desktop/electron/ipc/recording-media-clock.ts`.
-- Source-bound post-production timing: `state/source-timeline-map.ts` is the
-  shared mapper for video, cursor, audio, preview, and export;
-  `state/cursor-preset-reflow.ts` owns optional exact-deficit holds and atomic
-  sync-group reflow.
-- Presented preview state: `preview/presented-media-clock.ts` and
-  `preview/preview-player.tsx` use decoded/presented frames for source-bound
-  overlays. Export parity lives in
+- Authoritative recording synchronization is carried by the required V4 action
+  and cursor sidecars loaded through `apps/desktop/src/ipc/recording-v4-sidecars.ts`.
+- Source-bound post-production timing uses
+  `state/build-timeline-from-story.ts`, `state/source-timeline-map.ts`, and
+  `state/cursor-preset-reflow.ts` for video, cursor, audio, and sync-group
+  reflow; `export-compositor/recording-v4-cursor.ts` owns export sampling.
+- Presented preview state uses `preview/presented-media-clock.ts`,
+  `preview/sequential-preview-media-controller.ts`, and
+  `preview/preview-player.tsx` for source-bound overlays. Export parity lives in
   `export-compositor/export-compositor-app.tsx` and the Electron export planner.

@@ -47,11 +47,10 @@ migrations, generated files, or release tooling.
 - Electron Builder packages the ScreenCaptureKit helper at
   `resources/native/macos/storycapture-screen-capture-helper` and the WGC helper
   at `resources/native/windows/${arch}/storycapture-wgc.exe`.
-- `pnpm --dir apps/desktop run test:e2e:recording-v3-helper` builds an unpacked
-  package. The macOS verifier runs strict `codesign` and V2/V3 capability
-  handshakes; the Windows verifier requires valid Authenticode, optionally
-  checks the publisher, and probes the V3 hardware H.264 contract. The
-  V2-named command remains a compatibility alias.
+- `pnpm --dir apps/desktop run test:e2e:recording-v4-helper` builds an unpacked
+  package. The macOS verifier runs strict `codesign` and the V4 protocol smoke;
+  the Windows verifier requires valid Authenticode, optionally checks the
+  publisher, and probes the V4 native 1080p60 capability contract.
 - Packaged export verification is
   `pnpm --dir apps/desktop run test:e2e:export`; its main-process harness is
   `apps/desktop/electron/ipc/export-e2e-smoke.ts`, and its launcher is
@@ -75,16 +74,13 @@ migrations, generated files, or release tooling.
 - For signing secrets and missing-secret behavior, read `docs/CREDENTIALS.md`
   first.
 
-### Recording V3 Release Controls And V2 Compatibility
+### Recording V4 Runtime And Diagnostics
 
-Recording V4 is the development-only candidate write path. Do not remove V2/V3
-or call V4 release-ready until both packaged platform matrices pass.
+Recording V4 is the sole recording engine. Startup uses the built-in capture
+policy plus runtime helper, permission, target, encoder, storage, and warmup
+checks; it does not read an activation credential or fall back to another
+recorder.
 
-- `STORYCAPTURE_ENABLE_RECORDING_V4=1` enables the internal host route. There is
-  no runtime fallback inside an active V4 take.
-- `STORYCAPTURE_RECORDING_V4_CERTIFICATION_PATH` must point to validated
-  platform calibration and quality evidence before the native platform factory
-  can initialize. Do not substitute synthetic evidence for release gates.
 - V4 records only its host-owned author-preview BrowserWindow. The coordinator
   owns journal, heartbeat, automation action timing, native helper lifecycle,
   verification, and exactly-once terminal publication across renderer reloads.
@@ -96,39 +92,27 @@ or call V4 release-ready until both packaged platform matrices pass.
   `source_updates` counts non-held ledger entries, not every source callback;
   multiple callbacks inside one output slot may supersede each other.
 - Runtime V4 quality uses `recording-v4-runtime-quality.ts` for marker-free
-  author content. Deterministic certification fixtures continue to use their
-  declared marker bounds and chroma sample manifest.
+  author content. Deterministic fixtures use their declared marker bounds and
+  chroma sample manifest.
 - Native helper resolution must use `isPackagedRuntime(app)`. The generated
   `.electron-dev` bundle is a development runtime and loads helpers from the
   source build even though Electron reports `app.isPackaged` as true.
-- `test:e2e:recording-v4-live` validates all required 60-second success/fault
-  cases; `test:e2e:recording-v4-soak` validates both ten-minute cases. Set
+- `test:e2e:recording-v4-helper` builds the unpacked application and verifies
+  packaged helper signing, protocol, and V4 capabilities. It does not exercise
+  live capture, encoder creation, MP4 finalization/full decode, or sustained
+  quality.
+- `diagnose:recording-v4-live` inspects the 60-second success/fault matrix;
+  `diagnose:recording-v4-soak` inspects both ten-minute cases. Set
   `STORYCAPTURE_RECORDING_V4_EVIDENCE_DIR` to a retained directory containing
   `<platform>-<mode>-matrix.json` plus every referenced completed or diagnostic
-  bundle. The validator writes `<platform>-<mode>-certification-summary.json`.
+  bundle. The diagnostic writes `<platform>-<mode>-diagnostic-summary.json`.
 - The matrix must set `package_verified: true` and retain OS, hardware, GPU,
   helper, app, cadence, bitrate, decode/quality, requested-audio drift, and
-  failure evidence. Encoder envelopes and final audio tolerances may only be
-  set from passing macOS and Windows evidence with documented headroom.
-- The macOS gate verifies packaged-helper integrity with ad-hoc signing and does
-  not require Apple Developer ID or Team ID. Windows keeps its Authenticode
-  gate. A missing evidence directory, platform runner, or failed scenario
-  blocks release and P8 cleanup.
-
-- Production Strict V3 is fail-closed from per-take helper/protocol, permission,
-  hardware encoder, storage, target-readiness, cadence, artifact, and visual
-  evidence. It does not require a machine certification catalog entry.
-- macOS strict capture configures the hardware H.264 writer for a high-quality
-  master and preflight reserves ten-minute storage at the matching 100 Mbps
-  ceiling. Keep writer tuning and the reservation estimate synchronized.
-- `BUNDLED_RECORDING_CERTIFICATION_TIERS` and
-  `STORYCAPTURE_DISABLE_RECORDING_TIER_IDS` apply only to legacy V2 admission.
-- Package smoke verifies signing/protocol/capabilities, not live capture,
-  encoder creation, MP4 finalization/full decode, or sustained quality. Release
-  acceptance still requires macOS TCC capture, a Windows SDK/WGC hardware
-  runner, 60-second and ten-minute takes, and packaged `wikipedia-navigation`
-  with CFR/decode/cadence/quality/artifact/discovery evidence.
-- Failed Strict bundles remain inside `<project>/exports`, default to seven-day
+  failure evidence. The macOS diagnostic accepts ad-hoc helper signing and does
+  not require Apple Developer ID or Team ID; Windows keeps Authenticode.
+  Missing or failed diagnostic evidence produces a failed diagnostic result but
+  does not control V4 availability or block a release.
+- Failed V4 bundles remain inside `<project>/exports`, default to seven-day
   retention, and may be manually deleted only after validation as a contained
   `quality_failed` bundle.
 

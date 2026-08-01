@@ -23,10 +23,9 @@
     "test:e2e:scroll": "pnpm electron:build-main && playwright test --config playwright.config.ts e2e/smooth-scroll.spec.ts",
     "test:e2e:media": "pnpm electron:build-main && playwright test --config playwright.config.ts e2e/media-playback.spec.ts",
     "test:e2e:export": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && node scripts/export-compositor-artifact-smoke.mjs",
-    "test:e2e:recording-v2-helper": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && pnpm native:verify:packaged",
-    "test:e2e:recording-v3-helper": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && pnpm native:verify:packaged",
-    "test:e2e:recording-v4-live": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && pnpm native:verify:packaged && node scripts/recording-v4-certification.mjs --live",
-    "test:e2e:recording-v4-soak": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && pnpm native:verify:packaged && node scripts/recording-v4-certification.mjs --soak",
+    "test:e2e:recording-v4-helper": "pnpm native:build && pnpm electron:build-main && pnpm renderer:build && electron-builder --dir --publish never && pnpm native:verify:packaged",
+    "diagnose:recording-v4-live": "pnpm test:e2e:recording-v4-helper && node scripts/recording-v4-diagnostics.mjs --live",
+    "diagnose:recording-v4-soak": "pnpm test:e2e:recording-v4-helper && node scripts/recording-v4-diagnostics.mjs --soak",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit"
   },

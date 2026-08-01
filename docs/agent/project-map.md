@@ -1,8 +1,7 @@
 # Project Map
 
 Use this as the first repo map before opening broad source files. `AGENTS.md`
-is the root agent guide; `CLAUDE.md` symlinks to it, and `GEMINI.md` resolves
-through `CLAUDE.md`.
+is the root agent guide; `CLAUDE.md` and `GEMINI.md` symlink directly to it.
 
 ## Workspace
 
@@ -37,8 +36,9 @@ through `CLAUDE.md`.
 
 - `packages/story-dsl`: `.story` AST vocabulary and CodeMirror language support.
   Runtime parsing/simulation still lives in desktop IPC/host code.
-- `packages/shared-types`: browser presets, IPC compatibility types, Recording
-  V2 contracts, web account types, and checked-in generated effect types.
+- `packages/shared-types`: browser presets, IPC compatibility types, canonical
+  Recording V4 bundle/action/cursor contracts, web account types, and checked-in
+  generated effect types.
 - `packages/ui`: shared tokens, `claude-design` CSS, and `Sc*` primitives.
 - `packages/config`: shared TypeScript base config.
 - `packages/glob-compat`, `packages/lodash-isequal-compat`, and

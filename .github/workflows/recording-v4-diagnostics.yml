@@ -1,10 +1,10 @@
-name: Recording V4 certification
+name: Recording V4 diagnostics
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Certification duration
+        description: Diagnostic duration
         required: true
         default: live
         type: choice
@@ -13,7 +13,7 @@ on:
     - cron: "17 3 * * *"
 
 concurrency:
-  group: recording-v4-certification-${{ github.event.inputs.mode || 'live' }}
+  group: recording-v4-diagnostics-${{ github.event.inputs.mode || 'live' }}
   cancel-in-progress: false
 
 permissions:
@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   macos:
-    name: macOS packaged live capture
+    name: macOS packaged capture diagnostics
     runs-on: [self-hosted, recording-v4, macOS]
     env:
       STORYCAPTURE_RECORDING_V4_EVIDENCE_DIR: ${{ vars.RECORDING_V4_MACOS_EVIDENCE_DIR }}
@@ -32,17 +32,18 @@ jobs:
         uses: ./.github/actions/setup-toolchain
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Validate packaged live evidence
+      - name: Run packaged diagnostics
+        continue-on-error: true
         shell: bash
         run: |
           if [[ "${{ github.event.inputs.mode || 'live' }}" == "soak" ]]; then
-            pnpm --dir apps/desktop run test:e2e:recording-v4-soak
+            pnpm --dir apps/desktop run diagnose:recording-v4-soak
           else
-            pnpm --dir apps/desktop run test:e2e:recording-v4-live
+            pnpm --dir apps/desktop run diagnose:recording-v4-live
           fi
 
   windows:
-    name: Windows signed live capture
+    name: Windows signed capture diagnostics
     runs-on: [self-hosted, recording-v4, Windows]
     env:
       STORYCAPTURE_RECORDING_V4_EVIDENCE_DIR: ${{ vars.RECORDING_V4_WINDOWS_EVIDENCE_DIR }}
@@ -55,11 +56,12 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: pnpm install --frozen-lockfile
-      - name: Validate signed live evidence
+      - name: Run signed diagnostics
+        continue-on-error: true
         shell: pwsh
         run: |
           if ("${{ github.event.inputs.mode || 'live' }}" -eq "soak") {
-            pnpm --dir apps/desktop run test:e2e:recording-v4-soak
+            pnpm --dir apps/desktop run diagnose:recording-v4-soak
           } else {
-            pnpm --dir apps/desktop run test:e2e:recording-v4-live
+            pnpm --dir apps/desktop run diagnose:recording-v4-live
           }

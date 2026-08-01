@@ -60,10 +60,10 @@ async function loadEvents(input) {
       if (!line) continue;
       try {
         const event = JSON.parse(line);
-        if (event?.schema_version !== 2 || typeof event.event !== "string") {
+        if (event?.schema_version !== 4 || typeof event.event !== "string") {
           parseIssues.push({
             code: "invalid_schema",
-            message: `${path.basename(file)}:${index + 1} is not a v2 recording event`,
+            message: `${path.basename(file)}:${index + 1} is not a V4 recording event`,
           });
         } else if (event.event === "recording.legacy") {
           parseIssues.push({

@@ -15,22 +15,21 @@
   changes.
 - Recording diagnostic tests:
   `pnpm --dir apps/desktop exec vitest run electron/ipc/recording-observability.test.ts electron/ipc/recording-diagnostic-reader.test.ts electron/ipc/recording-spike-trace.test.ts electron/ipc/logs.test.ts`.
-- Recording V3 packaged helper gate:
-  `pnpm --dir apps/desktop run test:e2e:recording-v3-helper`. This builds an
-  unpacked package; macOS verifies codesign plus V2/V3 capability handshakes,
-  while Windows verifies Authenticode/publisher plus V3 native H.264
-  capabilities. `test:e2e:recording-v2-helper` remains a compatibility alias.
-  Neither command certifies live capture, MP4 finalization/full decode, or a
-  sustained release soak.
-- Recording V4 certification gates:
-  `pnpm --dir apps/desktop run test:e2e:recording-v4-live` and
-  `pnpm --dir apps/desktop run test:e2e:recording-v4-soak`. They package and
-  verify the platform helper, then validate the retained platform matrix under
+- Recording V4 packaged helper smoke:
+  `pnpm --dir apps/desktop run test:e2e:recording-v4-helper`. This builds an
+  unpacked package; macOS verifies codesign plus the V4 protocol, while Windows
+  verifies Authenticode/publisher plus the V4 native 1080p60 capability
+  contract. It does not exercise live capture or sustained quality.
+- Optional Recording V4 live/soak diagnostics:
+  `pnpm --dir apps/desktop run diagnose:recording-v4-live` and
+  `pnpm --dir apps/desktop run diagnose:recording-v4-soak`. They run the
+  packaged helper smoke, then inspect the retained platform matrix under
   `STORYCAPTURE_RECORDING_V4_EVIDENCE_DIR`. Evidence uses
   `package_verified: true`; macOS does not require Apple Developer ID, while
-  Windows retains Authenticode verification. The live matrix covers required
-  audio roles, reload/pause, display/GPU pressure and fail-closed faults; soak
-  requires ten-minute video-only and combined-audio takes.
+  Windows retains Authenticode verification. The live matrix covers requested
+  audio roles, reload/pause, display/GPU pressure, and fail-closed faults; soak
+  requires ten-minute video-only and combined-audio takes. Diagnostic results
+  do not enable, disable, or gate V4.
 - Cursor-sync Electron E2E: `pnpm --dir apps/desktop run test:e2e:cursor-sync`.
 - Smooth document/nested-container scroll Electron E2E:
   `pnpm --dir apps/desktop run test:e2e:scroll`.
@@ -93,7 +92,7 @@
   tests; no package test script is present.
 - Playwright Electron tests live in `apps/desktop/e2e`; the cursor-sync smoke
   launches the real Electron host plus a deterministic local paint fixture.
-  It does not replace operator-gated Screen Recording/TCC capture UAT.
+  It does not replace operator-run Screen Recording/TCC capture UAT.
 
 ## Focus Guidance
 
@@ -108,7 +107,7 @@
   `apps/desktop/electron/ipc/legacy/story-runner.test.ts`,
   `apps/desktop/src/features/post-production/preview/__tests__/virtual-cursor-path.test.ts`,
   and
-  `apps/desktop/src/features/post-production/__tests__/build-timeline-from-story.test.ts`.
+  `apps/desktop/src/features/post-production/__tests__/build-timeline-recording-v4.test.ts`.
 - Recording reload/channel lifecycle changes: focus
   `apps/desktop/electron/channel-sequence.test.ts`,
   `apps/desktop/electron/ipc/legacy/story-runner.test.ts`, and
@@ -119,25 +118,19 @@
   story-runner tests, plus the renderer session/lifecycle tests before the full
   desktop suite. Run the Swift package tests on macOS and the CMake native tests
   on Windows when their sources change.
-- Strict Recording V3 changes: focus `recording-v3-contract.test.ts`,
-  `recording-native-{preflight,browser-surface,platform-session,master-bundle}.test.ts`,
-  cadence/quality/bundle/discovery tests, both native backend/protocol suites,
-  recorder lifecycle, and post-production timeline discovery before the full
-  desktop suite. For V2 compatibility changes, also run the V2 contract,
-  backend guard, certification catalog, browser backend, frame-ring, and master
-  pipeline tests.
 - macOS native capture changes: run the macOS backend tests, native helper
   build/tests when the active Swift toolchain supplies `XCTest`, and the
-  packaged helper gate on macOS. The package gate is not a ScreenCaptureKit/TCC
-  live-capture certification.
+  packaged helper smoke on macOS. The package smoke is not a ScreenCaptureKit/
+  TCC live-capture diagnostic.
 - Windows native capture changes: run the Windows backend, protocol, and
-  packaging tests plus the packaged helper gate on a Windows runner. Live WGC,
+  packaging tests plus the packaged helper smoke on a Windows runner. Live WGC,
   SDK/driver hardware encoding, Authenticode, and DPI/multi-monitor behavior
   require the actual target environment.
-- Release acceptance additionally requires real macOS Screen Recording/TCC and
-  Windows WGC takes, 60-second and ten-minute sustained captures (held static
-  frames are valid), and the packaged `wikipedia-navigation` flow. These are
-  environment gates, not replacements for the focused suites above.
+- Optional platform diagnostics use real macOS Screen Recording/TCC and Windows
+  WGC takes, 60-second and ten-minute sustained captures (held static frames are
+  valid), and the packaged `wikipedia-navigation` flow. They provide quality
+  evidence but do not block V4 or a release and do not replace the focused
+  suites above.
 - Project registry/atomic persistence changes: focus
   `apps/desktop/electron/ipc/json-store.test.ts` and
   `apps/desktop/electron/ipc/legacy/projects.test.ts`.

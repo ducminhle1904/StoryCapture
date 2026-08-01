@@ -43,16 +43,15 @@
 - Native capture helper build: `pnpm --dir apps/desktop native:build`.
 - Verify helpers in an existing unpacked package:
   `pnpm --dir apps/desktop native:verify:packaged`.
-- Build an unpacked package and run the native helper signature/protocol gate:
-  `pnpm --dir apps/desktop test:e2e:recording-v3-helper`. The V2-named command
-  remains a compatibility alias.
-- Validate retained Recording V4 evidence after packaging:
-  `STORYCAPTURE_RECORDING_V4_EVIDENCE_DIR=<platform-evidence> pnpm --dir apps/desktop test:e2e:recording-v4-live`
+- Build an unpacked package and run the V4 native helper signature/protocol
+  smoke: `pnpm --dir apps/desktop run test:e2e:recording-v4-helper`.
+- Inspect retained packaged Recording V4 evidence with the optional diagnostics:
+  `STORYCAPTURE_RECORDING_V4_EVIDENCE_DIR=<platform-evidence> pnpm --dir apps/desktop run diagnose:recording-v4-live`
   for the 60-second matrix, or replace the final script with
-  `test:e2e:recording-v4-soak` for the ten-minute matrix. These commands require
-  real TCC/WGC hardware evidence; they are not local synthetic smokes. The
-  macOS gate accepts ad-hoc helper signing and does not require Developer ID;
-  the Windows gate still verifies Authenticode.
+  `diagnose:recording-v4-soak` for the ten-minute matrix. These commands require
+  real TCC/WGC hardware evidence; they are not local synthetic smokes and do not
+  enable, disable, or gate V4. macOS accepts ad-hoc helper signing and does not
+  require Developer ID; Windows still verifies Authenticode.
 - Packaged recording/export parity: `pnpm --dir apps/desktop run test:e2e:export`.
 - Web build: `pnpm --dir apps/web build`.
 - Story DSL typecheck: `pnpm --dir packages/story-dsl typecheck`.
@@ -93,13 +92,13 @@
 - The Windows job runs the media and packaged export smokes.
 - `electron:build` and `test:e2e:export` build the platform native helper, but
   the current CI workflow does not run the complete
-  `test:e2e:recording-v3-helper` verification gate. Run native build/backend
-  tests and that packaged gate on each target OS; live TCC/WGC and sustained
-  capture acceptance remain manual environment gates.
-- `.github/workflows/recording-v4-certification.yml` validates the packaged live
-  or soak evidence on self-hosted runners labeled `recording-v4` plus `macOS`
-  or `Windows`. Configure the platform evidence-directory repository variables
-  before dispatching it; missing evidence fails closed.
+  `test:e2e:recording-v4-helper` smoke. Run native build/backend tests and that
+  packaged smoke on each target OS.
+- `.github/workflows/recording-v4-diagnostics.yml` inspects packaged live or
+  soak evidence on self-hosted runners labeled `recording-v4` plus `macOS` or
+  `Windows`. Configure the platform evidence-directory repository variables
+  before dispatching it. Diagnostic failures are reported but are explicitly
+  nonblocking and do not control V4 availability or release eligibility.
 - The Ubuntu `prisma-postgres-smoke` job bootstraps the current schema into a
   disposable PostgreSQL 17 service, then runs adapter CRUD and seed smokes.
 

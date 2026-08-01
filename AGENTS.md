@@ -1,7 +1,7 @@
 # StoryCapture Agent Guide
 
 Lean entrypoint for coding agents. `AGENTS.md` is the source-of-truth guide;
-`CLAUDE.md` symlinks to it, and `GEMINI.md` resolves through `CLAUDE.md`.
+`CLAUDE.md` and `GEMINI.md` symlink directly to it.
 Edit `AGENTS.md` when updating agent guidance.
 
 ## Start Here
@@ -57,10 +57,9 @@ video.
   and simulator behavior is desktop IPC/host code, not a shared parser package.
 - `packages/shared-types` publicly exports browser presets, web account types,
   the checked-in IPC compatibility surface, and the JSON-safe post-production
-  composition/preflight/job and Recording V2/V3/V4 contracts. Recording V4
-  consumers use `@storycapture/shared-types/recording-v4`; V2/V3 remain until
-  the signed macOS and Windows V4 certification gates permit their removal;
-  consumers of
+  composition/preflight/job and canonical Recording V4 contracts. Recording
+  consumers use `@storycapture/shared-types/recording-v4`; completed bundles
+  require both action and cursor sidecars. Consumers of
   composition values use `@storycapture/shared-types/export-composition`, not
   the package-root barrel.
   `packages/shared-types/src/generated/effects.ts` is checked-in generated
@@ -148,57 +147,55 @@ file explicitly says otherwise.
   `apps/desktop/src/features/post-production/preview/preview-player.tsx`, and
   `apps/desktop/src/features/post-production/export-compositor/canonical-visual-engine.ts`.
 - Recorded action/cursor timing: read `docs/DOMAIN.md`,
-  `apps/desktop/electron/ipc/action-timeline.ts`,
-  `apps/desktop/electron/ipc/action-landmarks.ts`,
-  `apps/desktop/electron/ipc/cursor-sync-mode.ts`,
+  `packages/shared-types/src/recording-v4.ts`,
+  `apps/desktop/electron/ipc/automation-action.ts`,
   `apps/desktop/electron/ipc/cursor-timing.ts`,
   `apps/desktop/electron/ipc/legacy/story-runner.ts`,
-  `apps/desktop/src/ipc/actions.ts`, and
-  `apps/desktop/src/features/post-production/state/virtual-cursor-scheduler.ts`.
+  `apps/desktop/electron/ipc/recording-v4-automation-surface.ts`,
+  `apps/desktop/electron/ipc/recording-v4-coordinator.ts`,
+  `apps/desktop/src/ipc/recording-v4-sidecars.ts`,
+  `apps/desktop/src/ipc/actions.ts`,
+  `apps/desktop/src/features/post-production/state/build-timeline-from-story.ts`,
+  `apps/desktop/src/features/post-production/state/virtual-cursor-scheduler.ts`,
+  `apps/desktop/src/features/post-production/export-compositor/recording-v4-cursor.ts`,
+  and `apps/desktop/src/features/post-production/preview/virtual-cursor-path.ts`.
 - Recording lifecycle across renderer reloads: read
-  `apps/desktop/electron/channel-sequence.ts`, `apps/desktop/electron/preload.ts`,
-  `apps/desktop/electron/ipc/legacy/recording.ts`,
+  `apps/desktop/electron/ipc.ts`, `apps/desktop/electron/channel-sequence.ts`,
+  `apps/desktop/electron/ipc/recording-v4.ts`,
+  `apps/desktop/electron/ipc/recording-v4-coordinator.ts`,
+  `apps/desktop/electron/ipc/recording-v4-journal.ts`,
   `apps/desktop/electron/ipc/legacy/story-runner.ts`,
-  `apps/desktop/src/ipc/automation.ts`, and
+  `apps/desktop/src/ipc/recording-v4.ts`,
+  `apps/desktop/src/features/recorder/use-recording-v4-session.ts`, and
   `apps/desktop/src/features/recorder/recording-view.tsx`.
 - Recording V4: start with `packages/shared-types/src/recording-v4.ts`, then
   read `apps/desktop/electron/ipc/recording-v4-coordinator.ts`,
-  `recording-v4-platform-session.ts`, `recording-v4-automation-surface.ts`,
-  `recording-v4-runtime-quality.ts`, `recording-v4-verifier.ts`, and
-  `recording-v4-bundle.ts`. Platform adapters
+  `recording-v4-platform-session.ts`, `recording-v4-browser-surface.ts`,
+  `recording-v4-automation-surface.ts`, `recording-v4-runtime-quality.ts`,
+  `recording-v4-verifier.ts`, `recording-v4-bundle.ts`,
+  `recording-discovery.ts`, and `recording-observability.ts`. Platform adapters
   are `macos-recording-v4-backend.ts`, `windows-recording-v4-backend.ts`, and
-  `apps/desktop/native/`; for macOS cadence evidence read
-  `ScreenCaptureCore/RecordingV4Evidence.swift` and `NativeMasterWriter.swift`.
+  `apps/desktop/native/`; for macOS cadence evidence and media writing read
+  `ScreenCaptureCore/RecordingV4Evidence.swift` and `RecordingV4Writer.swift`.
   Helper path selection also depends on
   `apps/desktop/electron/runtime.ts`. Renderer ownership is in
   `apps/desktop/src/ipc/recording-v4.ts`,
   `features/recorder/use-recording-v4-session.ts`, and `recording-view.tsx`.
-  V4 remains development-only until both packaged live/soak gates pass; Apple
-  Developer ID is not required for the macOS gate. Use
-  `docs/agent/operations.md` for certification evidence and release controls.
-- Strict Recording V3: start with
-  `packages/shared-types/src/recording-v3.ts`, then read
-  `apps/desktop/electron/ipc/recording-native-preflight.ts`,
-  `apps/desktop/electron/ipc/recording-native-browser-surface.ts`,
-  `apps/desktop/electron/ipc/recording-native-platform-session.ts`,
-  `apps/desktop/electron/ipc/recording-strict-browser-lifecycle.ts`,
-  `apps/desktop/electron/ipc/recording-native-master-bundle.ts`,
-  `apps/desktop/electron/ipc/recording-bundle.ts`, and
-  `apps/desktop/electron/ipc/recording-quality-verifier.ts`. Native adapters are
-  `macos-screen-capture-backend.ts`, `windows-capture-backend.ts`, and
-  `apps/desktop/native/`. V3 admission uses runtime capability evidence, not the
-  certification catalog; read `recording-v2.ts`, `browser-capture-backend-v2.ts`,
-  and `recording-certification-catalog.ts` only for V2 compatibility. Use
-  `docs/agent/operations.md` for packaging, signing, live OS gates, and kill switches.
+  V4 is the sole unconditional recording engine, uses the built-in capture
+  profile, and requires canonical action and cursor sidecars.
 - Recording logs/diagnostics: read
   `apps/desktop/electron/ipc/recording-observability.ts`,
   `apps/desktop/electron/ipc/log-store.ts`, and
   `apps/desktop/scripts/recording-diagnostics.mjs`; use the reader command in
   `docs/agent/workflows.md`.
 - Source/timeline synchronization and presented-media playback: read
+  `apps/desktop/src/ipc/recording-v4-sidecars.ts`,
+  `apps/desktop/src/features/post-production/state/build-timeline-from-story.ts`,
   `apps/desktop/src/features/post-production/state/source-timeline-map.ts`,
   `apps/desktop/src/features/post-production/state/cursor-preset-reflow.ts`,
+  `apps/desktop/src/features/post-production/export-compositor/recording-v4-cursor.ts`,
   `apps/desktop/src/features/post-production/preview/presented-media-clock.ts`,
+  `apps/desktop/src/features/post-production/preview/sequential-preview-media-controller.ts`,
   `apps/desktop/src/features/post-production/preview/preview-player.tsx`, and
   `apps/desktop/src/features/post-production/preview/canonical-preview-adapter.ts`.
 - Web routes/API/data: read `apps/web/src/app`, `apps/web/src/app/api`,
@@ -210,7 +207,7 @@ file explicitly says otherwise.
   `apps/desktop/src/stores/*web*`.
 - Shared UI/design system: read `docs/CONVENTIONS.md`,
   `packages/ui/src/claude-design/README.md`,
-  `packages/ui/src/claude-design/tokens.css`,
+  `packages/ui/src/tokens.css`,
   `packages/ui/src/claude-design/primitives/`, and
   `apps/desktop/src/components/ui/`.
 - CI, release, signing, env, cron, Prisma migrations, and generated files:
@@ -227,17 +224,15 @@ file explicitly says otherwise.
   `docs/agent/testing.md`.
 - Packaged post-production export parity: `pnpm --dir apps/desktop run test:e2e:export`.
 - Packaged native capture helper gate:
-  `pnpm --dir apps/desktop run test:e2e:recording-v3-helper`; keep
-  `test:e2e:recording-v2-helper` for compatibility until V2 readers retire.
-- Recording V4 certification gates:
-  `pnpm --dir apps/desktop run test:e2e:recording-v4-live` and
-  `test:e2e:recording-v4-soak`; both require retained platform evidence and are
-  release blockers, not ordinary local smokes. macOS accepts ad-hoc helper
-  signing and does not require Apple Developer ID; Windows keeps Authenticode.
+  `pnpm --dir apps/desktop run test:e2e:recording-v4-helper`.
+- Optional Recording V4 live and soak diagnostics:
+  `pnpm --dir apps/desktop run diagnose:recording-v4-live` and
+  `diagnose:recording-v4-soak`; these inspect retained platform evidence and do
+  not block release.
 - Web Prisma commands live in `apps/web/package.json`: `db:generate`,
   `db:migrate`, `db:push`, and `db:seed`.
-- CI is `.github/workflows/ci.yml`; packaged V4 evidence validation is scheduled
-  separately by `.github/workflows/recording-v4-certification.yml` on labeled
+- CI is `.github/workflows/ci.yml`; optional V4 diagnostics are scheduled
+  separately by `.github/workflows/recording-v4-diagnostics.yml` on labeled
   self-hosted macOS and Windows hardware.
 
 ## Guardrails

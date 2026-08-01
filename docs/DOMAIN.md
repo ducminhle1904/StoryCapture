@@ -94,22 +94,21 @@ preserving step-id comments.
 
 ## Project And Sidecars
 
-StoryCapture stores source plus JSON sidecars near projects and recordings.
+StoryCapture stores source plus JSON sidecars and recording bundles inside each
+project.
 
 - `.story.targets.json`: primary and fallback targets keyed by step id.
 - `<story>.polish.json`: optional post-production intent edited in UI mode.
 - `.storycapture/output.json`: per-project output preferences.
-- `<recording>.actions.json`: action/timing events from a recording.
-  Version 2 action sidecars may include `cursor_timing`, `input_timing`, and
-  `cursor_motion_preset` so post-production can distinguish cursor travel,
-  target arrival, dwell, and semantic browser input. Consumers must keep v1
-  fallback behavior for sidecars that only have `t_start_ms`, `t_action_ms`,
-  and `t_end_ms`.
-  Version 3 adds encoded-video media-clock metadata, committed cursor paths,
-  input landmarks, and explicit presented/timeout/not-applicable outcomes.
-  The v1/v2 reader remains part of the compatibility contract.
-- `<recording>.trajectory.json`: cursor movement data.
-- `<recording>.steps.json`: step timing summaries.
+- `exports/recording-<session>.sc-recording/`: atomically published Recording V4
+  bundle containing `manifest.json`, `master/video.mp4`, evidence, native audio
+  artifacts when requested, and mandatory `sidecars/actions.json` plus
+  `sidecars/cursor.json`.
+- The action sidecar stores ordered automation phases, target geometry, input
+  landmarks, and pause-aware active-media timestamps. The cursor sidecar stores
+  normalized samples in the canonical 1280×720 coordinate space. Both must pass
+  the shared V4 validators and carry the same session id before publication or
+  post-production use.
 - Post-production graph snapshots: export/render graph JSON written before host
   export work.
 
@@ -143,61 +142,38 @@ Main files live under `apps/desktop/src/features/editor`.
 ## Automation And Recording
 
 The Electron host owns automation and capture behavior. Recording V4 is the
-development-only replacement path: one fixed verified profile captures only a
-host-owned author-preview surface at 1920×1080 exact CFR 60/1. The host owns
-preflight, native audio roles, cadence/held-frame ledgers, automation action
-time, verification, journal recovery, and atomic terminal publication across
-renderer reloads. Requested microphone/system audio is a hard quality contract;
-missing, discontinuous, or out-of-sync audio fails the take. The renderer sends
-intents and subscribes to snapshots/events; it does not capture production
-microphone audio or finalize the take.
+only engine: one fixed built-in profile captures a host-owned author-preview
+surface at 1920×1080 exact CFR 60/1. `recording-v4-coordinator.ts` owns the
+pause-aware active-media clock, session journal, subscriptions, recovery, and
+terminal state beyond renderer reloads. `recording-v4-platform-session.ts` owns
+preflight, the exact-size browser surface, native backend, requested audio
+roles, quality checks, and bundle finalization. The renderer sends intents and
+subscribes or reattaches; it does not select an engine, capture native audio, or
+publish terminal artifacts.
 
-Until packaged macOS and Windows live/soak evidence passes, the existing system
-still contains two compatibility policies and V4 remains internal. The macOS
-matrix does not require Apple Developer ID; Windows retains Authenticode:
-
-- **Standard** is `best_effort` and preserves the legacy recording path. It can
-  complete on uncertified hardware, but its result and UI must remain visibly
-  degraded rather than claiming Strict quality.
-- **Strict** requires exact nominal `60/1`, a compatible native helper, screen
-  permission, hardware H.264, storage reserve, target readiness, and passing
-  cadence/artifact/visual evidence. Admission uses runtime capability evidence,
-  not a machine certification tuple. Any runtime violation ends as
-  `quality_failed`; it never silently falls back to Standard.
-
-- Automation is BrowserWindow-based in the Electron host. It can launch an
-  offscreen browser window or attach to an author preview stream.
-- Standard recording uses the existing Electron capture/encode path. Strict V3
-  captures the dedicated exact-size browser window with ScreenCaptureKit on
-  macOS or Windows Graphics Capture on Windows and encodes hardware H.264
-  without transferring BGRA frames through Node. Pause time is excluded from
-  the native media timeline.
-- Strict writes `master/video.mp4` with H.264 and `nv12`/`yuv420p`, optional
-  `proxy/video.mp4`, PCM WAV audio sidecars, action timing, cadence/quality
-  evidence, and a sequence ledger. Its bundle also contains
-  `evidence/cadence.json`, `evidence/quality.json`,
-  `evidence/sequence-ledger.jsonl`, optional `sidecars/actions.json`, and
-  `manifest.json`. V3 lossless hashes are not applicable; acceptance uses full
-  decode, exact cadence/artifact checks, and bounded real-frame visual metrics.
-- Audio is optional and merged during encode when available. The Electron
-  preload special-cases recording start/stop so renderer-side browser
-  `MediaRecorder` microphone capture can be handed back to the host through
-  `electron_recording_set_audio`.
-- Recording lifecycle supports start/stop and pause/resume surfaces.
-- The automation runner returns `ready_to_finalize` after writing action/step
-  sidecars. The renderer then flushes `MediaRecorder` microphone data through
-  preload before the host performs the terminal bundle verification.
-- Completed V3 bundles are preferred during discovery and play their proxy when
-  present, otherwise the native H.264 master. Completed V2 bundles remain
-  readable for compatibility. A `quality_failed` bundle remains contained for
-  diagnostics, is not registered, uploaded, or opened in post-production, and
-  exposes retry/open/delete actions with seven-day retention.
-- The legacy recorder emits privacy-safe JSONL V2 diagnostics for session,
-  preview/backend, target/cursor/readiness, sidecar, cadence/audio, and terminal
-  events. Process/session ordering is monotonic; logging failure falls back
-  locally and never changes capture or encode outcomes.
-- Recording sidecars feed post-production cursor, zoom, callout, highlight, and
-  sound defaults.
+- The built-in runtime profile is unconditional. There is no activation flag,
+  external certification file, machine catalog, or fallback recording engine.
+- ScreenCaptureKit on macOS and Windows Graphics Capture on Windows capture and
+  encode native H.264 without transferring raw frames through Node. Pause time
+  is excluded from video, audio, action, and cursor media time.
+- Requested microphone or system audio is a hard quality contract. Missing,
+  discontinuous, or out-of-sync requested audio fails the take.
+- The coordinator records action events and cursor samples through the same
+  registered automation surface that owns the captured WebContents. Cursor
+  sampling is bounded to the capture pacing path, normalized to 1280×720, and
+  never runs a catch-up scheduler.
+- Finalization requires a fully decodable `master/video.mp4`, cadence/quality
+  evidence, and valid same-session `sidecars/actions.json` and
+  `sidecars/cursor.json`. Only then does the finalizer write `manifest.json` and
+  atomically publish the bundle.
+- Completed V4 bundles are registered and opened in post-production.
+  `quality_failed` bundles remain diagnostic-only and are never registered,
+  uploaded, or used as editable recordings.
+- Privacy-safe JSONL schema-v4 diagnostics cover session, backend, target,
+  cursor, cadence/audio, recovery, discovery, and terminal events. Logging
+  failure never changes capture or verification outcomes.
+- Canonical V4 sidecars feed post-production cursor, zoom, callout, highlight,
+  sound, and step-timing defaults.
 - Recorded automation treats `text-overlay` as a sequential, pause-aware and
   cancellable delay. It keeps capture active for the declared duration, records
   normal step start/end timing, and does not resolve a target, touch the DOM,
@@ -213,31 +189,27 @@ matrix does not require Apple Developer ID; Windows retains Authenticode:
   `wait-for-visible` and `assert-visible` use the same visibility pipeline.
   `drag` and `upload` remain outside synced cursor recording until the Electron
   runner implements those commands end to end.
-- Recording cursor synchronization is anchored to committed encoded frames,
-  not wall-clock callbacks. `recording-media-clock.ts` owns frame-to-PTS
-  conversion; `action-landmarks.ts` owns arrival/input/presentation landmarks;
-  `cursor-sync-mode.ts` owns rollout. The required ordering is cursor arrival
-  <= input action <= first post-input frame when presentation is applicable.
-  Before browser input, the runner requests a serialized frame commit from the
-  active capture session. A committed frame produces authoritative landmarks;
-  timeout, backpressure, capture failure, or encoder failure degrades to the
-  existing timing fallback without inventing frame PTS or blocking valid input.
-  Stop/cancel settles pending landmark waiters.
+- Recording cursor synchronization is anchored to the coordinator's monotonic
+  active-media clock, not renderer wall time. Action phases, target geometry,
+  semantic input timing, and cursor samples are appended in order; stop and
+  terminal publication wait for both atomic sidecar write queues.
 
-Operator-gated capture work still requires real macOS Screen Recording/TCC and
-Windows Graphics Capture verification; do not treat simulated protocol/backend
-tests or packaged helper smoke tests as equivalent to OS-level, multi-display,
-occlusion, audio, sustained-load, or release-soak certification.
+Real macOS Screen Recording/TCC and Windows Graphics Capture behavior is covered
+by the non-blocking live/soak diagnostic commands. Simulated protocol tests and
+packaged helper verification do not substitute for real OS, multi-display,
+occlusion, audio, or sustained-load diagnostics.
 
 ## Post-Production
 
 Main files live under `apps/desktop/src/features/post-production`.
 
-The editor loads story source, the latest recording where applicable, saved
-timeline layout JSON, action events, cursor trajectory, step timing, and
-optional polish data before building timeline tracks. Saved layout wins over
-generated bootstrap data; corrupt or unsupported layout falls back to bootstrap
-without crashing. The editor owns:
+The editor loads story source, the latest completed V4 recording, its canonical
+action and cursor sidecars, saved timeline layout JSON, and optional polish data
+before building timeline tracks. `src/ipc/recording-v4-sidecars.ts` validates
+both sidecars and their shared session id; `state/build-timeline-from-story.ts`
+derives source-bound timing and tracks. Saved layout wins over generated
+bootstrap data; corrupt or unsupported layout falls back to bootstrap without
+crashing. The editor owns:
 
 - `editor-shell.tsx`: primary route surface.
 - Timeline and track state: video, cursor, zoom, sound, annotation/highlight.
@@ -261,12 +233,13 @@ discovery is user-activated and cached for the renderer session; saved font
 metadata remains intact when access is denied or a face is missing, while the
 effective preview/export font falls back to bundled Geist.
 
-During recording bootstrap, `text-overlay` directives match `<recording>.steps.json`
-timing by step id and then by ordinal when no id is available. Each match creates
-a recording-bound annotation from the existing `caption` style: its start comes
-from the recorded step, its duration comes from the script, and its end is
-clamped to the recorded media. Missing or outside-media timing skips the overlay
-and produces one aggregated re-record warning instead of guessing placement.
+During recording bootstrap, `text-overlay` directives match step timing derived
+from canonical V4 action events by step id and then by ordinal when no id is
+available. Each match creates a recording-bound annotation from the existing
+`caption` style: its start comes from the recorded step, its duration comes from
+the script, and its end is clamped to the recorded media. Missing or
+outside-media timing skips the overlay and produces one aggregated re-record
+warning instead of guessing placement.
 Generated overlays carry the recording sync group, source revision, and source
 time map, so preview and export use the existing annotation/compositor path.
 Saved timeline edits are authoritative for the current source revision; a
@@ -275,11 +248,12 @@ annotations. Post-production edits never rewrite the `.story` source.
 
 Action-backed cursor clips support `None`, `Ring`, `Soft Pulse`, `Echo`, and
 `Press` click feedback with color and intensity presets. New generated clips
-use `Soft Pulse + Auto + Normal`; saved clips without the field normalize to
-the legacy `Ring + White + Normal` behavior. Feedback starts at action-sidecar
-input timing, is sampled only from playhead/source time, and uses the same
-bounded canonical Canvas primitives in Preview and export. Trajectory-only
-and PNG-sequence cursors do not infer clicks and keep the controls disabled.
+use `Soft Pulse + Auto + Normal`. Feedback starts from canonical action timing
+or cursor press transitions, is sampled only from playhead/source time, and uses
+the same bounded canonical Canvas primitives in Preview and export.
+`export-compositor/recording-v4-cursor.ts` owns interpolation, click moments,
+and normalized target bounds; PNG-sequence cursors do not infer clicks and keep
+the controls disabled.
 
 `computeGraph` emits the JSON-safe schema-v5 composition contract from
 `packages/shared-types/src/export-composition.ts`. Preview, export, and host
@@ -446,8 +420,12 @@ not a full project-file sync system.
   source revision, and source-to-timeline map. Group move/trim/delete and preset
   reflow are atomic; independent user overlays are not attached to the group.
 - Source-bound preview overlays advance from presented video frames, not RAF
-  wall time. Non-identity maps and holds are shared with export; preserve-full-
-  motion is opt-in and inserts only the exact cursor deficit.
+  wall time. `preview/sequential-preview-media-controller.ts` reuses the active
+  playback video and decoder, corrects small drift with playback rate, coalesces
+  overlapping requests, and reserves hard seeks for discontinuities or large
+  drift. Export retains its exact random-access media pool. Non-identity maps
+  and holds are shared with export; preserve-full-motion is opt-in and inserts
+  only the exact cursor deficit.
 - Graph schema v3 carries `source_time_map` on source nodes. Preview and the
   hidden export compositor share timeline-to-source mapping; non-identity maps
   require composition, and capture-bound audio is trimmed, silenced across

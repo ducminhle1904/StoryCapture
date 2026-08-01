@@ -88,7 +88,6 @@ Non-secret runtime toggles/URLs used by the Electron host:
 |---|---|
 | `STORYCAPTURE_WEB_URL` | Overrides the web companion base URL used by desktop web-sync/upload flows |
 | `STORYCAPTURE_DEBUG_UPDATER` | Enables updater debug behavior/logging in development diagnostics |
-| `STORYCAPTURE_DISABLE_RECORDING_TIER_IDS` | Comma-separated certified Recording V2 tier IDs to disable at runtime |
 
 Document any new desktop runtime env here even when it is not secret.
 

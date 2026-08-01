@@ -87,7 +87,7 @@ Desktop build entrypoints:
   helper before package-producing scripts.
 - `.electron-dev/` is the prepared development app directory.
 - There is no `electron-builder.yml`; Electron Builder configuration is inline
-  under `apps/desktop/package.json#build`.
+  under the `build` key in `apps/desktop/package.json`.
 
 The renderer still imports `@tauri-apps/api` and selected Tauri plugin packages
 as a compatibility API surface. Usage is not limited to `src/ipc`; imports also
@@ -167,76 +167,58 @@ Current non-plugin command ownership:
 | `ipc/preview.ts` | automation launch, preview stream, author preview lifecycle, viewport/url, back/forward/reload, author input, author snapshots |
 | `ipc/picker.ts` | author/general picker start, cancel, activity check, stamp step id |
 | `ipc/simulator.ts` | simulator start/step/cancel/promote fallback and dry-run start/cancel |
-| `ipc/recording.ts` | start/stop/pause/resume recording, host audio handoff, and validated failed-bundle deletion |
+| `ipc/recording-v4.ts` | create/start/pause/resume/stop/cancel sessions, snapshots, subscriptions, and action events |
 | `ipc/capture.ts` | capture target get/set/thumbnail and capture start/stop |
-| `ipc/post-production.ts` | workflow state, timeline load/save, recording actions/trajectory/step timing, presets, sound library |
+| `ipc/post-production.ts` | workflow state, timeline load/save, presets, and sound library |
 | `ipc/render.ts` | render cancel/list active/progress stream; direct enqueue is not a fake timer path |
 | `ipc/export.ts` | export presets, validation, AI-voice disclosure, run; `export_run` creates real weighted render jobs |
 | `ipc/ai.ts` | LSP requests, NL sessions/chat/diffs/regeneration, session rollup, TTS voices/generation/sync/cache |
 | `ipc/web-sync.ts` | web account/token, sync/upload status, OAuth, metadata sync queue, upload/cancel, recording status |
 | `ipc/updates.ts` | update check/install |
 
-Recording diagnostics are independent of recording control: the legacy host
-emits typed JSONL V2 events through `ipc/recording-observability.ts`, while
-`ipc/log-store.ts` owns redaction, rotation, and diagnostic-bundle inclusion.
-Logging is best-effort and cannot change the recording result it describes.
+Recording diagnostics are independent of recording control.
+`ipc/recording-observability.ts` emits typed, privacy-safe JSONL schema-v4
+events, while `ipc/log-store.ts` owns redaction, rotation, and diagnostic-bundle
+inclusion. Logging and the live/soak diagnostic commands are best-effort signals;
+they cannot select an engine or change the recording result they describe.
 
-Recording V4 is an internal, fail-closed candidate path defined by
-`packages/shared-types/src/recording-v4.ts`. `recording-v4-coordinator.ts` and
-its atomic journal own the session beyond renderer lifetime;
-`recording-v4-platform-session.ts` owns the exact-size author-preview surface,
-native backend and final bundle; `recording-v4-automation-surface.ts` ensures
-the story runner drives the same WebContents being captured. Renderer code
-sends intents and reattaches through `use-recording-v4-session.ts`; it does not
-own native finalization or microphone MediaRecorder state. Completed V4 bundles
-are the only recording artifacts admitted by the new discovery path, while
-failed bundles remain diagnostic-only. V2/V3 code remains until packaged live
-and soak certification passes on both platforms; the macOS gate does not
-require Apple Developer ID. V4 helper lookup uses `isPackagedRuntime(app)` so
-the generated `.electron-dev` app resolves source-built helpers while release
-bundles resolve helpers from Electron resources.
+Recording V4 is the only recording engine and contract. Its JSON-safe contract
+is `packages/shared-types/src/recording-v4.ts`; `electron/ipc.ts` installs the
+default platform factory and initializes recovery unconditionally.
+`recording-v4-coordinator.ts`, `recording-v4-channel.ts`, and the atomic journal
+own session state beyond renderer lifetime. `recording-v4-browser-surface.ts`
+owns the exact-size author-preview surface, while
+`recording-v4-automation-surface.ts` ensures the story runner drives the same
+WebContents being captured. `recording-v4-platform-session.ts` owns preflight,
+the built-in runtime profile, platform-backend selection, native audio roles,
+quality probing, and finalization. There is no environment activation flag,
+external certification catalog, or fallback recording engine.
+
+The coordinator stamps canonical action events and cursor samples from one
+pause-aware active-media clock and writes both sidecars atomically.
+`recording-v4-bundle.ts` requires valid, same-session
+`sidecars/actions.json` and `sidecars/cursor.json` before it writes the manifest
+and atomically publishes `exports/recording-<session>.sc-recording`.
+`recording-discovery.ts` admits only completed V4 bundles to project metadata;
+quality-failed bundles remain diagnostic-only. Renderer code sends intents and
+reattaches through `use-recording-v4-session.ts`; it never owns native capture,
+audio, finalization, or terminal publication. Helper lookup uses
+`isPackagedRuntime(app)` so generated development apps resolve source-built
+helpers while packaged apps resolve Electron resources.
 
 On Retina macOS displays, the V4 BrowserWindow stays at the exact 960×540
 logical capture surface required for a 1920×1080 native image while exposing a
 1280×720 CSS content viewport at 0.75 page zoom. Automation coordinates are
-therefore resolved against the desktop viewport without changing the native
-capture contract. Cadence `source_updates` counts only source frames represented
-by non-held ledger entries; source frames superseded inside one 60 Hz slot are
-not published as output updates. Runtime quality comparison excludes native
-rounded-window corners, measures p99 edge-spread growth across real high-
-contrast edges, and samples color only from stable interior regions; the
-marker-specific fixture verifier remains reserved for deterministic
-certification fixtures.
-
-Production Strict Recording uses the V3 contract in
-`packages/shared-types/src/recording-v3.ts`.
-`recording-native-preflight.ts` admits a take from runtime helper/protocol,
-screen permission, hardware H.264, storage, and policy evidence; it does not use
-the certification catalog. `recording-native-browser-surface.ts` owns the
-isolated exact-size BrowserWindow and native window identity,
-`recording-native-platform-session.ts` selects ScreenCaptureKit or Windows
-Graphics Capture, and `recording-strict-browser-lifecycle.ts` coordinates the
-take. Native helpers keep capture surfaces and H.264 encoding outside Node.
-
-The strict surface keeps Electron's logical window size, the native physical
-capture size, and the encoder output size as separate contract dimensions.
-Page zoom is applied after navigation so authored CSS viewport geometry fits
-the fixed native surface; story-runner pointer coordinates are mapped through
-that zoom before Electron input dispatch. Smooth scrolling runs inside the page
-on `requestAnimationFrame`; host IPC observes completion, freezes and resumes the
-page animation with the recording pause gate, but does not drive each animation
-frame. V3 action sidecars carry the completed encoded-media clock and
-map CSS target coordinates into output pixels so post-production can recreate
-the virtual cursor. Quality comparison searches a small temporal neighborhood
-around each action landmark before applying the fixed SSIM, edge-contrast, and
-color thresholds.
-
-`recording-native-master-bundle.ts`, the cadence/quality verifiers, and
-`recording-bundle.ts` independently probe/full-decode the MP4, validate evidence,
-copy action/audio sidecars, and atomically commit completed or diagnostic V3
-bundles. `recording-v2.ts`, `recording-certification-catalog.ts`,
-`capture-backend-v2-guard.ts`, `browser-capture-backend-v2.ts`, and the FFV1
-master pipeline remain compatibility surfaces, not production Strict admission.
+therefore resolved against the desktop viewport and cursor samples are
+normalized into the canonical 1280×720 coordinate space without changing the
+native capture contract. Cadence `source_updates` counts only source frames
+represented by non-held ledger entries; source frames superseded inside one
+60 Hz slot are not published as output updates. Runtime quality comparison
+excludes native rounded-window corners, measures p99 edge-spread growth across
+real high-contrast edges, and samples color only from stable interior regions.
+Native helpers keep capture surfaces, audio, cadence evidence, and H.264
+encoding outside Node through `macos-recording-v4-backend.ts` and
+`windows-recording-v4-backend.ts`.
 
 Plugin shims live under `ipc/plugin/*` and cover Tauri-compatible
 dialog/event/log/resource, fs, os/process, shell, store, updater, and
@@ -306,14 +288,12 @@ host handlers.
   plus CodeMirror language support. Runtime parsing is reached through desktop IPC
   (`apps/desktop/src/ipc/parse.ts`) and host handlers.
 - `@storycapture/shared-types`: public package exports are `.`, `./ipc`,
-  `./recording-v2`, `./recording-v3`, and `./export-composition`. Electron/Node
-  runtime consumers of Recording V2/V3 or composition
-  constants or validators use the self-contained `./export-composition`
-  `./recording-v2`, or `./recording-v3` subpath; the root `src/index.ts` barrel contains extensionless source
-  re-exports and is not directly Node ESM-safe for runtime value imports. The
-  root barrel otherwise exports IPC types/commands, browser presets,
-  `APP_PANIC_EVENT`, and the JSON-safe export composition/preflight/job
-  contract. `src/generated/effects.ts` is a checked-in
+  `./recording-v4`, and `./export-composition`. Electron/Node runtime consumers
+  use the self-contained `./recording-v4` and `./export-composition` subpaths;
+  the root `src/index.ts` barrel contains extensionless source re-exports and is
+  not directly Node ESM-safe for runtime value imports. The root barrel
+  otherwise exports IPC types/commands, browser presets, `APP_PANIC_EVENT`, and
+  the JSON-safe recording/export contracts. `src/generated/effects.ts` is a checked-in
   `ts-rs`-generated file in the package tree, but it is not currently exposed
   through the package export map or root barrel.
 - `@storycapture/ui`: shared token layer, `claude-design` CSS, and `Sc*`
@@ -416,16 +396,20 @@ installed. Production signing/notarization credentials are documented in
 `docs/CREDENTIALS.md`.
 - Native helper build and package verification use
   `pnpm --dir apps/desktop native:build`,
-  `pnpm --dir apps/desktop native:verify:packaged`, and the complete
-  `pnpm --dir apps/desktop test:e2e:recording-v3-helper` gate. The V2-named gate
-  remains a compatibility alias. The current CI workflow does not yet invoke the
-  complete helper gate.
-- Recording synchronization is split between the committed-frame media clock,
-  `ipc/action-landmarks.ts`, and the centralized `ipc/cursor-sync-mode.ts`
-  rollout resolver. The action sidecar writer stays compatible in shadow mode
-  and emits v3 only in unified mode.
+  `pnpm --dir apps/desktop native:verify:packaged`, and
+  `pnpm --dir apps/desktop test:e2e:recording-v4-helper`.
+- Operator diagnostics use
+  `pnpm --dir apps/desktop diagnose:recording-v4-live` and
+  `pnpm --dir apps/desktop diagnose:recording-v4-soak`. They collect real-host
+  evidence but are non-blocking diagnostics, not engine activation or release
+  admission gates.
+- Recording synchronization uses the coordinator's active-media clock for both
+  mandatory V4 action and cursor sidecars. Pause time is excluded consistently,
+  and bundle publication waits for both atomic sidecar write queues.
 - Post-production source timing is centralized in
-  `state/source-timeline-map.ts`; preview presented-frame scheduling and export
-  compositor seeking consume that mapper rather than maintaining separate
-  clocks. Timeline layout v2 persists maps, sync groups, source revisions, and
-  timing-model metadata.
+  `state/source-timeline-map.ts`. Preview uses
+  `preview/sequential-preview-media-controller.ts` to reuse the playback video
+  and decoder, correct small drift with playback rate, and reserve hard seeks
+  for discontinuities or large drift. Export keeps its exact random-access media
+  pool and compositor seeking. Timeline layout persists maps, sync groups,
+  source revisions, and timing-model metadata.
