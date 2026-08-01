@@ -56,6 +56,10 @@ export class RecordingV4JournalStore {
     }
   }
 
+  async remove(sessionId: string): Promise<void> {
+    await fs.rm(this.pathFor(sessionId), { force: true });
+  }
+
   async recoverInterrupted(): Promise<RecordingV4RecoveryRecord[]> {
     let entries: string[];
     try {

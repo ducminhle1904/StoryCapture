@@ -20,7 +20,7 @@ function completedManifest(): RecordingV4Bundle {
     average_bitrate_bps: 20_000_000,
     peak_bitrate_bps: 22_000_000,
     envelope: {
-      source: "live_calibration" as const,
+      source: "built_in_profile" as const,
       encoder_id: "hardware-h264",
       minimum_bitrate_bps: 16_000_000,
       target_bitrate_bps: 20_000_000,

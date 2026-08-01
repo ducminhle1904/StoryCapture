@@ -9,7 +9,7 @@ import {
 } from "./recording-v4-verifier";
 
 const envelope = {
-  source: "live_calibration" as const,
+  source: "built_in_profile" as const,
   encoder_id: "hardware-h264",
   minimum_bitrate_bps: 10_000_000,
   target_bitrate_bps: 20_000_000,
@@ -19,10 +19,10 @@ const envelope = {
 
 describe("Recording V4 verification", () => {
   it("selects an envelope only when calibrated safety headroom preserves the quality floor", () => {
-    expect(selectRecordingV4EncoderEnvelope({ source: "live_calibration", encoder_id: "hardware-h264",
+    expect(selectRecordingV4EncoderEnvelope({ source: "built_in_profile", encoder_id: "hardware-h264",
       minimum_required_bitrate_bps: 10_000_000, sustained_bitrate_bps: 25_000_000,
       peak_bitrate_bps: 30_000_000 }, 0.2)).toEqual(envelope);
-    expect(selectRecordingV4EncoderEnvelope({ source: "live_calibration", encoder_id: "hardware-h264",
+    expect(selectRecordingV4EncoderEnvelope({ source: "built_in_profile", encoder_id: "hardware-h264",
       minimum_required_bitrate_bps: 24_000_000, sustained_bitrate_bps: 25_000_000,
       peak_bitrate_bps: 30_000_000 }, 0.2)).toBeNull();
   });

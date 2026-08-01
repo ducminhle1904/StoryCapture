@@ -10,8 +10,6 @@ import {
 } from "./recording-v4-coordinator";
 import type { InvokeArgs, InvokeHandlers } from "./types";
 
-const DEVELOPMENT_FLAG = "STORYCAPTURE_ENABLE_RECORDING_V4";
-
 let platformSessionFactory: RecordingV4PlatformSessionFactory = () => {
   const error = new Error("Recording V4 native platform session is not configured.") as Error & {
     recordingV4FailureCode: "helper_unavailable";
@@ -20,18 +18,7 @@ let platformSessionFactory: RecordingV4PlatformSessionFactory = () => {
   throw error;
 };
 let coordinator: RecordingV4Coordinator | null = null;
-
-export function isRecordingV4DevelopmentRouteEnabled(): boolean {
-  return process.env.NODE_ENV !== "production" && process.env[DEVELOPMENT_FLAG] === "1";
-}
-
-function requireDevelopmentRoute(): void {
-  if (!isRecordingV4DevelopmentRouteEnabled()) {
-    throw new Error(
-      `Recording V4 is development-only; set ${DEVELOPMENT_FLAG}=1 in a non-production build.`,
-    );
-  }
-}
+let initialization: Promise<void> | null = null;
 
 function currentCoordinator(): RecordingV4Coordinator {
   coordinator ??= new RecordingV4Coordinator({
@@ -83,13 +70,21 @@ export function configureRecordingV4PlatformSessionFactory(
 }
 
 export async function initializeRecordingV4Ipc(): Promise<void> {
-  if (!isRecordingV4DevelopmentRouteEnabled()) return;
-  await currentCoordinator().initialize();
+  initialization ??= currentCoordinator().initialize();
+  try {
+    await initialization;
+  } catch (cause) {
+    const error = new Error("Recording V4 could not recover its session journal.", {
+      cause,
+    }) as Error & { recordingV4FailureCode: "journal_recovery_failed" };
+    error.recordingV4FailureCode = "journal_recovery_failed";
+    throw error;
+  }
 }
 
 export const recordingV4Handlers = {
   recording_v4_start: async (args, context) => {
-    requireDevelopmentRoute();
+    await initializeRecordingV4Ipc();
     const payload = objectArgs(args);
     const request = payload.args as StartRecordingV4Args | undefined;
     if (!request) throw new Error("Recording V4 start request is missing.");
@@ -104,8 +99,7 @@ export const recordingV4Handlers = {
     return session;
   },
   recording_v4_command: async (args) => {
-    requireDevelopmentRoute();
-    await currentCoordinator().initialize();
+    await initializeRecordingV4Ipc();
     const payload = objectArgs(args);
     return currentCoordinator().command(
       sessionId(payload.session),
@@ -113,14 +107,12 @@ export const recordingV4Handlers = {
     );
   },
   recording_v4_snapshot: async (args) => {
-    requireDevelopmentRoute();
-    await currentCoordinator().initialize();
+    await initializeRecordingV4Ipc();
     const payload = objectArgs(args);
     return currentCoordinator().snapshot(sessionId(payload.session));
   },
   recording_v4_subscribe: async (args, context) => {
-    requireDevelopmentRoute();
-    await currentCoordinator().initialize();
+    await initializeRecordingV4Ipc();
     const payload = objectArgs(args);
     return currentCoordinator().subscribe(
       sessionId(payload.session),
@@ -129,7 +121,7 @@ export const recordingV4Handlers = {
     );
   },
   recording_v4_action: async (args) => {
-    requireDevelopmentRoute();
+    await initializeRecordingV4Ipc();
     const payload = objectArgs(args);
     if (!payload.action || typeof payload.action !== "object") {
       throw new Error("Recording V4 action payload is missing.");

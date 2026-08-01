@@ -22,7 +22,7 @@ const encoder = {
   average_bitrate_bps: 38_000_000,
   peak_bitrate_bps: 45_000_000,
   envelope: {
-    source: "live_calibration" as const,
+    source: "built_in_profile" as const,
     encoder_id: "hardware-h264",
     minimum_bitrate_bps: 30_000_000,
     target_bitrate_bps: 40_000_000,

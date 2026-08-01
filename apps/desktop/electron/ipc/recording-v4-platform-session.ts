@@ -77,7 +77,7 @@ export interface RecordingV4QualityThresholds {
   color_channel_delta: number;
 }
 
-export interface RecordingV4CertificationEvidence {
+export interface RecordingV4RuntimeProfile {
   platform: "darwin" | "win32";
   calibration: RecordingV4EncoderCalibration;
   safety_headroom_ratio: number;
@@ -99,7 +99,7 @@ export interface RecordingV4NativeDriver {
 
 export interface RecordingV4PlatformDependencies {
   platform: "darwin" | "win32";
-  certification: RecordingV4CertificationEvidence;
+  runtimeProfile: RecordingV4RuntimeProfile;
   createDriver(input: RecordingV4PlatformSessionInput): Promise<RecordingV4NativeDriver>;
   storageProbe(workspacePath: string, requiredBytes: number): Promise<{ availableBytes: number }>;
   throughputProbe(workspacePath: string): Promise<number>;
@@ -155,8 +155,8 @@ class HostRecordingV4PlatformSession implements RecordingV4PlatformSession {
     let measuredWriteBytesPerSecond = 0;
     let encoder: RecordingV4Preflight["encoder"] = null;
     const envelope = selectRecordingV4EncoderEnvelope(
-      this.dependencies.certification.calibration,
-      this.dependencies.certification.safety_headroom_ratio,
+      this.dependencies.runtimeProfile.calibration,
+      this.dependencies.runtimeProfile.safety_headroom_ratio,
     );
     if (!envelope) failures.push("hardware_encoder_unavailable");
     else this.envelope = envelope;
@@ -231,7 +231,7 @@ class HostRecordingV4PlatformSession implements RecordingV4PlatformSession {
     this.input.publishCadence(native.cadence);
     const probe = await this.dependencies.artifactProbe(native.artifact_path);
     const quality = await this.dependencies.qualityProbe(
-      native.artifact_path, this.surfaceReference, this.dependencies.certification.quality,
+      native.artifact_path, this.surfaceReference, this.dependencies.runtimeProfile.quality,
     );
     const audioArtifacts = await this.dependencies.extractAudio(
       native.artifact_path, this.input.workspacePath, this.input.request.requested_audio_roles,
@@ -262,8 +262,8 @@ class HostRecordingV4PlatformSession implements RecordingV4PlatformSession {
 export function createRecordingV4PlatformSessionFactory(
   dependencies: RecordingV4PlatformDependencies,
 ): RecordingV4PlatformSessionFactory {
-  if (dependencies.platform !== dependencies.certification.platform) {
-    throw new Error("Recording V4 certification platform mismatch");
+  if (dependencies.platform !== dependencies.runtimeProfile.platform) {
+    throw new Error("Recording V4 runtime profile platform mismatch");
   }
   return (input) => new HostRecordingV4PlatformSession(input, dependencies);
 }
@@ -300,15 +300,26 @@ async function defaultQualityProbe(
   }
 }
 
-async function loadCertification(): Promise<RecordingV4CertificationEvidence> {
-  const certificationPath = process.env.STORYCAPTURE_RECORDING_V4_CERTIFICATION_PATH;
-  if (!certificationPath) throw new Error("Recording V4 certification evidence is not configured");
-  const value = JSON.parse(await fs.readFile(certificationPath, "utf8")) as RecordingV4CertificationEvidence;
-  if ((value.platform !== "darwin" && value.platform !== "win32") || !value.calibration ||
-    !value.quality || !Number.isFinite(value.safety_headroom_ratio)) {
-    throw new Error("Recording V4 certification evidence is malformed");
-  }
-  return value;
+export function recordingV4RuntimeProfile(
+  platform: "darwin" | "win32",
+): RecordingV4RuntimeProfile {
+  return {
+    platform,
+    calibration: {
+      source: "built_in_profile",
+      encoder_id: "hardware-h264",
+      minimum_required_bitrate_bps: 10_000_000,
+      sustained_bitrate_bps: 25_000_000,
+      peak_bitrate_bps: 30_000_000,
+    },
+    safety_headroom_ratio: 0.2,
+    quality: {
+      full_frame_luma_ssim: 0.99,
+      text_edge_roi_ssim: 0.99,
+      edge_spread_increase_px: 1,
+      color_channel_delta: 1,
+    },
+  };
 }
 
 async function runProcess(command: string, args: string[]): Promise<void> {
@@ -441,12 +452,12 @@ async function defaultDriver(input: RecordingV4PlatformSessionInput): Promise<Re
   throw new Error("Recording V4 is unsupported on this platform");
 }
 
-export async function createDefaultRecordingV4PlatformSessionFactory(): Promise<RecordingV4PlatformSessionFactory> {
-  const certification = await loadCertification();
+export function createDefaultRecordingV4PlatformSessionFactory(): RecordingV4PlatformSessionFactory {
   const platform = process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "win32" : null;
   if (!platform) throw new Error("Recording V4 platform is unsupported");
+  const runtimeProfile = recordingV4RuntimeProfile(platform);
   return createRecordingV4PlatformSessionFactory({
-    platform, certification, createDriver: defaultDriver,
+    platform, runtimeProfile, createDriver: defaultDriver,
     async storageProbe(workspacePath) { const stats = await fs.statfs(workspacePath); return {
       availableBytes: Number(stats.bavail) * Number(stats.bsize) }; },
     async throughputProbe(workspacePath) {
@@ -457,7 +468,7 @@ export async function createDefaultRecordingV4PlatformSessionFactory(): Promise<
       try { await handle.writeFile(bytes); await handle.sync(); } finally { await handle.close(); await fs.rm(probePath, { force: true }); }
       return Math.floor(bytes.byteLength / (Number(process.hrtime.bigint() - started) / 1_000_000_000));
     },
-    minimumWriteBytesPerSecond: Math.ceil(certification.calibration.peak_bitrate_bps / 8),
+    minimumWriteBytesPerSecond: Math.ceil(runtimeProfile.calibration.peak_bitrate_bps / 8),
     async artifactProbe(artifactPath) { const probe = await probeRecording(artifactPath, { verifiedFullDecode: true });
       if (probe.status !== "valid") return { finalized: false, full_decode_succeeded: false,
         decoded_frames: 0, duration_us: 0, physical_width: 0, physical_height: 0 };

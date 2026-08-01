@@ -398,11 +398,11 @@ class RecordingV4Session {
       this.terminalPublished = true;
       this.emit({ type: "terminal", result });
     }
-    await this.cleanup();
+    await this.cleanup(result);
     return result;
   }
 
-  private async cleanup(): Promise<void> {
+  private async cleanup(result: RecordingV4Result): Promise<void> {
     this.cleanupPromise ??= (async () => {
       if (this.heartbeat) clearInterval(this.heartbeat);
       this.heartbeat = null;
@@ -411,6 +411,10 @@ class RecordingV4Session {
         closeRecordingV4Channel(subscription.sender, subscription.channelId);
       }
       this.subscriptions.clear();
+      if (result.bundle_path === null) {
+        await fs.rm(this.workspacePath, { recursive: true, force: true });
+        await this.store.remove(this.id);
+      }
     })();
     return this.cleanupPromise;
   }

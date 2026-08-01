@@ -12,7 +12,7 @@ import {
 } from "./macos-recording-v4-backend";
 
 const envelope: RecordingV4EncoderEnvelope = {
-  source: "live_calibration",
+  source: "built_in_profile",
   encoder_id: "videotoolbox-h264",
   minimum_bitrate_bps: 10_000_000,
   target_bitrate_bps: 20_000_000,

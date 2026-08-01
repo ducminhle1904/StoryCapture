@@ -176,7 +176,7 @@ inline CaptureOptions parse_v4_options(const JsonObject& command) {
                                 L"target_bitrate_bps", L"maximum_bitrate_bps",
                                 L"safety_headroom_ratio"});
   const auto envelope_source = required_string(envelope, L"source");
-  if (envelope_source != L"live_calibration" && envelope_source != L"certified_evidence") {
+  if (envelope_source != L"built_in_profile") {
     throw ProtocolError("contract_mismatch", "invalid V4 encoder envelope source");
   }
   result.encoder_envelope_source = envelope_source;

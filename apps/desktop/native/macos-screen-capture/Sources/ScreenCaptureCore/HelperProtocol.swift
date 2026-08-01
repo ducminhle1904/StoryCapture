@@ -114,7 +114,7 @@ public struct RecordingV4EncoderEnvelope: Codable, Equatable, Sendable {
     }
 
     public func validate() throws {
-        guard source == "live_calibration" || source == "certified_evidence",
+        guard source == "built_in_profile",
               encoderID == "videotoolbox-h264",
               minimumBitrateBPS > 0,
               minimumBitrateBPS <= targetBitrateBPS,

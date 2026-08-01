@@ -21,7 +21,7 @@ final class RecordingV4Tests: XCTestCase {
     }
 
     func testProtocolV4DecodesEnvelopeAudioRolesAndNeverDowngrades() throws {
-        let json = #"{"version":4,"request_id":"v4","command":"warmup","payload":{"target":{"kind":"window","windowID":42,"ownerPID":9,"ownerBundleID":"com.example.Editor","mediaSourceID":"window:42:0"},"outputWidth":1920,"outputHeight":1080,"expectedLogicalWidth":1920,"expectedLogicalHeight":1080,"expectedPhysicalWidth":1920,"expectedPhysicalHeight":1080,"fpsNumerator":60,"fpsDenominator":1,"requestedAudioRoles":["microphone","system"],"encoderEnvelope":{"source":"live_calibration","encoder_id":"videotoolbox-h264","minimum_bitrate_bps":10000000,"target_bitrate_bps":20000000,"maximum_bitrate_bps":30000000,"safety_headroom_ratio":0.25}}}"#
+        let json = #"{"version":4,"request_id":"v4","command":"warmup","payload":{"target":{"kind":"window","windowID":42,"ownerPID":9,"ownerBundleID":"com.example.Editor","mediaSourceID":"window:42:0"},"outputWidth":1920,"outputHeight":1080,"expectedLogicalWidth":1920,"expectedLogicalHeight":1080,"expectedPhysicalWidth":1920,"expectedPhysicalHeight":1080,"fpsNumerator":60,"fpsDenominator":1,"requestedAudioRoles":["microphone","system"],"encoderEnvelope":{"source":"built_in_profile","encoder_id":"videotoolbox-h264","minimum_bitrate_bps":10000000,"target_bitrate_bps":20000000,"maximum_bitrate_bps":30000000,"safety_headroom_ratio":0.25}}}"#
         let command = try JSONDecoder().decode(HelperCommand.self, from: Data(json.utf8))
         XCTAssertEqual(command.version, recordingV4ProtocolVersion)
         XCTAssertEqual(command.command, .warmup)
@@ -138,7 +138,7 @@ final class RecordingV4Tests: XCTestCase {
 
     func testEncoderAndCadenceEvidenceSerializeWithV4FieldNames() throws {
         let envelope = RecordingV4EncoderEnvelope(
-            source: "live_calibration",
+            source: "built_in_profile",
             encoderID: "videotoolbox-h264",
             minimumBitrateBPS: 10_000_000,
             targetBitrateBPS: 20_000_000,
@@ -163,7 +163,7 @@ final class RecordingV4Tests: XCTestCase {
             .appendingPathComponent("storycapture-v4-writer-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
         let envelope = RecordingV4EncoderEnvelope(
-            source: "live_calibration",
+            source: "built_in_profile",
             encoderID: "videotoolbox-h264",
             minimumBitrateBPS: 8_000_000,
             targetBitrateBPS: 16_000_000,
@@ -205,7 +205,7 @@ final class RecordingV4Tests: XCTestCase {
 
     func testV4WriterRejectsNon1080SurfaceBeforeCapture() throws {
         let envelope = RecordingV4EncoderEnvelope(
-            source: "live_calibration",
+            source: "built_in_profile",
             encoderID: "videotoolbox-h264",
             minimumBitrateBPS: 8_000_000,
             targetBitrateBPS: 16_000_000,

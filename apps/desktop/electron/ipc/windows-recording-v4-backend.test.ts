@@ -13,7 +13,7 @@ import {
 } from "./windows-recording-v4-backend";
 
 const envelope = {
-  source: "live_calibration" as const,
+  source: "built_in_profile" as const,
   encoder_id: "Intel Quick Sync H.264 Encoder MFT",
   minimum_bitrate_bps: 10_000_000,
   target_bitrate_bps: 20_000_000,

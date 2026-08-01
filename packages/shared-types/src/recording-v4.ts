@@ -75,7 +75,7 @@ export interface RecordingV4TargetIdentity {
 }
 
 export interface RecordingV4EncoderEnvelope {
-  source: "live_calibration" | "certified_evidence";
+  source: "built_in_profile";
   encoder_id: string;
   minimum_bitrate_bps: number;
   target_bitrate_bps: number;
@@ -377,7 +377,7 @@ function isEncoderEvidence(value: unknown): value is RecordingV4EncoderEvidence 
     !isPositiveInteger(value.requested_bitrate_bps) || !isPositiveInteger(value.average_bitrate_bps) ||
     !isPositiveInteger(value.peak_bitrate_bps) || !isRecord(value.envelope)) return false;
   const envelope = value.envelope;
-  return (envelope.source === "live_calibration" || envelope.source === "certified_evidence") &&
+  return envelope.source === "built_in_profile" &&
     envelope.encoder_id === value.encoder_id && isPositiveInteger(envelope.minimum_bitrate_bps) &&
     isPositiveInteger(envelope.target_bitrate_bps) && isPositiveInteger(envelope.maximum_bitrate_bps) &&
     envelope.minimum_bitrate_bps <= envelope.target_bitrate_bps &&

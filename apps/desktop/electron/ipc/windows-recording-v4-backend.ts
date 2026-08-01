@@ -162,7 +162,7 @@ function parseEnvelope(value: unknown): RecordingV4EncoderEnvelope {
   const envelope = record(value);
   exactKeys(envelope, ["source", "encoder_id", "minimum_bitrate_bps", "target_bitrate_bps",
     "maximum_bitrate_bps", "safety_headroom_ratio"], "encoder envelope");
-  if (envelope.source !== "live_calibration" && envelope.source !== "certified_evidence") {
+  if (envelope.source !== "built_in_profile") {
     throw new WindowsRecordingV4ProtocolError("helper_protocol_mismatch", "Invalid envelope source");
   }
   const result: RecordingV4EncoderEnvelope = {

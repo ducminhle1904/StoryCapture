@@ -77,27 +77,17 @@ afterAll(async () => {
 });
 
 describe("Recording V4 IPC routing", () => {
-  it("fails closed when the development route is disabled", async () => {
-    vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("STORYCAPTURE_ENABLE_RECORDING_V4", "0");
-
-    await expect(
-      recordingV4Handlers.recording_v4_start({ args: request }, context),
-    ).rejects.toThrow("development-only");
-  });
-
-  it("fails closed in production even when the development flag is set", async () => {
+  it("starts without a feature flag in production", async () => {
     vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("STORYCAPTURE_ENABLE_RECORDING_V4", "1");
-
-    await expect(
-      recordingV4Handlers.recording_v4_start({ args: request }, context),
-    ).rejects.toThrow("development-only");
+    const session = await recordingV4Handlers.recording_v4_start({ args: request }, context);
+    await expect(recordingV4Handlers.recording_v4_snapshot({ session })).resolves.toMatchObject({
+      state: "idle",
+    });
+    await recordingV4Handlers.recording_v4_command({ session, command: "cancel" });
   });
 
   it("registers the initial renderer as a reattachable subscriber", async () => {
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("STORYCAPTURE_ENABLE_RECORDING_V4", "1");
     const session = (await recordingV4Handlers.recording_v4_start(
       { args: request, onEvent: { id: 41 } },
       context,

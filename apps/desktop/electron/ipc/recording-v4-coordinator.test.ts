@@ -57,7 +57,7 @@ function passedPreflight(): RecordingV4Preflight {
       average_bitrate_bps: 20_000_000,
       peak_bitrate_bps: 24_000_000,
       envelope: {
-        source: "live_calibration",
+        source: "built_in_profile",
         encoder_id: "videotoolbox-h264",
         minimum_bitrate_bps: 16_000_000,
         target_bitrate_bps: 20_000_000,
@@ -219,6 +219,27 @@ describe("Recording V4 coordinator", () => {
         (message) => (message as { message?: { type?: string } }).message?.type === "terminal",
       ),
     ).toHaveLength(1);
+  });
+
+  it("removes the partial workspace and journal after a failed start", async () => {
+    const { root, coordinator, platform } = await fixture();
+    vi.mocked(platform.preflight).mockResolvedValue({
+      ...passedPreflight(),
+      passed: false,
+      failure_codes: ["permission_denied"],
+    });
+    const session = await coordinator.create(request(root));
+
+    await expect(coordinator.command(session.id, "start")).resolves.toMatchObject({
+      state: "failed",
+      failure_codes: ["permission_denied"],
+    });
+
+    await expect(
+      fs.access(path.join(root, "exports", ".recording-v4-session-1.staging")),
+    ).rejects.toThrow();
+    await expect(coordinator.journalStore.read(session.id)).resolves.toBeNull();
+    expect(platform.dispose).toHaveBeenCalledOnce();
   });
 
   it("rejects illegal transitions without changing the journal", async () => {
