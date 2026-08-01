@@ -351,7 +351,8 @@ export function RecordingView({
         proxy_path: null,
         cadence_evidence_path: `${result.bundle_path}${bundleSeparator}evidence${bundleSeparator}cadence.json`,
         quality_evidence_path: `${result.bundle_path}${bundleSeparator}evidence${bundleSeparator}quality.json`,
-        actions_path: `${result.bundle_path}${bundleSeparator}sidecars${bundleSeparator}actions.json`,
+        actions_path: result.sidecars.actions_path,
+        cursor_path: result.sidecars.cursor_path,
         exact_source_fps: { numerator: 60, denominator: 1 },
         source_frame_count: liveEvidence && "output_frames" in liveEvidence
           ? liveEvidence.output_frames

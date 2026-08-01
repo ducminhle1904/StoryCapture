@@ -2551,6 +2551,7 @@ export type RecordingInfoDto = {
   cadence_evidence_path?: string | null;
   quality_evidence_path?: string | null;
   actions_path?: string | null;
+  cursor_path?: string | null;
   microphone_audio_path?: string | null;
   system_audio_path?: string | null;
   exact_source_fps?: import("./recording-v2").RecordingRational | null;

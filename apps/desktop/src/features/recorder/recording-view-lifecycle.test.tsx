@@ -180,12 +180,22 @@ describe("RecordingView V4 lifecycle", () => {
       state: "completed" as const, bundle_path: "/tmp/demo/exports/take.sc-recording",
       output_path: "/tmp/demo/exports/take.sc-recording/master/video.mp4",
       diagnostic_bundle_path: null, failure_codes: [] as [],
+      sidecars: {
+        actions_path: "/tmp/demo/exports/take.sc-recording/sidecars/actions.json",
+        cursor_path: "/tmp/demo/exports/take.sc-recording/sidecars/cursor.json",
+      },
     };
     mocks.callbacks?.onEvent({ type: "terminal", result: completed });
     mocks.callbacks?.onEvent({ type: "terminal", result: completed });
     await waitFor(() => expect(mocks.publishCompletedRecording).toHaveBeenCalledTimes(1));
     expect(mocks.publishCompletedRecording).toHaveBeenCalledWith(expect.anything(), "project-1",
-      expect.objectContaining({ version: 4, width: 1920, height: 1080 }));
+      expect.objectContaining({
+        version: 4,
+        width: 1920,
+        height: 1080,
+        actions_path: completed.sidecars.actions_path,
+        cursor_path: completed.sidecars.cursor_path,
+      }));
   });
 
   it("shows structured retry guidance for a failed quality gate", async () => {
@@ -196,6 +206,10 @@ describe("RecordingView V4 lifecycle", () => {
       version: 4, profile: "verified_1080p60", session_id: "session-1", state: "quality_failed",
       bundle_path: "/tmp/failed.sc-recording", output_path: null,
       diagnostic_bundle_path: "/tmp/failed.sc-recording", failure_codes: ["quality_checkpoint_failed"],
+      sidecars: {
+        actions_path: "/tmp/failed.sc-recording/sidecars/actions.json",
+        cursor_path: "/tmp/failed.sc-recording/sidecars/cursor.json",
+      },
     } });
     expect(await screen.findByText("Take was not published")).toBeInTheDocument();
     expect(screen.getByText("quality_checkpoint_failed")).toBeInTheDocument();

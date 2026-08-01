@@ -3,7 +3,9 @@ import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
+  readRecordingV4ActionSidecar,
   readRecordingV4Bundle,
+  readRecordingV4CursorSidecar,
   RECORDING_V4_BUNDLE_SCHEMA_VERSION,
   RECORDING_V4_FRAME_RATE,
   RECORDING_V4_PROFILE,
@@ -60,7 +62,8 @@ export interface FinalizeRecordingV4Input {
   required_quality_reference_ids: string[];
   requested_audio_roles: RecordingV4AudioRole[];
   audio_artifacts: RecordingV4AudioArtifactInput[];
-  actions_path: string | null;
+  actions_path: string;
+  cursor_path: string;
   now?: () => Date;
 }
 
@@ -88,15 +91,19 @@ function contained(parent: string, candidate: string): boolean {
 
 function resultFromBundle(bundlePath: string, bundle: RecordingV4Bundle): RecordingV4Result {
   const masterPath = path.join(bundlePath, "master/video.mp4");
+  const sidecars = {
+    actions_path: path.join(bundlePath, bundle.sidecars.actions_path),
+    cursor_path: path.join(bundlePath, bundle.sidecars.cursor_path),
+  };
   return bundle.status === "completed"
     ? {
         version: 4, profile: RECORDING_V4_PROFILE, session_id: bundle.session_id, state: "completed",
-        bundle_path: bundlePath, output_path: masterPath, diagnostic_bundle_path: null, failure_codes: [],
+        bundle_path: bundlePath, output_path: masterPath, diagnostic_bundle_path: null, failure_codes: [], sidecars,
       }
     : {
         version: 4, profile: RECORDING_V4_PROFILE, session_id: bundle.session_id, state: "quality_failed",
         bundle_path: bundlePath, output_path: null, diagnostic_bundle_path: bundlePath,
-        failure_codes: bundle.failure_codes,
+        failure_codes: bundle.failure_codes, sidecars,
       };
 }
 
@@ -172,8 +179,20 @@ export class RecordingV4BundleFinalizer {
               JSON.stringify({ role: entry.role, ...ledger }))).join("\n")}\n`, "utf8")
         : Promise.resolve(),
     ]);
-    if (input.actions_path && path.resolve(input.actions_path) !== path.join(workspace, "sidecars/actions.json")) {
+    if (path.resolve(input.actions_path) !== path.join(workspace, "sidecars/actions.json")) {
       await fs.copyFile(input.actions_path, path.join(workspace, "sidecars/actions.json"));
+    }
+    if (path.resolve(input.cursor_path) !== path.join(workspace, "sidecars/cursor.json")) {
+      await fs.copyFile(input.cursor_path, path.join(workspace, "sidecars/cursor.json"));
+    }
+    const [actions, cursor] = await Promise.all([
+      fs.readFile(path.join(workspace, "sidecars/actions.json"), "utf8")
+        .then((text) => readRecordingV4ActionSidecar(JSON.parse(text) as unknown)),
+      fs.readFile(path.join(workspace, "sidecars/cursor.json"), "utf8")
+        .then((text) => readRecordingV4CursorSidecar(JSON.parse(text) as unknown)),
+    ]);
+    if (actions?.session_id !== input.session_id || cursor?.session_id !== input.session_id) {
+      throw new Error("Recording V4 canonical sidecars are missing or invalid.");
     }
     const completed = uniqueFailures.length === 0;
     const bundle: RecordingV4Bundle = {
@@ -201,7 +220,10 @@ export class RecordingV4BundleFinalizer {
         bitrate_path: "evidence/bitrate.json", frame_ledger_path: "evidence/frame-ledger.jsonl",
         audio_ledger_path: input.native.audio.length ? "evidence/audio-ledger.jsonl" : null,
       },
-      sidecars: { actions_path: input.actions_path ? "sidecars/actions.json" : null },
+      sidecars: {
+        actions_path: "sidecars/actions.json",
+        cursor_path: "sidecars/cursor.json",
+      },
       failure_codes: uniqueFailures,
     };
     if (!readRecordingV4Bundle(bundle)) throw new Error("Recording V4 final manifest failed validation.");

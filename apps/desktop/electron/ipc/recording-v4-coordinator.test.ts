@@ -82,6 +82,10 @@ function completedResult(sessionId: string): RecordingV4Result {
     output_path: "/project/exports/take.sc-recording/master/video.mp4",
     diagnostic_bundle_path: null,
     failure_codes: [],
+    sidecars: {
+      actions_path: "/project/exports/take.sc-recording/sidecars/actions.json",
+      cursor_path: "/project/exports/take.sc-recording/sidecars/cursor.json",
+    },
   };
 }
 
@@ -155,6 +159,19 @@ describe("Recording V4 coordinator", () => {
       step_id: "step-1",
       ordinal: 1,
       phase: "input",
+      verb: "click",
+      target: null,
+      timing: null,
+      error_message: null,
+    });
+    await coordinator.recordCursorSample(session.id, {
+      x: 640,
+      y: 360,
+      coordinate_width: 1280,
+      coordinate_height: 720,
+      kind: "pointer",
+      visible: true,
+      pressed: false,
     });
     await coordinator.command(session.id, "pause");
     advance(50_000);
@@ -162,6 +179,10 @@ describe("Recording V4 coordinator", () => {
       step_id: "step-1",
       ordinal: 1,
       phase: "presented",
+      verb: "click",
+      target: null,
+      timing: null,
+      error_message: null,
     });
     expect(pausedAction.active_media_time_us).toBe(firstAction.active_media_time_us);
 
@@ -194,6 +215,15 @@ describe("Recording V4 coordinator", () => {
       ),
     ) as { events: Array<{ active_media_time_us: number }> };
     expect(actions.events.map((event) => event.active_media_time_us)).toEqual([20_000, 20_000]);
+    const cursor = JSON.parse(
+      await fs.readFile(
+        path.join(root, "exports", ".recording-v4-session-1.staging", "sidecars", "cursor.json"),
+        "utf8",
+      ),
+    ) as { samples: Array<{ active_media_time_us: number; x: number; y: number }> };
+    expect(cursor.samples).toEqual([
+      expect.objectContaining({ active_media_time_us: 20_000, x: 0.5, y: 0.5 }),
+    ]);
     const journal = await coordinator.journalStore.read(session.id);
     expect(journal).toMatchObject({ state: "completed", helper_pid: 777, revision: 9 });
   });

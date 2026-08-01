@@ -3,6 +3,8 @@ export const RECORDING_V4_BUNDLE_SCHEMA_VERSION = 4 as const;
 export const RECORDING_V4_PROFILE = "verified_1080p60" as const;
 export const RECORDING_V4_FRAME_RATE = { numerator: 60, denominator: 1 } as const;
 export const RECORDING_V4_FRAME_DURATION_US = 1_000_000 / 60;
+export const RECORDING_V4_CURSOR_COORDINATE_WIDTH = 1280 as const;
+export const RECORDING_V4_CURSOR_COORDINATE_HEIGHT = 720 as const;
 
 export type RecordingV4Profile = typeof RECORDING_V4_PROFILE;
 export type RecordingV4Platform = "darwin" | "win32";
@@ -72,6 +74,81 @@ export interface RecordingV4TargetIdentity {
   stable_id: string;
   process_id: number;
   initial_title: string | null;
+}
+
+export type RecordingV4ActionPhase =
+  | "started"
+  | "input"
+  | "presented"
+  | "succeeded"
+  | "failed";
+
+export interface RecordingV4ActionTarget {
+  selector: string | null;
+  bounds: { x: number; y: number; width: number; height: number };
+}
+
+export interface RecordingV4ActionTiming {
+  started_us: number;
+  action_us: number;
+  ended_us: number;
+  input_us: Partial<Record<"action" | "down" | "up" | "text_start" | "text_end", number>>;
+  presented_us: number | null;
+}
+
+export interface RecordingV4ActionInput {
+  step_id: string | null;
+  ordinal: number;
+  phase: RecordingV4ActionPhase;
+  verb: string | null;
+  target: RecordingV4ActionTarget | null;
+  timing: RecordingV4ActionTiming | null;
+  error_message: string | null;
+}
+
+export interface RecordingV4ActionEvent extends RecordingV4ActionInput {
+  active_media_time_us: number;
+}
+
+export interface RecordingV4ActionSidecar {
+  version: typeof RECORDING_V4_CONTRACT_VERSION;
+  session_id: string;
+  clock: "active_media_time_us";
+  events: RecordingV4ActionEvent[];
+}
+
+export type RecordingV4CursorKind = "default" | "pointer" | "text";
+
+export interface RecordingV4CursorSampleInput {
+  x: number;
+  y: number;
+  coordinate_width: number;
+  coordinate_height: number;
+  kind: RecordingV4CursorKind;
+  visible: boolean;
+  pressed: boolean;
+}
+
+export interface RecordingV4CursorSample {
+  active_media_time_us: number;
+  x: number;
+  y: number;
+  kind: RecordingV4CursorKind;
+  visible: boolean;
+  pressed: boolean;
+}
+
+export interface RecordingV4CursorSidecar {
+  version: typeof RECORDING_V4_CONTRACT_VERSION;
+  session_id: string;
+  clock: "active_media_time_us";
+  geometry: {
+    coordinate_width: number;
+    coordinate_height: number;
+    capture_width: 1920;
+    capture_height: 1080;
+  };
+  samples: RecordingV4CursorSample[];
 }
 
 export interface RecordingV4EncoderEnvelope {
@@ -220,7 +297,10 @@ export interface RecordingV4Bundle {
     frame_ledger_path: "evidence/frame-ledger.jsonl";
     audio_ledger_path: "evidence/audio-ledger.jsonl" | null;
   };
-  sidecars: { actions_path: "sidecars/actions.json" | null };
+  sidecars: {
+    actions_path: "sidecars/actions.json";
+    cursor_path: "sidecars/cursor.json";
+  };
   failure_codes: RecordingV4FailureCode[];
 }
 
@@ -235,6 +315,11 @@ export interface RecordingV4ResultBase {
   failure_codes: RecordingV4FailureCode[];
 }
 
+export interface RecordingV4ResultSidecars {
+  actions_path: string;
+  cursor_path: string;
+}
+
 export type RecordingV4Result =
   | (RecordingV4ResultBase & {
       state: "completed";
@@ -242,12 +327,14 @@ export type RecordingV4Result =
       output_path: string;
       diagnostic_bundle_path: null;
       failure_codes: [];
+      sidecars: RecordingV4ResultSidecars;
     })
   | (RecordingV4ResultBase & {
       state: "quality_failed";
       bundle_path: string;
       output_path: null;
       diagnostic_bundle_path: string;
+      sidecars: RecordingV4ResultSidecars;
     })
   | (RecordingV4ResultBase & {
       state: "cancelled" | "failed";
@@ -452,6 +539,76 @@ function isQuality(value: unknown): value is RecordingV4QualityEvidence {
   return checkpointsValid && (value.verdict === "passed" ? value.failure_codes.length === 0 : value.failure_codes.length > 0);
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isActionTarget(value: unknown): value is RecordingV4ActionTarget {
+  if (!isRecord(value) || (value.selector !== null && typeof value.selector !== "string") ||
+    !isRecord(value.bounds)) return false;
+  return isFiniteNumber(value.bounds.x) && isFiniteNumber(value.bounds.y) &&
+    isFiniteNumber(value.bounds.width) && isFiniteNumber(value.bounds.height) &&
+    value.bounds.width >= 0 && value.bounds.height >= 0;
+}
+
+function isActionTiming(value: unknown): value is RecordingV4ActionTiming {
+  if (!isRecord(value) || !isNonNegativeInteger(value.started_us) ||
+    !isNonNegativeInteger(value.action_us) || !isNonNegativeInteger(value.ended_us) ||
+    value.started_us > value.action_us || value.action_us > value.ended_us ||
+    !isRecord(value.input_us) ||
+    (value.presented_us !== null && !isNonNegativeInteger(value.presented_us))) return false;
+  return Object.entries(value.input_us).every(([key, timestamp]) =>
+    ["action", "down", "up", "text_start", "text_end"].includes(key) &&
+    isNonNegativeInteger(timestamp));
+}
+
+function isActionEvent(value: unknown): value is RecordingV4ActionEvent {
+  return isRecord(value) && (value.step_id === null || typeof value.step_id === "string") &&
+    isPositiveInteger(value.ordinal) &&
+    ["started", "input", "presented", "succeeded", "failed"].includes(String(value.phase)) &&
+    (value.verb === null || typeof value.verb === "string") &&
+    (value.target === null || isActionTarget(value.target)) &&
+    (value.timing === null || isActionTiming(value.timing)) &&
+    (value.error_message === null || typeof value.error_message === "string") &&
+    isNonNegativeInteger(value.active_media_time_us);
+}
+
+export function readRecordingV4ActionSidecar(
+  value: unknown,
+): RecordingV4ActionSidecar | null {
+  if (!isRecord(value) || value.version !== 4 || typeof value.session_id !== "string" ||
+    value.clock !== "active_media_time_us" || !Array.isArray(value.events)) return null;
+  const events = value.events;
+  const valid = events.every((event, index) => isActionEvent(event) &&
+    (index === 0 || event.active_media_time_us >=
+      (events[index - 1] as RecordingV4ActionEvent).active_media_time_us));
+  return valid ? value as unknown as RecordingV4ActionSidecar : null;
+}
+
+function isCursorSample(value: unknown): value is RecordingV4CursorSample {
+  return isRecord(value) && isNonNegativeInteger(value.active_media_time_us) &&
+    isFiniteNumber(value.x) && value.x >= 0 && value.x <= 1 &&
+    isFiniteNumber(value.y) && value.y >= 0 && value.y <= 1 &&
+    ["default", "pointer", "text"].includes(String(value.kind)) &&
+    typeof value.visible === "boolean" && typeof value.pressed === "boolean";
+}
+
+export function readRecordingV4CursorSidecar(
+  value: unknown,
+): RecordingV4CursorSidecar | null {
+  if (!isRecord(value) || value.version !== 4 || typeof value.session_id !== "string" ||
+    value.clock !== "active_media_time_us" || !isRecord(value.geometry) ||
+    !isPositiveInteger(value.geometry.coordinate_width) ||
+    !isPositiveInteger(value.geometry.coordinate_height) ||
+    value.geometry.capture_width !== 1920 || value.geometry.capture_height !== 1080 ||
+    !Array.isArray(value.samples)) return null;
+  const samples = value.samples;
+  const valid = samples.every((sample, index) => isCursorSample(sample) &&
+    (index === 0 || sample.active_media_time_us >=
+      (samples[index - 1] as RecordingV4CursorSample).active_media_time_us));
+  return valid ? value as unknown as RecordingV4CursorSidecar : null;
+}
+
 export function readRecordingV4Bundle(value: unknown): RecordingV4Bundle | null {
   if (!isRecord(value) || value.schema_version !== 4 || value.profile !== RECORDING_V4_PROFILE ||
     (value.status !== "completed" && value.status !== "quality_failed") || typeof value.session_id !== "string" ||
@@ -473,6 +630,8 @@ export function readRecordingV4Bundle(value: unknown): RecordingV4Bundle | null 
     value.evidence.quality_path === "evidence/quality.json" && value.evidence.bitrate_path === "evidence/bitrate.json" &&
     value.evidence.frame_ledger_path === "evidence/frame-ledger.jsonl" &&
     (value.evidence.audio_ledger_path === null || value.evidence.audio_ledger_path === "evidence/audio-ledger.jsonl");
+  const sidecarsValid = value.sidecars.actions_path === "sidecars/actions.json" &&
+    value.sidecars.cursor_path === "sidecars/cursor.json";
   const completed = value.status === "completed" && value.cadence.verdict === "passed" && value.quality.verdict === "passed" &&
     value.artifact.finalized === true && value.artifact.full_decode_succeeded === true &&
     value.artifact.decoded_frames === value.master.frame_count && value.master.frame_count === value.cadence.output_frames &&
@@ -480,7 +639,9 @@ export function readRecordingV4Bundle(value: unknown): RecordingV4Bundle | null 
   const qualityFailed = value.status === "quality_failed" && (value.failure_codes.length > 0 ||
     value.cadence.verdict === "failed" || value.quality.verdict === "failed" ||
     value.audio.some((entry) => entry.evidence.status === "failed") || !value.artifact.full_decode_succeeded);
-  return audioValid && evidenceValid && (completed || qualityFailed) ? value as unknown as RecordingV4Bundle : null;
+  return audioValid && evidenceValid && sidecarsValid && (completed || qualityFailed)
+    ? value as unknown as RecordingV4Bundle
+    : null;
 }
 
 export function readRecordingV4Journal(value: unknown): RecordingV4Journal | null {

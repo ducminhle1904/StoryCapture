@@ -4,6 +4,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   RECORDING_V4_CONTRACT_VERSION,
+  RECORDING_V4_CURSOR_COORDINATE_HEIGHT,
+  RECORDING_V4_CURSOR_COORDINATE_WIDTH,
   RECORDING_V4_PROFILE,
   type RecordingV4AudioEvidence,
   type RecordingV4AudioRole,
@@ -237,9 +239,9 @@ class HostRecordingV4PlatformSession implements RecordingV4PlatformSession {
       native.artifact_path, this.input.workspacePath, this.input.request.requested_audio_roles,
       native.audio,
     );
-    const candidateActionsPath = path.join(this.input.workspacePath, "sidecars/actions.json");
-    const actionsPath = await fs.stat(candidateActionsPath).then((stat) => stat.isFile() ? candidateActionsPath : null)
-      .catch(() => null);
+    const actionsPath = path.join(this.input.workspacePath, "sidecars/actions.json");
+    const cursorPath = path.join(this.input.workspacePath, "sidecars/cursor.json");
+    await Promise.all([fs.access(actionsPath), fs.access(cursorPath)]);
     return this.dependencies.finalizer.finalize({
       session_id: this.input.sessionId,
       project_path: this.input.request.project_path,
@@ -252,6 +254,7 @@ class HostRecordingV4PlatformSession implements RecordingV4PlatformSession {
       requested_audio_roles: this.input.request.requested_audio_roles,
       audio_artifacts: audioArtifacts,
       actions_path: actionsPath,
+      cursor_path: cursorPath,
     });
   }
 
@@ -385,8 +388,20 @@ async function defaultDriver(input: RecordingV4PlatformSessionInput): Promise<Re
     registerRecordingV4AutomationSurface(input.sessionId, {
       contents: surface.contents,
       inputCoordinateScale: surface.inputCoordinateScale(),
+      cursorCoordinateSize: {
+        width: RECORDING_V4_CURSOR_COORDINATE_WIDTH,
+        height: RECORDING_V4_CURSOR_COORDINATE_HEIGHT,
+      },
       currentMediaTimeMs: () => input.activeMediaTimeUs() / 1_000,
       recordAction: input.recordAction,
+      recordCursorSample: (point) => input.recordCursorSample({
+        ...point,
+        coordinate_width: RECORDING_V4_CURSOR_COORDINATE_WIDTH,
+        coordinate_height: RECORDING_V4_CURSOR_COORDINATE_HEIGHT,
+        kind: "default",
+        visible: true,
+        pressed: false,
+      }),
       isActive: input.isActive,
     });
     registered = true;

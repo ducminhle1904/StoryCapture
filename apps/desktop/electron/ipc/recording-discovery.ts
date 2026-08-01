@@ -47,6 +47,7 @@ export async function discoverProjectRecordings(
           cadence_evidence_path: path.join(bundlePath, manifest.evidence.cadence_path),
           quality_evidence_path: path.join(bundlePath, manifest.evidence.quality_path),
           actions_path: resolveArtifact(manifest.sidecars.actions_path),
+          cursor_path: resolveArtifact(manifest.sidecars.cursor_path),
           microphone_audio_path: resolveArtifact(microphone?.relative_path ?? null),
           system_audio_path: resolveArtifact(system?.relative_path ?? null),
           exact_source_fps: manifest.master.frame_rate,

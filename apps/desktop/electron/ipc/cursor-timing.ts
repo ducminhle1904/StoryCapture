@@ -52,7 +52,7 @@ const CURSOR_MOTION_PROFILES: Record<ActionCursorMotionPreset, CursorMotionTimin
 };
 
 const MIN_TARGET_WIDTH_PX = 12;
-const CURSOR_PATH_SAMPLE_INTERVAL_MS = 32;
+const CURSOR_PATH_SAMPLE_INTERVAL_MS = 33;
 const CURSOR_PATH_MAX_SAMPLES = 60;
 const SETTLE_START = 0.86;
 

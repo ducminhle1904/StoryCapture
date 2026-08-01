@@ -73,7 +73,10 @@ function completedManifest(): RecordingV4Bundle {
       bitrate_path: "evidence/bitrate.json", frame_ledger_path: "evidence/frame-ledger.jsonl",
       audio_ledger_path: "evidence/audio-ledger.jsonl",
     },
-    sidecars: { actions_path: "sidecars/actions.json" },
+    sidecars: {
+      actions_path: "sidecars/actions.json",
+      cursor_path: "sidecars/cursor.json",
+    },
     failure_codes: [],
   };
 }

@@ -1099,8 +1099,10 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
             pauseGate: options.pauseGate,
             observeTarget: () => observeReadyCommandTarget(options, command),
             targetShiftThresholdPx: executionProfile.targetStabilityThresholdPx ?? 8,
-            onCursorSample: (point) =>
-              options.actionLandmarks?.updateCursor(landmarkEventId, point),
+            onCursorSample: (point) => {
+              options.actionLandmarks?.updateCursor(landmarkEventId, point);
+              options.hooks?.onCursorSample?.({ ordinal, command, point });
+            },
           });
           const targetAfterPacing =
             pacing.shiftedTarget ?? (await resolveReadyCommandTarget(options, command));
@@ -1541,9 +1543,23 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       }),
     );
   };
+  const recordV4CursorSample = (point: { x: number; y: number }) => {
+    if (!recordingV4Surface) return;
+    void recordingV4Surface.recordCursorSample(point).catch((error) =>
+      recordEngineLog({
+        level: "warn",
+        event: "recording.backend.delivery_failed",
+        context: { session_id: recordingV4SessionId ?? undefined, phase: "cursor" },
+        details: { x: point.x, y: point.y },
+        error,
+      }),
+    );
+  };
   const executionProfile = storyBrowserExecutionProfile({
-    captureRecordingFrames: Boolean(recordingSessionId),
-    captureSize: strictSessionAtLaunch
+    captureRecordingFrames: Boolean(recordingSessionId || recordingV4Surface),
+    captureSize: recordingV4Surface
+      ? recordingV4Surface.cursorCoordinateSize
+      : strictSessionAtLaunch
       ? {
           width: strictSessionAtLaunch.request.dimensions.physical_width,
           height: strictSessionAtLaunch.request.dimensions.physical_height,
@@ -1599,6 +1615,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
             ? () => !recordingV4Surface.isActive()
             : undefined,
       hooks: {
+        onCursorSample: ({ point }) => recordV4CursorSample(point),
         onStepStarted: (ordinal, command) => {
           if (strictSessionAtLaunch || recordingSessionAtLaunch || recordingV4Surface) {
             actionStepStartMs.set(ordinal, currentRecordingClockMs());
@@ -1607,7 +1624,10 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
             step_id: command.step_id ?? null,
             ordinal,
             phase: "started",
-            payload: { verb: command.verb },
+            verb: command.verb,
+            target: null,
+            timing: null,
+            error_message: null,
           });
           sendChannel(sender, onEvent, {
             json: JSON.stringify({
@@ -1682,11 +1702,34 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
             step_id: command.step_id ?? null,
             ordinal,
             phase: "succeeded",
-            payload: {
-              verb: command.verb,
-              cursor_x: stepResult.cursor?.x ?? 0,
-              cursor_y: stepResult.cursor?.y ?? 0,
+            verb: command.verb,
+            target: stepResult.target
+              ? {
+                  selector: targetSelector(command.target),
+                  bounds: {
+                    x: stepResult.target.bounds.x,
+                    y: stepResult.target.bounds.y,
+                    width: stepResult.target.bounds.w,
+                    height: stepResult.target.bounds.h,
+                  },
+                }
+              : null,
+            timing: {
+              started_us: Math.round(stepStartedAtMs * 1_000),
+              action_us: Math.round(actionAtMs * 1_000),
+              ended_us: Math.round(stepEndedAtMs * 1_000),
+              input_us: Object.fromEntries(
+                Object.entries(timing?.landmarks?.input ?? {}).map(([key, value]) => [
+                  key,
+                  value.ptsUs,
+                ]),
+              ),
+              presented_us:
+                timing?.landmarks?.presentation.status === "presented"
+                  ? timing.landmarks.presentation.firstPostInputFrame.ptsUs
+                  : null,
             },
+            error_message: null,
           });
           sendChannel(sender, onEvent, {
             json: JSON.stringify({
@@ -1726,7 +1769,10 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
             step_id: command?.step_id ?? null,
             ordinal,
             phase: "failed",
-            payload: { error_message: error instanceof Error ? error.message : String(error) },
+            verb: command?.verb ?? null,
+            target: null,
+            timing: null,
+            error_message: error instanceof Error ? error.message : String(error),
           });
           const stepStartedAtMs = actionStepStartMs.get(ordinal);
           actionStepStartMs.delete(ordinal);

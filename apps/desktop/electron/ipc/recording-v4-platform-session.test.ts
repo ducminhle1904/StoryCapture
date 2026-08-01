@@ -50,6 +50,25 @@ async function fixture(overrides: Partial<RecordingV4PlatformDependencies> = {})
   const workspacePath = path.join(projectPath, "exports", ".session-1.staging");
   await fs.mkdir(path.join(workspacePath, "master"), { recursive: true });
   await fs.mkdir(path.join(workspacePath, "evidence"), { recursive: true });
+  await fs.mkdir(path.join(workspacePath, "sidecars"), { recursive: true });
+  await fs.writeFile(path.join(workspacePath, "sidecars/actions.json"), JSON.stringify({
+    version: 4,
+    session_id: "session-1",
+    clock: "active_media_time_us",
+    events: [],
+  }));
+  await fs.writeFile(path.join(workspacePath, "sidecars/cursor.json"), JSON.stringify({
+    version: 4,
+    session_id: "session-1",
+    clock: "active_media_time_us",
+    geometry: {
+      coordinate_width: 1280,
+      coordinate_height: 720,
+      capture_width: 1920,
+      capture_height: 1080,
+    },
+    samples: [],
+  }));
   await fs.writeFile(path.join(workspacePath, "evidence/reference-initial.bgra"), "reference");
   await fs.writeFile(path.join(workspacePath, "master/video.mp4"), "native-master");
   const request: StartRecordingV4Args = { project_path: projectPath, source_url: "https://example.test",
@@ -81,6 +100,14 @@ async function fixture(overrides: Partial<RecordingV4PlatformDependencies> = {})
   const session = await factory({ sessionId: "session-1", workspacePath, request,
     publishCadence: (value) => published.push(value), fail: vi.fn(),
     activeMediaTimeUs: () => 0, recordAction: vi.fn(async (action) => ({ ...action, active_media_time_us: 0 })),
+    recordCursorSample: vi.fn(async (sample) => ({
+      active_media_time_us: 0,
+      x: sample.x / sample.coordinate_width,
+      y: sample.y / sample.coordinate_height,
+      kind: sample.kind,
+      visible: sample.visible,
+      pressed: sample.pressed,
+    })),
     isActive: () => true });
   return { root, workspacePath, request, driver, dependencies, session, published };
 }

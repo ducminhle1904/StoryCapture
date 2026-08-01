@@ -16,8 +16,10 @@ describe("Recording V4 automation surface registry", () => {
     const surface = {
       contents: {} as WebContents,
       inputCoordinateScale: 2,
+      cursorCoordinateSize: { width: 1280, height: 720 },
       currentMediaTimeMs: () => 42,
       recordAction: vi.fn(async () => undefined),
+      recordCursorSample: vi.fn(async () => undefined),
       isActive: () => true,
     };
     registerRecordingV4AutomationSurface(sessionId, surface);

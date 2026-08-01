@@ -1,10 +1,12 @@
 import path from "node:path";
 import type { StartRecordingV4Args } from "@storycapture/shared-types";
-import type { RecordingV4Command } from "@storycapture/shared-types/recording-v4";
+import type {
+  RecordingV4ActionInput,
+  RecordingV4Command,
+} from "@storycapture/shared-types/recording-v4";
 import { app } from "electron";
 import { recordingV4ChannelId } from "./recording-v4-channel";
 import {
-  type RecordingV4ActionInput,
   RecordingV4Coordinator,
   type RecordingV4PlatformSessionFactory,
 } from "./recording-v4-coordinator";

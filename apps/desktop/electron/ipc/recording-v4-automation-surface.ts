@@ -1,17 +1,15 @@
 import type { WebContents } from "electron";
+import type { RecordingV4ActionInput } from "@storycapture/shared-types/recording-v4";
 
-export interface RecordingV4AutomationAction {
-  step_id: string | null;
-  ordinal: number;
-  phase: string;
-  payload?: Record<string, unknown>;
-}
+export type RecordingV4AutomationAction = RecordingV4ActionInput;
 
 export interface RecordingV4AutomationSurface {
   contents: WebContents;
   inputCoordinateScale: number;
+  cursorCoordinateSize: { width: number; height: number };
   currentMediaTimeMs: () => number;
   recordAction: (action: RecordingV4AutomationAction) => Promise<unknown>;
+  recordCursorSample: (point: { x: number; y: number }) => Promise<unknown>;
   isActive: () => boolean;
 }
 

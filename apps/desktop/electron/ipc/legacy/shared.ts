@@ -505,6 +505,11 @@ export interface AuthorPreviewSession {
 
 export interface StoryBrowserRunHooks {
   onStepStarted?: (ordinal: number, command: ParsedCommand) => void;
+  onCursorSample?: (sample: {
+    ordinal: number;
+    command: ParsedCommand;
+    point: { x: number; y: number };
+  }) => void;
   onStepSucceeded?: (step: {
     ordinal: number;
     command: ParsedCommand;

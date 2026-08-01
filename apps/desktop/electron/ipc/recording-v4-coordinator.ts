@@ -5,9 +5,17 @@ import type { StartRecordingV4Args } from "@storycapture/shared-types";
 import {
   canTransitionRecordingV4,
   isRecordingV4TerminalState,
+  readRecordingV4ActionSidecar,
+  readRecordingV4CursorSidecar,
+  RECORDING_V4_CURSOR_COORDINATE_HEIGHT,
+  RECORDING_V4_CURSOR_COORDINATE_WIDTH,
   RECORDING_V4_CONTRACT_VERSION,
   RECORDING_V4_PROFILE,
   type RecordingV4CadenceEvidence,
+  type RecordingV4ActionEvent,
+  type RecordingV4ActionInput,
+  type RecordingV4CursorSample,
+  type RecordingV4CursorSampleInput,
   type RecordingV4Event,
   type RecordingV4FailureCode,
   type RecordingV4Journal,
@@ -46,23 +54,13 @@ export interface RecordingV4PlatformSessionInput {
   fail: (code: RecordingV4FailureCode) => void;
   activeMediaTimeUs: () => number;
   recordAction: (action: RecordingV4ActionInput) => Promise<RecordingV4ActionEvent>;
+  recordCursorSample: (sample: RecordingV4CursorSampleInput) => Promise<RecordingV4CursorSample>;
   isActive: () => boolean;
 }
 
 export type RecordingV4PlatformSessionFactory = (
   input: RecordingV4PlatformSessionInput,
 ) => RecordingV4PlatformSession | Promise<RecordingV4PlatformSession>;
-
-export interface RecordingV4ActionInput {
-  step_id: string | null;
-  ordinal: number;
-  phase: string;
-  payload?: Record<string, unknown>;
-}
-
-export interface RecordingV4ActionEvent extends RecordingV4ActionInput {
-  active_media_time_us: number;
-}
 
 export interface RecordingV4CoordinatorOptions {
   journalRoot: string;
@@ -140,7 +138,8 @@ class RecordingV4Session {
   private readonly subscriptions = new Set<Subscription>();
   private readonly mediaClock: ActiveMediaClock;
   private readonly actions: RecordingV4ActionEvent[] = [];
-  private actionWrite: Promise<void> = Promise.resolve();
+  private readonly cursorSamples: RecordingV4CursorSample[] = [];
+  private sidecarWrite: Promise<void> = Promise.resolve();
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private cleanupPromise: Promise<void> | null = null;
   private terminalPublished = false;
@@ -160,6 +159,7 @@ class RecordingV4Session {
 
   async initialize(): Promise<void> {
     await fs.mkdir(path.join(this.workspacePath, "sidecars"), { recursive: true });
+    await this.writeSidecars();
     await this.persist();
     this.heartbeat = setInterval(() => {
       this.emit({
@@ -217,18 +217,68 @@ class RecordingV4Session {
       throw new Error("Recording V4 actions require an active capture session.");
     }
     const event = { ...input, active_media_time_us: this.mediaClock.value() };
-    JSON.stringify(event);
     this.actions.push(event);
-    this.actionWrite = this.actionWrite.then(() =>
-      writeJsonAtomic(path.join(this.workspacePath, "sidecars", "actions.json"), {
-        version: RECORDING_V4_CONTRACT_VERSION,
-        session_id: this.id,
-        clock: "active_media_time_us",
-        events: this.actions,
-      }),
-    );
-    await this.actionWrite;
+    await this.enqueueSidecarWrite();
     return event;
+  }
+
+  async recordCursorSample(input: RecordingV4CursorSampleInput): Promise<RecordingV4CursorSample> {
+    if (this.state !== "capturing" && this.state !== "paused") {
+      throw new Error("Recording V4 cursor samples require an active capture session.");
+    }
+    if (input.coordinate_width !== RECORDING_V4_CURSOR_COORDINATE_WIDTH ||
+      input.coordinate_height !== RECORDING_V4_CURSOR_COORDINATE_HEIGHT ||
+      !Number.isFinite(input.x) || !Number.isFinite(input.y)) {
+      throw new Error("Recording V4 cursor sample geometry is invalid.");
+    }
+    const sample: RecordingV4CursorSample = {
+      active_media_time_us: this.mediaClock.value(),
+      x: Math.min(1, Math.max(0, input.x / input.coordinate_width)),
+      y: Math.min(1, Math.max(0, input.y / input.coordinate_height)),
+      kind: input.kind,
+      visible: input.visible,
+      pressed: input.pressed,
+    };
+    const previous = this.cursorSamples.at(-1);
+    if (previous && sample.active_media_time_us < previous.active_media_time_us) {
+      throw new Error("Recording V4 cursor clock moved backwards.");
+    }
+    this.cursorSamples.push(sample);
+    await this.enqueueSidecarWrite();
+    return sample;
+  }
+
+  private enqueueSidecarWrite(): Promise<void> {
+    this.sidecarWrite = this.sidecarWrite.then(() => this.writeSidecars());
+    return this.sidecarWrite;
+  }
+
+  private async writeSidecars(): Promise<void> {
+    const actions = {
+      version: RECORDING_V4_CONTRACT_VERSION,
+      session_id: this.id,
+      clock: "active_media_time_us" as const,
+      events: this.actions,
+    };
+    const cursor = {
+      version: RECORDING_V4_CONTRACT_VERSION,
+      session_id: this.id,
+      clock: "active_media_time_us" as const,
+      geometry: {
+        coordinate_width: RECORDING_V4_CURSOR_COORDINATE_WIDTH,
+        coordinate_height: RECORDING_V4_CURSOR_COORDINATE_HEIGHT,
+        capture_width: 1920 as const,
+        capture_height: 1080 as const,
+      },
+      samples: this.cursorSamples,
+    };
+    if (!readRecordingV4ActionSidecar(actions) || !readRecordingV4CursorSidecar(cursor)) {
+      throw new Error("Recording V4 sidecar validation failed.");
+    }
+    await Promise.all([
+      writeJsonAtomic(path.join(this.workspacePath, "sidecars", "actions.json"), actions),
+      writeJsonAtomic(path.join(this.workspacePath, "sidecars", "cursor.json"), cursor),
+    ]);
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -252,6 +302,7 @@ class RecordingV4Session {
         fail: (code) => void this.fail(code),
         activeMediaTimeUs: () => this.mediaClock.value(),
         recordAction: (action) => this.recordAction(action),
+        recordCursorSample: (sample) => this.recordCursorSample(sample),
         isActive: () => !isRecordingV4TerminalState(this.state),
       });
       await this.persist();
@@ -304,7 +355,7 @@ class RecordingV4Session {
     this.mediaClock.pause();
     await this.transition("stopping");
     try {
-      await this.actionWrite;
+      await this.sidecarWrite;
       const result = await this.platformSession.stop();
       if (result.session_id !== this.id)
         throw new Error("Platform returned a mismatched session ID.");
@@ -385,7 +436,7 @@ class RecordingV4Session {
     this.revision += 1;
     this.terminalResult = result;
     try {
-      await this.actionWrite;
+      await this.sidecarWrite;
       await this.persist();
     } catch (error) {
       this.state = previous;
@@ -551,6 +602,13 @@ export class RecordingV4Coordinator {
 
   recordAction(sessionId: string, action: RecordingV4ActionInput): Promise<RecordingV4ActionEvent> {
     return this.requireSession(sessionId).recordAction(action);
+  }
+
+  recordCursorSample(
+    sessionId: string,
+    sample: RecordingV4CursorSampleInput,
+  ): Promise<RecordingV4CursorSample> {
+    return this.requireSession(sessionId).recordCursorSample(sample);
   }
 
   private requireSession(sessionId: string): RecordingV4Session {

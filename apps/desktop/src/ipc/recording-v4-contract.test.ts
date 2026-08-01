@@ -6,6 +6,8 @@ import {
   applyRecordingV4Command,
   canTransitionRecordingV4,
   readRecordingV4Bundle,
+  readRecordingV4ActionSidecar,
+  readRecordingV4CursorSidecar,
   readRecordingV4Journal,
   recordingV4ExpectedFrameCount,
   recordingV4AudioSyncPassed,
@@ -96,7 +98,10 @@ function bundleFixture(): RecordingV4Bundle {
       frame_ledger_path: "evidence/frame-ledger.jsonl",
       audio_ledger_path: null,
     },
-    sidecars: { actions_path: "sidecars/actions.json" },
+    sidecars: {
+      actions_path: "sidecars/actions.json",
+      cursor_path: "sidecars/cursor.json",
+    },
     failure_codes: [],
   };
 }
@@ -127,6 +132,56 @@ describe("Recording V4 contract", () => {
     expect(readRecordingV4Bundle(JSON.parse(JSON.stringify(fixture)))).toEqual(fixture);
   });
 
+  it("validates canonical action and normalized cursor sidecars", () => {
+    const actions = {
+      version: 4,
+      session_id: "session-1",
+      clock: "active_media_time_us",
+      events: [{
+        step_id: "click-login",
+        ordinal: 1,
+        phase: "succeeded",
+        verb: "click",
+        target: { selector: "#login", bounds: { x: 10, y: 20, width: 100, height: 40 } },
+        timing: {
+          started_us: 0,
+          action_us: 20_000,
+          ended_us: 30_000,
+          input_us: { action: 20_000 },
+          presented_us: 25_000,
+        },
+        error_message: null,
+        active_media_time_us: 30_000,
+      }],
+    };
+    const cursor = {
+      version: 4,
+      session_id: "session-1",
+      clock: "active_media_time_us",
+      geometry: {
+        coordinate_width: 1280,
+        coordinate_height: 720,
+        capture_width: 1920,
+        capture_height: 1080,
+      },
+      samples: [{
+        active_media_time_us: 20_000,
+        x: 0.5,
+        y: 0.5,
+        kind: "pointer",
+        visible: true,
+        pressed: false,
+      }],
+    };
+
+    expect(readRecordingV4ActionSidecar(actions)).toEqual(actions);
+    expect(readRecordingV4CursorSidecar(cursor)).toEqual(cursor);
+    expect(readRecordingV4CursorSidecar({
+      ...cursor,
+      samples: [{ ...cursor.samples[0], x: 1.01 }],
+    })).toBeNull();
+  });
+
   it("rejects non-60, non-1080, incomplete, and malformed ledgers", () => {
     const fixture = bundleFixture();
     expect(readRecordingV4Bundle({ ...fixture, dimensions: { physical_width: 1280, physical_height: 720 } })).toBeNull();
@@ -135,6 +190,10 @@ describe("Recording V4 contract", () => {
     expect(readRecordingV4Bundle({
       ...fixture,
       cadence: { ...fixture.cadence, ledger: fixture.cadence.ledger.slice(1) },
+    })).toBeNull();
+    expect(readRecordingV4Bundle({
+      ...fixture,
+      sidecars: { actions_path: "sidecars/actions.json" },
     })).toBeNull();
   });
 
