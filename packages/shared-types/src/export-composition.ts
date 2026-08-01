@@ -109,8 +109,9 @@ export type ExportBackgroundKind =
   | { kind: "image"; asset_id: string | null; path: string | null };
 
 export interface ExportTrajectoryRef {
-  kind: "actions" | "trajectory" | "png-sequence";
+  kind: "recording-v4" | "actions" | "trajectory" | "png-sequence";
   path: string;
+  actions_path?: string;
   /** Compatibility name consumed by the v3 compositor until the P5 cutover. */
   png_sequence_dir: string;
   fps: number;

@@ -383,4 +383,51 @@ describe("canonical scene evaluator", () => {
       },
     });
   });
+
+  it("switches source-bound cursor clips and hides explicitly invisible samples", () => {
+    const cursorNode = (id: string, startMs: number) => ({
+      type: "cursor-overlay" as const,
+      id,
+      clip_id: `${id}-clip`,
+      skin: "mac-default" as const,
+      size_scale: 1,
+      motion_preset: "natural" as const,
+      preserve_full_motion: false,
+      click_effect: { style: "none", color: "auto", intensity: "normal" } as const,
+      color_tint: null,
+      t_start_ms: startMs,
+      duration_ms: 999,
+      trajectory: {
+        kind: "recording-v4" as const,
+        path: `/${id}/cursor.json`,
+        actions_path: `/${id}/actions.json`,
+        png_sequence_dir: `/${id}/cursor.json`,
+        fps: 30,
+        frame_count: 2,
+      },
+    });
+    const graph = canonicalGraph([
+      canonicalSource("source-a", 0, 1_000),
+      canonicalSource("source-b", 1_000, 1_000),
+      cursorNode("cursor-a", 0),
+      cursorNode("cursor-b", 1_000),
+    ]);
+
+    const switched = evaluateScene(graph, 1_500, {
+      cursor_samples: new Map([
+        ["cursor-a", { x: 0.1, y: 0.1, visible: true, clickFeedback: [], cursorScale: 1 }],
+        ["cursor-b", { x: 0.8, y: 0.7, visible: true, clickFeedback: [], cursorScale: 1 }],
+      ]),
+    });
+    expect(switched.cursors).toHaveLength(1);
+    expect(switched.cursors[0]?.node.id).toBe("cursor-b");
+
+    const hidden = evaluateScene(graph, 1_500, {
+      cursor_samples: new Map([
+        ["cursor-b", { x: 0.8, y: 0.7, visible: false, clickFeedback: [], cursorScale: 1 }],
+      ]),
+    });
+    expect(hidden.cursors[0]?.sample?.visible).toBe(false);
+    expect(hidden.cursors[0]?.output_point).toBeNull();
+  });
 });

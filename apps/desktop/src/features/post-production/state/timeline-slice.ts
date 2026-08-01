@@ -123,7 +123,9 @@ export interface CursorClip extends ClipBase {
   trackId: "cursor";
   /** Cursor sidecar path or generated PNG-sequence directory. */
   trajectoryDir: string;
-  trajectoryKind?: "actions" | "trajectory" | "png-sequence";
+  trajectoryKind?: "recording-v4" | "actions" | "trajectory" | "png-sequence";
+  /** Required for V4 cursor clips so semantic actions stay separate from cursor samples. */
+  actionsPath?: string;
   trajectoryFps: number;
   trajectoryFrameCount: number;
   skin: CursorSkin;

@@ -4,12 +4,22 @@
 
 import type { ExportRecordingSourceV2 } from "@storycapture/shared-types/recording-v2";
 import {
+  RECORDING_V4_CURSOR_COORDINATE_HEIGHT,
+  RECORDING_V4_CURSOR_COORDINATE_WIDTH,
+  type RecordingV4ActionEvent,
+  type RecordingV4ActionSidecar,
+  type RecordingV4ActionTarget,
+  type RecordingV4CursorSidecar,
+  readRecordingV4ActionSidecar,
+  readRecordingV4CursorSidecar,
+} from "@storycapture/shared-types/recording-v4";
+import {
   calloutText,
   DEFAULT_AUTO_ZOOM_DURATION_MS,
   highlightEnabled,
   type StoryPolishDoc,
 } from "@/features/editor/polish-sidecar";
-import { type ActionTarget, actionSidecarFps, type RecordingActions } from "@/ipc/actions";
+import type { RecordingActions } from "@/ipc/actions";
 import type { ParseResult } from "@/ipc/parse";
 import type { RecordingInfo } from "@/ipc/projects";
 import type {
@@ -30,13 +40,14 @@ import { NEW_CURSOR_CLICK_EFFECT } from "./cursor-click-effect";
 import { identitySourceTimelineMap } from "./source-timeline-map";
 import { DEFAULT_BACKGROUND, type EditorBackgroundKind, type Rgba } from "./store";
 import { styleDefaults } from "./text-style";
-import { buildVirtualCursorSchedule } from "./virtual-cursor-scheduler";
 
 export interface BuildTimelineInput {
   story: ParseResult | null;
   recording: RecordingInfo;
-  trajectory: RecordingTrajectory | null;
-  actions?: RecordingActions | null;
+  actions?: RecordingV4ActionSidecar | RecordingActions | null;
+  cursor?: RecordingV4CursorSidecar | null;
+  /** Removed from the V4 path; retained until the legacy-consumer deletion phase. */
+  trajectory?: RecordingTrajectory | null;
   polish?: StoryPolishDoc | null;
   stepTiming?: RecordingStepTimingSidecar | null;
 }
@@ -122,8 +133,31 @@ export function mergeIndependentAnnotations(
   return mergeReRecordedAnnotations(generated, saved).annotations;
 }
 
+export function mergeReRecordedCursorStyle(
+  generated: readonly CursorClip[],
+  saved: readonly CursorClip[],
+): CursorClip[] {
+  const savedStyle = saved.find((clip) => clip.syncGroupId) ?? saved[0];
+  if (!savedStyle) return [...generated];
+  return generated.map((clip) => ({
+    ...clip,
+    skin: savedStyle.skin,
+    motionPreset: savedStyle.motionPreset,
+    clickEffect: savedStyle.clickEffect ? { ...savedStyle.clickEffect } : undefined,
+    preserveFullMotion: savedStyle.preserveFullMotion,
+    sizeScale: savedStyle.sizeScale,
+    colorTint: savedStyle.colorTint,
+  }));
+}
+
 type CaptureRect = { x: number; y: number; width: number; height: number };
 type NormalizedBounds = { x: number; y: number; w: number; h: number };
+const RECORDING_V4_CAPTURE_RECT: CaptureRect = {
+  x: 0,
+  y: 0,
+  width: RECORDING_V4_CURSOR_COORDINATE_WIDTH,
+  height: RECORDING_V4_CURSOR_COORDINATE_HEIGHT,
+};
 
 const FALLBACK_DURATION_MS = 60_000;
 const AUTO_ZOOM_PRE_ROLL_MS = 300;
@@ -183,10 +217,13 @@ function sourceSize(input: BuildTimelineInput): VideoClip["sourceSize"] {
   }
 
   const rect =
-    input.actions?.capture_rect ??
-    input.trajectory?.capture_rect ??
     input.stepTiming?.captureRect ??
-    null;
+    (input.cursor
+      ? {
+          width: input.cursor.geometry.capture_width,
+          height: input.cursor.geometry.capture_height,
+        }
+      : null);
   const width = positiveDimension(rect?.width);
   const height = positiveDimension(rect?.height);
   return width && height ? { width, height } : undefined;
@@ -240,14 +277,6 @@ export function recordingSourceRevision(recording: RecordingInfo): string {
 function basename(path: string): string {
   const idx = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   return idx >= 0 ? path.slice(idx + 1) : path;
-}
-
-function deriveTrajectoryPath(recordingPath: string): string {
-  return recordingPath.replace(/\.mp4$/i, ".trajectory.json");
-}
-
-function deriveActionsPath(recordingPath: string): string {
-  return recordingPath.replace(/\.mp4$/i, ".actions.json");
 }
 
 function clamp01(value: number): number {
@@ -312,83 +341,95 @@ function normalizeBounds(
   return { x: x1, y: y1, w, h };
 }
 
+function semanticActionEvents(actions: RecordingV4ActionSidecar | null): RecordingV4ActionEvent[] {
+  if (!actions) return [];
+  const phaseRank: Record<RecordingV4ActionEvent["phase"], number> = {
+    started: 0,
+    input: 1,
+    presented: 2,
+    failed: 3,
+    succeeded: 4,
+  };
+  const byOrdinal = new Map<number, RecordingV4ActionEvent>();
+  for (const event of actions.events) {
+    const current = byOrdinal.get(event.ordinal);
+    if (!current || phaseRank[event.phase] >= phaseRank[current.phase]) {
+      byOrdinal.set(event.ordinal, event);
+    }
+  }
+  return [...byOrdinal.values()].sort((a, b) => a.ordinal - b.ordinal);
+}
+
+function actionEventTimeMs(event: RecordingV4ActionEvent): number {
+  return (event.timing?.action_us ?? event.active_media_time_us) / 1_000;
+}
+
+function actionTargetCenter(target: RecordingV4ActionTarget): { x: number; y: number } {
+  return {
+    x: target.bounds.x + target.bounds.width / 2,
+    y: target.bounds.y + target.bounds.height / 2,
+  };
+}
+
+function actionTargetBounds(target: RecordingV4ActionTarget | null | undefined) {
+  if (!target) return undefined;
+  return {
+    x: target.bounds.x,
+    y: target.bounds.y,
+    w: target.bounds.width,
+    h: target.bounds.height,
+  };
+}
+
 function buildAutoZoomClips(
-  trajectory: RecordingTrajectory | null,
-  actions: RecordingActions | null,
+  actions: RecordingV4ActionSidecar | null,
   idBase: string,
   mode: keyof typeof ZOOM_SCALE,
   durationMs = AUTO_ZOOM_DURATION_MS,
 ): ZoomClip[] {
   const scale = ZOOM_SCALE[mode];
-  if (actions) {
-    return actions.events
-      .filter(
-        (event) => event.target && (event.verb === "click" || event.pointer?.effect === "click"),
-      )
-      .map((event) => ({
-        id: `zoom-${idBase}-${event.t_action_ms}`,
+  return semanticActionEvents(actions)
+    .filter((event) => event.target && event.verb === "click")
+    .map((event) => {
+      const timeMs = actionEventTimeMs(event);
+      const center = actionTargetCenter(event.target as RecordingV4ActionTarget);
+      return {
+        id: `zoom-${idBase}-${timeMs}`,
         trackId: "zoom" as const,
-        startMs: Math.max(0, event.t_action_ms - AUTO_ZOOM_PRE_ROLL_MS),
+        startMs: Math.max(0, timeMs - AUTO_ZOOM_PRE_ROLL_MS),
         durationMs,
         label: "Auto zoom",
         target: { kind: "cursor" as const },
         origin: "auto" as const,
         scale,
-        center: normalizeCenter(
-          actions.capture_rect,
-          event.target?.center.x ?? 0.5,
-          event.target?.center.y ?? 0.5,
-        ),
+        center: normalizeCenter(RECORDING_V4_CAPTURE_RECT, center.x, center.y),
         preset: "CALM" as const,
-      }));
-  }
-  if (!trajectory) return [];
-
-  const zoom: ZoomClip[] = [];
-  for (const frame of trajectory.frames) {
-    if (!frame.click) continue;
-    zoom.push({
-      id: `zoom-${idBase}-${frame.t_ms}`,
-      trackId: "zoom",
-      startMs: Math.max(0, frame.t_ms - AUTO_ZOOM_PRE_ROLL_MS),
-      durationMs,
-      label: "Auto zoom",
-      target: { kind: "cursor" },
-      origin: "auto",
-      scale,
-      center: normalizeCenter(trajectory.capture_rect, frame.x, frame.y),
-      preset: "CALM",
+      };
     });
-  }
-  return zoom;
 }
 
 function buildActionFocusAnnotations(
-  actions: RecordingActions | null,
+  actions: RecordingV4ActionSidecar | null,
   idBase: string,
   mode: keyof typeof ACTION_FOCUS_HIGHLIGHT,
   excludeStepIds: ReadonlySet<string>,
 ): AnnotationClip[] {
   if (!actions) return [];
   const recipe = ACTION_FOCUS_HIGHLIGHT[mode];
-  return actions.events
-    .filter(
-      (event) => event.target && (event.verb === "click" || event.pointer?.effect === "click"),
-    )
+  return semanticActionEvents(actions)
+    .filter((event) => event.target && event.verb === "click")
     .filter((event) => !event.step_id || !excludeStepIds.has(event.step_id))
-    .filter((event) => normalizeBounds(actions.capture_rect, event.target?.bounds))
+    .filter((event) => normalizeBounds(RECORDING_V4_CAPTURE_RECT, actionTargetBounds(event.target)))
     .map((event) => {
-      const center = normalizeCenter(
-        actions.capture_rect,
-        event.target?.center.x ?? 0.5,
-        event.target?.center.y ?? 0.5,
-      );
-      const bounds = normalizeBounds(actions.capture_rect, event.target?.bounds);
+      const timeMs = actionEventTimeMs(event);
+      const targetCenter = actionTargetCenter(event.target as RecordingV4ActionTarget);
+      const center = normalizeCenter(RECORDING_V4_CAPTURE_RECT, targetCenter.x, targetCenter.y);
+      const bounds = normalizeBounds(RECORDING_V4_CAPTURE_RECT, actionTargetBounds(event.target));
       const stepId = event.step_id ?? `action-${event.ordinal}`;
       return {
-        id: `action-focus-${idBase}-${stepId}-${event.t_action_ms}`,
+        id: `action-focus-${idBase}-${stepId}-${timeMs}`,
         trackId: "annotations" as const,
-        startMs: Math.max(0, event.t_action_ms - 60),
+        startMs: Math.max(0, timeMs - 60),
         durationMs: recipe.durationMs,
         label: "Action focus",
         text: "",
@@ -415,60 +456,41 @@ function buildActionFocusAnnotations(
 }
 
 function cursorSidecarFor(
-  recordingPath: string,
   actionsPath: string | null | undefined,
-  actions: RecordingActions | null,
-  trajectory: RecordingTrajectory | null,
-  durationMs: number,
-): { path: string; kind: "actions" | "trajectory"; fps: number; frameCount: number } | null {
-  if (actions) {
-    const fps = actionSidecarFps(actions);
-    const durationFrameCount = Math.ceil((Math.max(0, durationMs) / 1000) * fps);
-    return {
-      path: actionsPath ?? deriveActionsPath(recordingPath),
-      kind: "actions",
-      fps,
-      frameCount: Math.max(actions.frame_count, durationFrameCount, 1),
-    };
-  }
-  if (!trajectory) return null;
+  cursorPath: string | null | undefined,
+  cursor: RecordingV4CursorSidecar | null,
+): { path: string; actionsPath: string; fps: number; frameCount: number } | null {
+  if (!actionsPath || !cursorPath || !cursor) return null;
   return {
-    path: deriveTrajectoryPath(recordingPath),
-    kind: "trajectory",
-    fps: trajectory.fps,
-    frameCount: trajectory.frame_count,
+    path: cursorPath,
+    actionsPath,
+    fps: 30,
+    frameCount: cursor.samples.length,
   };
 }
 
-function trajectoryDurationMs(trajectory: RecordingTrajectory | null): number {
-  if (!trajectory) return 0;
-  const finalFrameMs = trajectory.frames.at(-1)?.t_ms ?? 0;
-  if (finalFrameMs > 0) return finalFrameMs;
-  return trajectory.fps > 0 ? Math.round((trajectory.frame_count / trajectory.fps) * 1000) : 0;
+function cursorDurationMs(cursor: RecordingV4CursorSidecar | null): number {
+  return (cursor?.samples.at(-1)?.active_media_time_us ?? 0) / 1_000;
 }
 
-function actionsDurationMs(actions: RecordingActions | null): number {
+function actionsDurationMs(actions: RecordingV4ActionSidecar | null): number {
   if (!actions) return 0;
-  let eventMaxEndMs = 0;
-  for (const event of actions.events) {
-    eventMaxEndMs = Math.max(eventMaxEndMs, event.t_end_ms);
-  }
-  if (eventMaxEndMs > 0) return eventMaxEndMs;
-  const fps = actionSidecarFps(actions);
-  return fps > 0 ? Math.round((actions.frame_count / fps) * 1000) : 0;
+  return actions.events.reduce(
+    (maximum, event) =>
+      Math.max(maximum, (event.timing?.ended_us ?? event.active_media_time_us) / 1_000),
+    0,
+  );
 }
 
 function mediaDurationMs(
   recording: RecordingInfo,
-  trajectory: RecordingTrajectory | null,
-  actions: RecordingActions | null,
+  cursor: RecordingV4CursorSidecar | null,
+  actions: RecordingV4ActionSidecar | null,
 ): number {
   const recordingDurationMs = recording.duration_ms ?? 0;
   if (recordingDurationMs > 0) return recordingDurationMs;
-  const trajectoryMs = trajectoryDurationMs(trajectory);
-  if (trajectoryMs > 0) return trajectoryMs;
-  const actionMs = actionsDurationMs(actions);
-  if (actionMs > 0) return actionMs;
+  const sidecarDurationMs = Math.max(cursorDurationMs(cursor), actionsDurationMs(actions));
+  if (sidecarDurationMs > 0) return sidecarDurationMs;
   return FALLBACK_DURATION_MS;
 }
 
@@ -514,45 +536,47 @@ function boundsFromTimingTarget(
 }
 
 function actionTargetForStep(
-  actions: RecordingActions | null,
+  actions: RecordingV4ActionSidecar | null,
   stepId: string,
   ordinal: number,
-): ActionTarget | null {
+): RecordingV4ActionTarget | null {
   return actionEventForStep(actions, stepId, ordinal)?.target ?? null;
 }
 
 function actionEventForStep(
-  actions: RecordingActions | null,
+  actions: RecordingV4ActionSidecar | null,
   stepId: string,
   ordinal: number,
-): RecordingActions["events"][number] | null {
+): RecordingV4ActionEvent | null {
   if (!actions) return null;
   return (
-    actions.events.find(
+    semanticActionEvents(actions).find(
       (item) => (stepId && item.step_id === stepId) || (!item.step_id && item.ordinal === ordinal),
     ) ?? null
   );
 }
 
 function centerFromActionTarget(
-  actions: RecordingActions | null,
+  actions: RecordingV4ActionSidecar | null,
   stepId: string,
   ordinal: number,
 ): { x: number; y: number } | null {
   if (!actions) return null;
   const target = actionTargetForStep(actions, stepId, ordinal);
-  return target ? normalizeCenter(actions.capture_rect, target.center.x, target.center.y) : null;
+  if (!target) return null;
+  const center = actionTargetCenter(target);
+  return normalizeCenter(RECORDING_V4_CAPTURE_RECT, center.x, center.y);
 }
 
 function boundsFromActionTarget(
-  actions: RecordingActions | null,
+  actions: RecordingV4ActionSidecar | null,
   stepId: string,
   ordinal: number,
 ): NormalizedBounds | undefined {
   if (!actions) return undefined;
   return normalizeBounds(
-    actions.capture_rect,
-    actionTargetForStep(actions, stepId, ordinal)?.bounds,
+    RECORDING_V4_CAPTURE_RECT,
+    actionTargetBounds(actionTargetForStep(actions, stepId, ordinal)),
   );
 }
 
@@ -723,7 +747,7 @@ interface BuildPolishClipsContext {
   story: ParseResult | null;
   polish: StoryPolishDoc | null | undefined;
   captureRect: CaptureRect | null;
-  actions: RecordingActions | null;
+  actions: RecordingV4ActionSidecar | null;
   stepTiming: RecordingStepTimingSidecar | null | undefined;
   durationMs: number;
   idBase: string;
@@ -761,7 +785,7 @@ function buildPolishClips({
     const interactionStep = isInteractionVerb(stepTime?.verb ?? actionEvent?.verb ?? step.verb);
     const actionTimeMs =
       interactionStep && actionEvent
-        ? Math.min(durationMs, Math.max(0, actionEvent.t_action_ms))
+        ? Math.min(durationMs, Math.max(0, actionEventTimeMs(actionEvent)))
         : null;
     const fallbackTimeMs = callout
       ? fallbackPolishStepTimeMs(polishedSteps, step.stepId, durationMs)
@@ -871,19 +895,16 @@ function buildPolishClips({
 }
 
 export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimelineOutput {
-  const { recording, trajectory, polish, stepTiming } = input;
-  const actions = input.actions ?? null;
+  const { recording, polish, stepTiming } = input;
+  const actions = readRecordingV4ActionSidecar(input.actions);
+  const cursorSidecarData = readRecordingV4CursorSidecar(input.cursor);
   const idBase = hashPath(recording.path);
   const syncGroupId = `recording-${idBase}`;
   const sourceRevision = recordingSourceRevision(recording);
 
-  const cursorMotionPreset = normalizeCursorMotionPreset(actions?.cursor_motion_preset);
-  const cursorVisible = polish?.global.cursor !== "hidden";
-  const cursorSchedule = cursorVisible
-    ? buildVirtualCursorSchedule(actions, cursorMotionPreset)
-    : null;
-  const mediaEndMs = mediaDurationMs(recording, trajectory, actions);
-  const durationMs = Math.max(mediaEndMs, cursorSchedule?.durationMs ?? 0);
+  const cursorMotionPreset = normalizeCursorMotionPreset(undefined);
+  const mediaEndMs = mediaDurationMs(recording, cursorSidecarData, actions);
+  const durationMs = mediaEndMs;
   const source = sourceSize(input);
   const sourceTimeMap = identitySourceTimelineMap(durationMs);
   const recordingSource = recordingSourceMetadata(recording);
@@ -908,11 +929,9 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
 
   const cursor: CursorClip[] = [];
   const cursorSidecar = cursorSidecarFor(
-    recording.path,
     recording.actions_path,
-    actions,
-    trajectory,
-    durationMs,
+    recording.cursor_path,
+    cursorSidecarData,
   );
   if (cursorSidecar && polish?.global.cursor !== "hidden") {
     cursor.push({
@@ -921,7 +940,8 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
       startMs: 0,
       durationMs,
       trajectoryDir: cursorSidecar.path,
-      trajectoryKind: cursorSidecar.kind,
+      trajectoryKind: "recording-v4",
+      actionsPath: cursorSidecar.actionsPath,
       trajectoryFps: cursorSidecar.fps,
       trajectoryFrameCount: cursorSidecar.frameCount,
       skin: polish?.global.cursorSkin ?? "mac-default",
@@ -940,7 +960,6 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
     reducedMotion || polish?.global.autoZoom === "off"
       ? []
       : buildAutoZoomClips(
-          trajectory,
           actions,
           idBase,
           polish?.global.autoZoom ?? "standard",
@@ -949,7 +968,7 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
   const polishClips = buildPolishClips({
     story: input.story,
     polish,
-    captureRect: actions?.capture_rect ?? trajectory?.capture_rect ?? null,
+    captureRect: RECORDING_V4_CAPTURE_RECT,
     actions,
     stepTiming,
     durationMs,

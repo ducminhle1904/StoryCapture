@@ -14,6 +14,7 @@ const ipcMocks = vi.hoisted(() => ({
   timelineSave: vi.fn(),
   useProjectRecordings: vi.fn(),
   useRecordingActions: vi.fn(),
+  useRecordingV4Sidecars: vi.fn(),
   useRecordingStepTiming: vi.fn(),
   useRecordingTrajectory: vi.fn(),
 }));
@@ -49,6 +50,10 @@ vi.mock("@/ipc/actions", () => ({
   actionSidecarFps: (actions: { fps_num: number; fps_den: number }) =>
     actions.fps_num / actions.fps_den,
   useRecordingActions: ipcMocks.useRecordingActions,
+}));
+
+vi.mock("@/ipc/recording-v4-sidecars", () => ({
+  useRecordingV4Sidecars: ipcMocks.useRecordingV4Sidecars,
 }));
 
 vi.mock("@/ipc/trajectory", () => ({
@@ -132,6 +137,11 @@ beforeEach(() => {
     data: null,
     isLoading: false,
     isSuccess: true,
+  });
+  ipcMocks.useRecordingV4Sidecars.mockReturnValue({
+    data: null,
+    isLoading: false,
+    isError: false,
   });
   ipcMocks.useRecordingStepTiming.mockReturnValue({ data: null, isLoading: false });
   ipcMocks.useRecordingTrajectory.mockReturnValue({ data: null, isLoading: false });
@@ -274,18 +284,24 @@ describe("EditorShell toolbar actions", () => {
     });
   });
 
-  it("preserves recording sidecars after timeline bootstrap", async () => {
+  it("keeps finalized Recording V4 sidecar paths after timeline bootstrap", async () => {
     const actions = {
-      source_version: 1,
-      confidence: "legacy-approximate",
-      recording_path: "/recordings/full-duration.mp4",
-      cursor_motion_preset: "natural",
-      viewport: { width: 1_920, height: 1_080 },
-      capture_rect: { x: 0, y: 0, width: 1_920, height: 1_080 },
-      fps_num: 60,
-      fps_den: 1,
-      frame_count: 0,
+      version: 4,
+      session_id: "session-v4",
+      clock: "active_media_time_us",
       events: [],
+    };
+    const cursor = {
+      version: 4,
+      session_id: "session-v4",
+      clock: "active_media_time_us",
+      geometry: {
+        coordinate_width: 1280,
+        coordinate_height: 720,
+        capture_width: 1920,
+        capture_height: 1080,
+      },
+      samples: [],
     };
     ipcMocks.useProjectRecordings.mockReturnValue({
       data: [
@@ -295,15 +311,17 @@ describe("EditorShell toolbar actions", () => {
           duration_ms: 2_000,
           width: 1_920,
           height: 1_080,
+          actions_path: "/recordings/sidecars/actions.json",
+          cursor_path: "/recordings/sidecars/cursor.json",
         },
       ],
       isSuccess: true,
       isError: false,
     });
-    ipcMocks.useRecordingActions.mockReturnValue({
-      data: actions,
+    ipcMocks.useRecordingV4Sidecars.mockReturnValue({
+      data: { actions, cursor },
       isLoading: false,
-      isSuccess: true,
+      isError: false,
     });
 
     render(
@@ -313,9 +331,10 @@ describe("EditorShell toolbar actions", () => {
     );
 
     await waitFor(() => expect(useEditorStore.getState().tracks.video).toHaveLength(1));
-    expect(useEditorStore.getState()._undoExtras).toMatchObject({
-      actions,
-      captureRect: actions.capture_rect,
+    expect(useEditorStore.getState().tracks.cursor[0]).toMatchObject({
+      trajectoryKind: "recording-v4",
+      trajectoryDir: "/recordings/sidecars/cursor.json",
+      actionsPath: "/recordings/sidecars/actions.json",
     });
   });
 
@@ -559,7 +578,7 @@ describe("EditorShell toolbar actions", () => {
     expect(toastMocks.warning).not.toHaveBeenCalled();
   });
 
-  it("treats an actions sidecar as review timing data", () => {
+  it("treats a Recording V4 actions sidecar as review timing data", () => {
     ipcMocks.useProjectRecordings.mockReturnValue({
       data: [
         {
@@ -568,47 +587,56 @@ describe("EditorShell toolbar actions", () => {
           duration_ms: 1_233,
           width: 1280,
           height: 720,
+          actions_path: "/recordings/sidecars/actions.json",
+          cursor_path: "/recordings/sidecars/cursor.json",
         },
       ],
       isSuccess: true,
       isError: false,
     });
-    ipcMocks.useRecordingActions.mockReturnValue({
+    ipcMocks.useRecordingV4Sidecars.mockReturnValue({
       data: {
-        source_version: 1,
-        confidence: "legacy-approximate",
-        recording_path: "/recordings/action-timed.mp4",
-        cursor_motion_preset: "natural",
-        viewport: { width: 1280, height: 720 },
-        capture_rect: { x: 0, y: 0, width: 1280, height: 720 },
-        fps_num: 60,
-        fps_den: 1,
-        frame_count: 74,
-        events: [
-          {
-            source_index: 0,
-            confidence: "legacy-approximate",
-            step_id: "step-1",
-            ordinal: 1,
-            verb: "click",
-            t_start_ms: 100,
-            t_action_ms: 120,
-            t_end_ms: 240,
-            target: {
-              kind: "element",
-              label: "Start",
-              center: { x: 100, y: 120 },
-              bounds: { x: 80, y: 100, w: 40, h: 40 },
+        actions: {
+          version: 4,
+          session_id: "session-v4",
+          clock: "active_media_time_us",
+          events: [
+            {
+              step_id: "step-1",
+              ordinal: 1,
+              phase: "succeeded",
+              verb: "click",
+              target: {
+                selector: "#start",
+                bounds: { x: 80, y: 100, width: 40, height: 40 },
+              },
+              timing: {
+                started_us: 100_000,
+                action_us: 120_000,
+                ended_us: 240_000,
+                input_us: { action: 120_000 },
+                presented_us: 200_000,
+              },
+              error_message: null,
+              active_media_time_us: 240_000,
             },
-            secondary_target: null,
-            pointer: { button: "left", effect: "click" },
-            cursor_timing: null,
-            input_timing: { kind: "click", action_ms: 120 },
+          ],
+        },
+        cursor: {
+          version: 4,
+          session_id: "session-v4",
+          clock: "active_media_time_us",
+          geometry: {
+            coordinate_width: 1280,
+            coordinate_height: 720,
+            capture_width: 1920,
+            capture_height: 1080,
           },
-        ],
+          samples: [],
+        },
       },
       isLoading: false,
-      isSuccess: true,
+      isError: false,
     });
 
     render(

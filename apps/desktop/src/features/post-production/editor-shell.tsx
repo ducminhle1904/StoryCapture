@@ -39,11 +39,11 @@ import {
 import type { ProjectWorkflowSnapshot } from "@/features/project-workflow/project-stage";
 import { ProjectStageHeader } from "@/features/project-workflow/project-stage-header";
 import { VoiceCatalogDialog } from "@/features/voiceover/VoiceCatalogDialog";
-import { useRecordingActions } from "@/ipc/actions";
 import { type ParseResult, parseStory } from "@/ipc/parse";
 import { fetchProjectFolder, type RecordingInfo, useProjectRecordings } from "@/ipc/projects";
+import { useRecordingV4Sidecars } from "@/ipc/recording-v4-sidecars";
 import { timelineLoad, timelineSave } from "@/ipc/timeline";
-import { useRecordingStepTiming, useRecordingTrajectory } from "@/ipc/trajectory";
+import { useRecordingStepTiming } from "@/ipc/trajectory";
 import { ExportModal } from "./export-modal/export-modal";
 import { useEditorHotkeys } from "./hooks/use-hotkeys";
 import { InspectorPanel } from "./inspector/inspector-panel";
@@ -52,6 +52,7 @@ import { SoundDrawer } from "./sound-browser/sound-drawer";
 import {
   buildTimelineFromStory,
   mergeReRecordedAnnotations,
+  mergeReRecordedCursorStyle,
   recordingSourceRevision,
 } from "./state/build-timeline-from-story";
 import { createClipId } from "./state/clip-id";
@@ -64,6 +65,7 @@ import {
 } from "./state/timeline-layout";
 import {
   type AnnotationClip,
+  type CursorClip,
   cloneTimelineTracks,
   type SoundClip,
   type TimelineSlice,
@@ -350,6 +352,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const timelineLoadTokenRef = useRef(0);
   const lastSavedTimelineRef = useRef("");
   const staleAnnotationsRef = useRef<AnnotationClip[]>([]);
+  const staleCursorRef = useRef<CursorClip[]>([]);
   const staleVoiceoversRef = useRef<SoundClip[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -394,6 +397,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     setTimelineNeedsBootstrap(false);
     lastSavedTimelineRef.current = "";
     staleAnnotationsRef.current = [];
+    staleCursorRef.current = [];
     staleVoiceoversRef.current = [];
     resetTransientTimelineState();
 
@@ -416,6 +420,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
               : recordingsQuery.isSuccess;
             if (staleForLatestRecording) {
               staleAnnotationsRef.current = parsed.layout.tracks.annotations;
+              staleCursorRef.current = parsed.layout.tracks.cursor;
               staleVoiceoversRef.current = parsed.layout.tracks.sound.filter(
                 (clip) => clip.kind === "voiceover",
               );
@@ -459,16 +464,15 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     })();
   }, [storyId, videoSrc, latestRecording, recordingsQuery.isSuccess, recordingsReady]);
 
-  const actionsQuery = useRecordingActions(latestRecording?.path, latestRecording?.actions_path);
-  const recordingActions = actionsQuery.data ?? null;
-  const trajectoryQuery = useRecordingTrajectory(
-    latestRecording?.path,
-    actionsQuery.isSuccess && actionsQuery.data === null,
+  const sidecarsQuery = useRecordingV4Sidecars(
+    latestRecording?.actions_path,
+    latestRecording?.cursor_path,
   );
+  const recordingActions = sidecarsQuery.data?.actions ?? null;
+  const recordingCursor = sidecarsQuery.data?.cursor ?? null;
   const stepTimingQuery = useRecordingStepTiming(latestRecording?.path);
-  const resolvedCaptureRect =
-    recordingActions?.capture_rect ?? trajectoryQuery.data?.capture_rect ?? null;
-  const hasCursorData = Boolean(recordingActions || trajectoryQuery.data);
+  const resolvedCaptureRect = stepTimingQuery.data?.captureRect ?? null;
+  const hasCursorData = Boolean(recordingCursor?.samples.length);
   const hasStepTimingData = Boolean(stepTimingQuery.data || recordingActions);
 
   useEffect(() => {
@@ -479,12 +483,12 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
           textOverlays: {},
           background: DEFAULT_BACKGROUND,
         }),
-        actions: recordingActions,
+        actions: null,
         stepTiming: stepTimingQuery.data ?? null,
         captureRect: resolvedCaptureRect,
       },
     }));
-  }, [recordingActions, resolvedCaptureRect, stepTimingQuery.data]);
+  }, [resolvedCaptureRect, stepTimingQuery.data]);
 
   // One-shot auto-populate: only run while generated tracks are empty so we
   // don't clobber persisted user edits. Idempotent on identical inputs.
@@ -592,7 +596,8 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     if (!latestRecording) return;
     if (!timelineHydrated || !timelineNeedsBootstrap) return;
     if (!timelineBootstrapReady) return;
-    if (actionsQuery.isLoading || trajectoryQuery.isLoading || stepTimingQuery.isLoading) return;
+    if (sidecarsQuery.isLoading || stepTimingQuery.isLoading) return;
+    if (sidecarsQuery.isError) return;
     if (tracksVideoLen > 0) return;
     if (tracksCursorLen > 0 || tracksZoomLen > 0 || tracksSoundLen > 0 || tracksAnnotationLen > 0) {
       return;
@@ -601,7 +606,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       story: storyParsed,
       recording: latestRecording,
       actions: recordingActions,
-      trajectory: trajectoryQuery.data ?? null,
+      cursor: recordingCursor,
       polish: polishDoc,
       stepTiming: stepTimingQuery.data ?? null,
     });
@@ -618,10 +623,12 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     });
     const builtTracks = {
       ...generatedTracks,
+      cursor: mergeReRecordedCursorStyle(generatedTracks.cursor, staleCursorRef.current),
       sound: [...generatedTracks.sound, ...voiceoverReflow.clips],
       annotations: annotationMerge.annotations,
     };
     staleAnnotationsRef.current = [];
+    staleCursorRef.current = [];
     staleVoiceoversRef.current = [];
     setTracks(builtTracks);
     setDuration(maxTrackEndMs(builtTracks));
@@ -679,15 +686,15 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     latestRecording,
     polishDoc,
     storyParsed,
-    actionsQuery.isLoading,
+    sidecarsQuery.isError,
+    sidecarsQuery.isLoading,
     recordingActions,
+    recordingCursor,
     stepTimingQuery.data,
     stepTimingQuery.isLoading,
     timelineHydrated,
     timelineBootstrapReady,
     timelineNeedsBootstrap,
-    trajectoryQuery.data,
-    trajectoryQuery.isLoading,
     tracksVideoLen,
     tracksCursorLen,
     tracksZoomLen,
@@ -984,8 +991,6 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
                 mode="post-production"
                 storyId={storyId}
                 videoSrc={resolvedVideoSrc}
-                actions={recordingActions}
-                trajectory={trajectoryQuery.data ?? null}
                 stepTiming={stepTimingQuery.data ?? null}
                 captureRect={resolvedCaptureRect}
               />

@@ -1,3 +1,4 @@
+import type { RecordingV4CursorKind } from "@storycapture/shared-types/recording-v4";
 import type { ActionPoint, ActionTimelineEvent, RecordingActions } from "@/ipc/actions";
 import type { RecordingTrajectory } from "@/ipc/trajectory";
 import {
@@ -26,6 +27,9 @@ export interface ClickFeedbackFrame {
 export interface VirtualCursorSample {
   x: number;
   y: number;
+  kind?: RecordingV4CursorKind;
+  visible?: boolean;
+  pressed?: boolean;
   clickFeedback: ClickFeedbackFrame[];
   cursorScale: number;
 }

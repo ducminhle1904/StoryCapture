@@ -3,6 +3,10 @@ import type {
   ExportVideoNode,
   SupportedExportCompositionGraph,
 } from "@storycapture/shared-types";
+import {
+  readRecordingV4ActionSidecar,
+  readRecordingV4CursorSidecar,
+} from "@storycapture/shared-types/recording-v4";
 import type { RecordingActions } from "@/ipc/action-sidecar";
 import type { RecordingTrajectory } from "@/ipc/trajectory";
 
@@ -29,6 +33,12 @@ import { parseExportCursorSidecar } from "./cursor-sidecar";
 import type { CanonicalSourceMode } from "./media-source-pool";
 import { CanonicalMediaSourcePool, canonicalAssetUrl } from "./media-source-pool";
 import {
+  type PreparedRecordingV4Cursor,
+  prepareRecordingV4Cursor,
+  recordingV4TargetBounds,
+  sampleRecordingV4Cursor,
+} from "./recording-v4-cursor";
+import {
   type EvaluatedScene,
   type ExportCursorNode,
   evaluateScene,
@@ -43,6 +53,7 @@ interface CursorRuntime {
   node: CursorNode;
   schedule: VirtualCursorSchedule | null;
   trajectory: RecordingTrajectory | null;
+  recordingV4: PreparedRecordingV4Cursor | null;
 }
 
 export type CanonicalCursorSidecarLoader = (path: string) => Promise<unknown>;
@@ -102,18 +113,18 @@ export interface CanonicalVisualEnginePort {
   dispose(): void;
 }
 
-function cursorTimelineMs(node: ExportCursorNode, timeMs: number): number {
+export function cursorActiveMediaTimeUs(node: ExportCursorNode, timeMs: number): number {
   const relativeMs = Math.max(0, timeMs - node.t_start_ms);
-  if (node.preserve_full_motion || !node.source_time_map) return relativeMs;
+  if (node.preserve_full_motion || !node.source_time_map) return relativeMs * 1_000;
   const segment = node.source_time_map.segments.find(
     (candidate) => relativeMs >= candidate.timelineStartMs && relativeMs <= candidate.timelineEndMs,
   );
-  if (!segment) return relativeMs;
-  if (segment.kind === "hold") return segment.sourcePtsUs / 1_000;
+  if (!segment) return relativeMs * 1_000;
+  if (segment.kind === "hold") return segment.sourcePtsUs;
   const timelineSpan = segment.timelineEndMs - segment.timelineStartMs;
-  if (timelineSpan <= 0) return segment.sourceStartUs / 1_000;
+  if (timelineSpan <= 0) return segment.sourceStartUs;
   const progress = (relativeMs - segment.timelineStartMs) / timelineSpan;
-  return (segment.sourceStartUs + progress * (segment.sourceEndUs - segment.sourceStartUs)) / 1_000;
+  return segment.sourceStartUs + progress * (segment.sourceEndUs - segment.sourceStartUs);
 }
 
 async function loadCanonicalTextFonts(
@@ -201,11 +212,42 @@ export class CanonicalVisualEngine implements CanonicalVisualEnginePort {
         (a, b) => a.t_start_ms - b.t_start_ms || a.clip_id.localeCompare(b.clip_id),
       )) {
         if (node.trajectory.kind === "png-sequence") {
-          cursorRuntimes.push({ node, schedule: null, trajectory: null });
+          cursorRuntimes.push({ node, schedule: null, trajectory: null, recordingV4: null });
           continue;
         }
         if (!node.trajectory.path) {
           throw new Error(`canonical cursor sidecar path is missing: ${node.id}`);
+        }
+        if (node.trajectory.kind === "recording-v4") {
+          if (!node.trajectory.actions_path) {
+            throw new Error(`canonical Recording V4 actions path is missing: ${node.id}`);
+          }
+          const [cursorValue, actionsValue] = await Promise.all([
+            this.cursorSidecarLoader(node.trajectory.path),
+            this.cursorSidecarLoader(node.trajectory.actions_path),
+          ]);
+          const cursor = readRecordingV4CursorSidecar(cursorValue);
+          const actions = readRecordingV4ActionSidecar(actionsValue);
+          if (!cursor) {
+            throw new Error(
+              `canonical Recording V4 cursor sidecar is invalid: ${node.trajectory.path}`,
+            );
+          }
+          if (!actions) {
+            throw new Error(
+              `canonical Recording V4 actions sidecar is invalid: ${node.trajectory.actions_path}`,
+            );
+          }
+          for (const [stepId, bounds] of recordingV4TargetBounds(actions)) {
+            if (!targetBoundsByStepId.has(stepId)) targetBoundsByStepId.set(stepId, bounds);
+          }
+          cursorRuntimes.push({
+            node,
+            schedule: null,
+            trajectory: null,
+            recordingV4: prepareRecordingV4Cursor(actions, cursor),
+          });
+          continue;
         }
         const parsed = parseExportCursorSidecar(
           await this.cursorSidecarLoader(node.trajectory.path),
@@ -232,6 +274,7 @@ export class CanonicalVisualEngine implements CanonicalVisualEnginePort {
                 })
               : null,
           trajectory: parsed.kind === "trajectory" ? parsed.sidecar : null,
+          recordingV4: null,
         });
       }
       await loadCanonicalTextFonts(graph, this.fontSet);
@@ -264,12 +307,18 @@ export class CanonicalVisualEngine implements CanonicalVisualEnginePort {
     const timeMs = Math.max(0, Math.min(graph.duration_ms, timestampMs));
     const cursorSamples = new Map<string, VirtualCursorSample | null>();
     for (const runtime of this.cursorRuntimes) {
-      const cursorMs = cursorTimelineMs(runtime.node, timeMs);
-      const sample = runtime.schedule
-        ? samplePreparedVirtualCursor(runtime.schedule, cursorMs, runtime.node.click_effect)
-        : runtime.trajectory
-          ? sampleTrajectoryCursor(runtime.trajectory, cursorMs)
-          : null;
+      const activeMediaTimeUs = cursorActiveMediaTimeUs(runtime.node, timeMs);
+      const sample = runtime.recordingV4
+        ? sampleRecordingV4Cursor(runtime.recordingV4, activeMediaTimeUs, runtime.node.click_effect)
+        : runtime.schedule
+          ? samplePreparedVirtualCursor(
+              runtime.schedule,
+              activeMediaTimeUs / 1_000,
+              runtime.node.click_effect,
+            )
+          : runtime.trajectory
+            ? sampleTrajectoryCursor(runtime.trajectory, activeMediaTimeUs / 1_000)
+            : null;
       cursorSamples.set(runtime.node.id, sample);
     }
     const scene = evaluateScene(graph, timeMs, {

@@ -744,9 +744,10 @@ function evaluateCursors(
     .sort((a, b) => a.t_start_ms - b.t_start_ms || a.clip_id.localeCompare(b.clip_id))
     .map((node) => {
       const sample = inputs.cursor_samples?.get(node.id) ?? null;
-      const outputPoint = sample
-        ? sourcePointToOutput(sample, zoom, contentRect, graph.output_width, graph.output_height)
-        : null;
+      const outputPoint =
+        sample && sample.visible !== false
+          ? sourcePointToOutput(sample, zoom, contentRect, graph.output_width, graph.output_height)
+          : null;
       const relativeMs = Math.max(0, timeMs - node.t_start_ms);
       const pngFrameIndex =
         node.trajectory.kind === "png-sequence" && node.trajectory.frame_count > 0

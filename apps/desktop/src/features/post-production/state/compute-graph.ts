@@ -307,6 +307,7 @@ function cursorOverlay(clip: CursorClip): VideoNode | null {
     trajectory: {
       kind: clip.trajectoryKind ?? "trajectory",
       path: clip.trajectoryDir,
+      actions_path: clip.actionsPath,
       png_sequence_dir: clip.trajectoryDir,
       fps: clip.trajectoryFps,
       frame_count: clip.trajectoryFrameCount,
@@ -526,6 +527,7 @@ export const EXPORT_CLIP_FIELD_COVERAGE = {
     ...COMMON_CLIP_FIELD_COVERAGE,
     trajectoryDir: "graph",
     trajectoryKind: "graph",
+    actionsPath: "graph",
     trajectoryFps: "graph",
     trajectoryFrameCount: "graph",
     skin: "graph",
@@ -763,7 +765,10 @@ function clipIssues(clip: Clip, state: ComputeGraphInput): ExportIssue[] {
       if (
         (clip.anchor?.kind === "target" || clip.anchor?.kind === "cursor") &&
         !state._undoExtras?.actions &&
-        !state._undoExtras?.stepTiming
+        !state._undoExtras?.stepTiming &&
+        !state.tracks.cursor.some(
+          (cursor) => cursor.trajectoryKind === "recording-v4" && cursor.actionsPath,
+        )
       ) {
         issues.push(
           exportIssue(
