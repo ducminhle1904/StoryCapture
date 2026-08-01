@@ -50,7 +50,7 @@ int wmain() {
         device->CreateTexture2D(&descriptor, &initial, texture.ReleaseAndGetAddressOf()));
     {
       storycapture::wgc::NativeMp4Writer writer(device.Get(), output.wstring(), k_width, k_height,
-                                                 k_target_bitrate_bps, true);
+                                                 k_target_bitrate_bps);
       if (writer.requested_bitrate_bps() != k_target_bitrate_bps) return 3;
       for (std::uint64_t frame = 0; frame < k_frames; ++frame) writer.write(texture.Get(), frame);
       writer.finalize();

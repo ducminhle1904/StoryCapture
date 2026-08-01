@@ -87,73 +87,13 @@ inline CaptureTarget parse_target(const JsonObject& object) {
   return result;
 }
 
-inline CaptureOptions parse_options(const JsonObject& command) {
-  if (!command.HasKey(L"options")) {
-    throw ProtocolError("contract_mismatch", "capture options are missing");
-  }
-  const auto object = command.GetNamedObject(L"options");
-  CaptureOptions result;
-  result.ownership_token = required_string(object, L"ownership_token");
-  result.target = parse_target(object.GetNamedObject(L"target"));
-  result.cursor_policy = required_string(object, L"cursor_policy") == L"exclude"
-                             ? CursorPolicy::exclude
-                             : CursorPolicy::include;
-  if (required_string(object, L"dynamic_size_policy") != L"fail") {
-    throw ProtocolError("contract_mismatch", "Strict dynamic-size policy must fail closed");
-  }
-  result.requested_width = required_uint32(object, L"requested_width");
-  result.requested_height = required_uint32(object, L"requested_height");
-  if (object.HasKey(L"audio_roles")) {
-    for (const auto& role : object.GetNamedArray(L"audio_roles")) {
-      const auto name = role.GetString();
-      result.microphone_audio = result.microphone_audio || name == L"microphone";
-      result.system_audio = result.system_audio || name == L"system";
-    }
-  }
-  return result;
-}
-
-inline CaptureOptions parse_native_options(const JsonObject& command) {
-  CaptureOptions result;
-  result.native_mp4 = true;
-  result.session_id = required_string(command, L"session_id");
-  result.output_path = required_string(command, L"output_path");
-  const auto target = command.GetNamedObject(L"target");
-  const auto target_kind = required_string(target, L"kind");
-  if (target_kind == L"window") {
-    require_exact_keys(target,
-                       {L"kind", L"hwnd", L"process_id", L"executable_path", L"class_name"});
-  } else if (target_kind == L"display") {
-    require_exact_keys(target, {L"kind", L"device_path"});
-  } else {
-    throw ProtocolError("target_missing", "unsupported capture target kind");
-  }
-  result.target = parse_target(target);
-  result.cursor_policy = required_string(command, L"cursor_policy") == L"exclude"
-                             ? CursorPolicy::exclude
-                             : CursorPolicy::include;
-  if (required_string(command, L"dynamic_size_policy") != L"fail") {
-    throw ProtocolError("contract_mismatch", "Strict dynamic-size policy must fail closed");
-  }
-  result.requested_width = required_uint32(command, L"requested_width");
-  result.requested_height = required_uint32(command, L"requested_height");
-  const auto fps = command.GetNamedObject(L"requested_fps");
-  if (fps.GetNamedNumber(L"numerator", 0) != 60 ||
-      fps.GetNamedNumber(L"denominator", 0) != 1) {
-    throw ProtocolError("contract_mismatch", "native MP4 capture requires exact CFR 60/1");
-  }
-  return result;
-}
-
-inline CaptureOptions parse_v4_options(const JsonObject& command) {
-  CaptureOptions result;
-  result.native_mp4 = true;
+inline RecordingV4Options parse_v4_options(const JsonObject& command) {
+  RecordingV4Options result;
   result.session_id = required_string(command, L"session_id");
   result.output_path = required_string(command, L"output_path");
   result.target = parse_target(command.GetNamedObject(L"target"));
   result.requested_width = 1'920;
   result.requested_height = 1'080;
-  result.v4_mode = true;
   result.cursor_policy = required_bool(command, L"include_cursor") ? CursorPolicy::include
                                                                     : CursorPolicy::exclude;
   const auto identity = command.GetNamedObject(L"target_identity");
@@ -206,9 +146,9 @@ inline CaptureOptions parse_v4_options(const JsonObject& command) {
   return result;
 }
 
-inline JsonObject parse_command(std::wstring_view line, std::uint32_t protocol_version = 2) {
+inline JsonObject parse_command(std::wstring_view line) {
   const auto object = JsonObject::Parse(line);
-  if (object.GetNamedNumber(L"version", 0) != protocol_version) {
+  if (object.GetNamedNumber(L"version", 0) != 4) {
     throw ProtocolError("contract_mismatch", "unsupported helper protocol version");
   }
   required_string(object, L"type");
@@ -229,10 +169,8 @@ inline void set_bool(JsonObject& object, std::wstring_view key, bool value) {
 
 class EventWriter final {
  public:
-  explicit EventWriter(std::uint32_t protocol_version = 2) : protocol_version_(protocol_version) {}
-
   void emit(JsonObject object) {
-    object.SetNamedValue(L"version", JsonValue::CreateNumberValue(protocol_version_));
+    object.SetNamedValue(L"version", JsonValue::CreateNumberValue(4));
     std::scoped_lock lock(mutex_);
     std::wcout << object.Stringify().c_str() << L'\n' << std::flush;
   }
@@ -251,7 +189,6 @@ class EventWriter final {
   }
 
  private:
-  std::uint32_t protocol_version_;
   std::mutex mutex_;
 };
 

@@ -3,13 +3,13 @@ import Foundation
 
 final class RecordingV4Microphone: @unchecked Sendable {
     private let engine = AVAudioEngine()
-    private let writer: NativeMasterWriter
+    private let writer: RecordingV4Writer
     private let lock = NSLock()
     private var running = false
     private var converter: AVAudioConverter?
     private var outputFormat: AVAudioFormat?
 
-    init(writer: NativeMasterWriter) {
+    init(writer: RecordingV4Writer) {
         self.writer = writer
     }
 

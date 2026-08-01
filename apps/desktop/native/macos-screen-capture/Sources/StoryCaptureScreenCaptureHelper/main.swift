@@ -6,10 +6,7 @@ import ScreenCaptureCore
 struct StoryCaptureScreenCaptureHelper {
     static func main() async {
         let control = ControlChannel()
-        let controller = ScreenCaptureHelperController(
-            control: control,
-            packets: BinaryPacketChannel()
-        )
+        let controller = ScreenCaptureHelperController(control: control)
         let decoder = JSONDecoder()
         installSleepObserver(control: control)
 
@@ -38,7 +35,7 @@ struct StoryCaptureScreenCaptureHelper {
             queue: nil
         ) { _ in
             control.send([
-                "version": helperProtocolVersion,
+                "version": recordingV4ProtocolVersion,
                 "event": "wake",
                 "ok": true,
             ])

@@ -9,7 +9,6 @@ endif()
 add_executable(storycapture-wgc
   src/main.cpp
   src/capture_session.cpp
-  src/frame_ring.cpp
   src/native_mp4_writer.cpp
   src/target_resolver.cpp
   src/v4_slot_scheduler.cpp

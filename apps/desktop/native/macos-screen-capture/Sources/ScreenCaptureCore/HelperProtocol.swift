@@ -1,12 +1,8 @@
 import CoreMedia
 import Foundation
 
-public let helperProtocolVersion = 2
-public let nativeMasterProtocolVersion = 3
 public let recordingV4ProtocolVersion = 4
 public let helperBackendID = "screen-capture-kit"
-public let helperBackendVersion = "2.0.0"
-public let nativeMasterBackendVersion = "3.0.0"
 public let recordingV4BackendVersion = "4.0.0"
 
 public enum HelperFailureCode: String, Codable, Error, Sendable {
@@ -70,11 +66,6 @@ public struct HelperTarget: Codable, Equatable, Sendable {
     }
 }
 
-public enum DynamicSizePolicy: String, Codable, Sendable {
-    case failOnChange = "fail_on_change"
-    case scaleToContract = "scale_to_contract"
-}
-
 public enum RecordingV4AudioRole: String, Codable, CaseIterable, Sendable {
     case microphone
     case system
@@ -135,9 +126,6 @@ public struct HelperCommandPayload: Codable, Equatable, Sendable {
     public let expectedPhysicalWidth: Int?
     public let expectedPhysicalHeight: Int?
     public let showsCursor: Bool?
-    public let dynamicSizePolicy: DynamicSizePolicy?
-    public let capturesSystemAudio: Bool?
-    public let probeDurationMS: Int?
     public let artifactPath: String?
     public let fpsNumerator: Int?
     public let fpsDenominator: Int?
@@ -153,9 +141,6 @@ public struct HelperCommandPayload: Codable, Equatable, Sendable {
         expectedPhysicalWidth: Int? = nil,
         expectedPhysicalHeight: Int? = nil,
         showsCursor: Bool? = nil,
-        dynamicSizePolicy: DynamicSizePolicy? = nil,
-        capturesSystemAudio: Bool? = nil,
-        probeDurationMS: Int? = nil,
         artifactPath: String? = nil,
         fpsNumerator: Int? = nil,
         fpsDenominator: Int? = nil,
@@ -170,9 +155,6 @@ public struct HelperCommandPayload: Codable, Equatable, Sendable {
         self.expectedPhysicalWidth = expectedPhysicalWidth
         self.expectedPhysicalHeight = expectedPhysicalHeight
         self.showsCursor = showsCursor
-        self.dynamicSizePolicy = dynamicSizePolicy
-        self.capturesSystemAudio = capturesSystemAudio
-        self.probeDurationMS = probeDurationMS
         self.artifactPath = artifactPath
         self.fpsNumerator = fpsNumerator
         self.fpsDenominator = fpsDenominator
@@ -184,7 +166,6 @@ public struct HelperCommandPayload: Codable, Equatable, Sendable {
 public struct HelperCommand: Codable, Equatable, Sendable {
     public enum Name: String, Codable, Sendable {
         case hello
-        case probe
         case warmup
         case start
         case pause
@@ -209,7 +190,7 @@ public struct HelperCommand: Codable, Equatable, Sendable {
     }
 
     public init(
-        version: Int = helperProtocolVersion,
+        version: Int = recordingV4ProtocolVersion,
         requestID: String,
         command: Name,
         sessionID: String? = nil,
@@ -220,71 +201,6 @@ public struct HelperCommand: Codable, Equatable, Sendable {
         self.command = command
         self.sessionID = sessionID
         self.payload = payload
-    }
-}
-
-public enum NativePacketKind: UInt32, Sendable {
-    case videoBGRA = 1
-    case systemAudioLPCM = 2
-}
-
-public struct NativePacketHeader: Equatable, Sendable {
-    public static let byteCount = 64
-    public static let magic = Array("SCFRM2\0\0".utf8)
-
-    public let kind: NativePacketKind
-    public let sequence: UInt64
-    public let nativePTSUS: UInt64
-    public let width: UInt32
-    public let height: UInt32
-    public let stride: UInt32
-    public let format: UInt32
-    public let payloadBytes: UInt64
-    public let flags: UInt64
-
-    public init(
-        kind: NativePacketKind,
-        sequence: UInt64,
-        nativePTSUS: UInt64,
-        width: UInt32,
-        height: UInt32,
-        stride: UInt32,
-        format: UInt32,
-        payloadBytes: UInt64,
-        flags: UInt64 = 0
-    ) {
-        self.kind = kind
-        self.sequence = sequence
-        self.nativePTSUS = nativePTSUS
-        self.width = width
-        self.height = height
-        self.stride = stride
-        self.format = format
-        self.payloadBytes = payloadBytes
-        self.flags = flags
-    }
-
-    public func encode() -> Data {
-        var data = Data(Self.magic)
-        data.appendLittleEndian(kind.rawValue)
-        data.appendLittleEndian(UInt32(Self.byteCount))
-        data.appendLittleEndian(sequence)
-        data.appendLittleEndian(nativePTSUS)
-        data.appendLittleEndian(width)
-        data.appendLittleEndian(height)
-        data.appendLittleEndian(stride)
-        data.appendLittleEndian(format)
-        data.appendLittleEndian(payloadBytes)
-        data.appendLittleEndian(flags)
-        precondition(data.count == Self.byteCount)
-        return data
-    }
-}
-
-public extension Data {
-    mutating func appendLittleEndian<T: FixedWidthInteger>(_ value: T) {
-        var encoded = value.littleEndian
-        Swift.withUnsafeBytes(of: &encoded) { append(contentsOf: $0) }
     }
 }
 

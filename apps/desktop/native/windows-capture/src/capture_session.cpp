@@ -14,6 +14,8 @@
 namespace storycapture::wgc {
 namespace {
 
+constexpr std::int32_t k_capture_frame_pool_size = 8;
+
 struct __declspec(uuid("A9B3D012-3DF2-4EE3-B8D1-8695F457D3C1"))
     IDirect3DDxgiInterfaceAccess : IUnknown {
   virtual HRESULT __stdcall GetInterface(REFIID iid, void** object) = 0;
@@ -42,10 +44,9 @@ std::wstring luid_string(const LUID& luid) {
 
 }  // namespace
 
-CaptureSession::CaptureSession(CaptureOptions options, EventWriter& writer, bool probe_only)
-    : options_(std::move(options)), writer_(writer), probe_only_(probe_only), target_(resolve_target(options_.target)) {
-  if (options_.v4_mode &&
-      _wcsicmp(target_.stable_identity.c_str(), options_.target_stable_id.c_str()) != 0) {
+CaptureSession::CaptureSession(RecordingV4Options options, EventWriter& writer)
+    : options_(std::move(options)), writer_(writer), target_(resolve_target(options_.target)) {
+  if (_wcsicmp(target_.stable_identity.c_str(), options_.target_stable_id.c_str()) != 0) {
     throw ProtocolError("target_changed", "V4 target stable identity does not match");
   }
   LARGE_INTEGER frequency{};
@@ -72,45 +73,28 @@ CaptureSession::CaptureSession(CaptureOptions options, EventWriter& writer, bool
                                                  static_cast<std::int32_t>(target_.height)};
   frame_pool_ = winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
       winrt_device_, winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
-      k_ring_capacity, size);
+      k_capture_frame_pool_size, size);
   capture_session_ = frame_pool_.CreateCaptureSession(target_.item);
   capture_session_.IsCursorCaptureEnabled(options_.cursor_policy == CursorPolicy::include);
-  if (options_.native_mp4) {
-    if (target_.width != options_.requested_width || target_.height != options_.requested_height) {
-      throw ProtocolError(options_.v4_mode ? "surface_not_1080p" : "backend_capability_mismatch",
-                          "native MP4 dimensions must match the exact WGC surface");
-    }
-    mp4_writer_ = std::make_unique<NativeMp4Writer>(d3d_device_.Get(), options_.output_path,
-                                                    target_.width, target_.height,
-                                                    options_.target_bitrate_bps == 0
-                                                        ? 24'000'000
-                                                        : options_.target_bitrate_bps,
-                                                    options_.v4_mode);
-    if (options_.v4_mode && mp4_writer_->encoder_id() != options_.encoder_envelope_id) {
-      throw ProtocolError("hardware_encoder_unavailable",
-                          "calibrated encoder identity does not match the selected MFT");
-    }
-    if (options_.v4_mode) {
-      const auto audio_root = std::filesystem::path(options_.output_path).parent_path();
-      if (options_.microphone_audio) {
-        audio_captures_.push_back(std::make_unique<WasapiAudioCapture>(
-            V4AudioRole::microphone, (audio_root / L"microphone.pcm").wstring(), qpc_frequency_));
-      }
-      if (options_.system_audio) {
-        audio_captures_.push_back(std::make_unique<WasapiAudioCapture>(
-            V4AudioRole::system, (audio_root / L"system.pcm").wstring(), qpc_frequency_));
-      }
-    }
-  } else if (!probe_only_) {
-    ring_ = std::make_unique<NativeFrameRing>(d3d_device_.Get(), options_.session_id,
-                                              options_.ownership_token, target_.width, target_.height);
+  if (target_.width != options_.requested_width || target_.height != options_.requested_height) {
+    throw ProtocolError("surface_not_1080p", "recording dimensions must match the exact WGC surface");
   }
-  observation_.physical_width = target_.width;
-  observation_.physical_height = target_.height;
-  observation_.gpu_identity = gpu_identity();
-  observation_.adapter_luid = adapter_luid();
-  observation_.hardware_fingerprint = hardware_fingerprint();
-  observation_.permissions_granted = true;
+  mp4_writer_ = std::make_unique<NativeMp4Writer>(
+      d3d_device_.Get(), options_.output_path, target_.width, target_.height,
+      options_.target_bitrate_bps);
+  if (mp4_writer_->encoder_id() != options_.encoder_envelope_id) {
+    throw ProtocolError("hardware_encoder_unavailable",
+                        "calibrated encoder identity does not match the selected MFT");
+  }
+  const auto audio_root = std::filesystem::path(options_.output_path).parent_path();
+  if (options_.microphone_audio) {
+    audio_captures_.push_back(std::make_unique<WasapiAudioCapture>(
+        V4AudioRole::microphone, (audio_root / L"microphone.pcm").wstring(), qpc_frequency_));
+  }
+  if (options_.system_audio) {
+    audio_captures_.push_back(std::make_unique<WasapiAudioCapture>(
+        V4AudioRole::system, (audio_root / L"system.pcm").wstring(), qpc_frequency_));
+  }
 }
 
 CaptureSession::~CaptureSession() {
@@ -132,15 +116,12 @@ void CaptureSession::start() {
     std::scoped_lock lock(mutex_);
     started_monotonic_us_ = qpc_us();
     last_frame_qpc_us_ = started_monotonic_us_;
-    if (options_.v4_mode) slot_scheduler_.start(started_monotonic_us_);
+    slot_scheduler_.start(started_monotonic_us_);
   }
   for (auto& audio : audio_captures_) audio->start(started_monotonic_us_);
   capture_session_.StartCapture();
   watchdog_ = std::jthread([this](std::stop_token token) { watchdog(token); });
-  if (options_.v4_mode) {
-    slot_scheduler_thread_ =
-        std::jthread([this](std::stop_token token) { v4_scheduler_loop(token); });
-  }
+  slot_scheduler_thread_ = std::jthread([this](std::stop_token token) { v4_scheduler_loop(token); });
 }
 
 void CaptureSession::wait_for_initial_surface(std::chrono::milliseconds timeout) {
@@ -164,10 +145,8 @@ void CaptureSession::pause() {
   std::scoped_lock lock(mutex_);
   if (paused_.exchange(true)) throw ProtocolError("contract_mismatch", "capture session already paused");
   pause_started_qpc_us_ = qpc_us();
-  if (options_.v4_mode) {
-    slot_scheduler_.pause(pause_started_qpc_us_);
-    for (auto& audio : audio_captures_) audio->set_paused(true, pause_started_qpc_us_);
-  }
+  slot_scheduler_.pause(pause_started_qpc_us_);
+  for (auto& audio : audio_captures_) audio->set_paused(true, pause_started_qpc_us_);
 }
 
 void CaptureSession::resume() {
@@ -177,10 +156,8 @@ void CaptureSession::resume() {
   const auto resumed_qpc_us = qpc_us();
   paused_duration_us_ += resumed_qpc_us - pause_started_qpc_us_;
   last_frame_qpc_us_ = resumed_qpc_us;
-  if (options_.v4_mode) {
-    slot_scheduler_.resume(resumed_qpc_us);
-    for (auto& audio : audio_captures_) audio->set_paused(false, resumed_qpc_us);
-  }
+  slot_scheduler_.resume(resumed_qpc_us);
+  for (auto& audio : audio_captures_) audio->set_paused(false, resumed_qpc_us);
   paused_.store(false);
 }
 
@@ -201,39 +178,29 @@ void CaptureSession::stop() {
   frame_pool_ = nullptr;
   std::scoped_lock lock(mutex_);
   ended_monotonic_us_ = qpc_us();
-  if (options_.v4_mode && slot_scheduler_.paused()) {
+  if (slot_scheduler_.paused()) {
     slot_scheduler_.resume(ended_monotonic_us_);
   }
   if (mp4_writer_ && latest_texture_ && !failed_) {
     const auto paused_tail = paused_ ? ended_monotonic_us_ - pause_started_qpc_us_ : 0;
   const auto active_duration_us =
         ended_monotonic_us_ - started_monotonic_us_ - paused_duration_us_ - paused_tail;
-    const auto expected_frames = options_.v4_mode
-        ? v4_expected_frames(active_duration_us)
-        : std::max<std::uint64_t>(
-              1, static_cast<std::uint64_t>((std::max<std::int64_t>(0, active_duration_us) * 60 +
-                                            999'999) /
-                                           1'000'000));
+    const auto expected_frames = v4_expected_frames(active_duration_us);
     while (output_frame_index_ < expected_frames) {
-      if (options_.v4_mode) {
-        write_v4_slot(output_frame_index_, qpc_us());
-      } else {
-        mp4_writer_->write(latest_texture_.Get(), output_frame_index_++);
-        ++held_frames_;
-      }
+      write_v4_slot(output_frame_index_, qpc_us());
     }
     for (auto& audio : audio_captures_) audio->stop(active_duration_us);
   }
 }
 
-NativeCaptureEvidence CaptureSession::finalize_native_mp4() {
+RecordingV4Evidence CaptureSession::finalize() {
   if (!mp4_writer_) throw ProtocolError("contract_mismatch", "native MP4 writer is not active");
   if (running_) throw ProtocolError("contract_mismatch", "capture must stop before finalization");
   if (!latest_texture_ || output_frame_index_ == 0) {
     throw ProtocolError("initial_surface_missing", "WGC produced no encodable surface");
   }
   mp4_writer_->finalize();
-  NativeCaptureEvidence evidence;
+  RecordingV4Evidence evidence;
   evidence.artifact_path = mp4_writer_->output_path();
   evidence.encoder_id = mp4_writer_->encoder_id();
   evidence.width = target_.width;
@@ -257,12 +224,6 @@ NativeCaptureEvidence CaptureSession::finalize_native_mp4() {
   for (const auto& audio : audio_captures_) evidence.audio.push_back(audio->evidence());
   return evidence;
 }
-
-ProbeObservation CaptureSession::observation() const {
-  std::scoped_lock lock(mutex_);
-  return observation_;
-}
-
 std::wstring CaptureSession::gpu_identity() const {
   DXGI_ADAPTER_DESC1 description{};
   winrt::check_hresult(adapter_->GetDesc1(&description));
@@ -293,14 +254,6 @@ void CaptureSession::on_frame_arrived(
     const auto source_size = frame.ContentSize();
     if (source_size.Width != static_cast<std::int32_t>(target_.width) ||
         source_size.Height != static_cast<std::int32_t>(target_.height)) {
-      if (!options_.native_mp4) {
-        JsonObject event;
-        set_string(event, L"type", L"format-changed");
-        set_string(event, L"session_id", options_.session_id);
-        set_number(event, L"width", source_size.Width);
-        set_number(event, L"height", source_size.Height);
-        writer_.emit(std::move(event));
-      }
       terminal_failure(L"target_changed", L"capture target physical size changed");
       return;
     }
@@ -310,101 +263,28 @@ void CaptureSession::on_frame_arrived(
     std::scoped_lock lock(mutex_);
     last_frame_qpc_us_ = qpc_us();
     ++source_frame_index_;
-    ++observation_.source_presentations;
-    if (observation_.first_pts_us < 0) observation_.first_pts_us = source_pts_us;
-    if (last_source_pts_us_ >= 0) {
-      const auto delta = source_pts_us - last_source_pts_us_;
-      if (delta <= 0) {
-        ++observation_.stale_reuses;
-      } else if (delta > 25'000) {
-        observation_.sequence_gaps +=
-            static_cast<std::uint64_t>(std::max<std::int64_t>(1, (delta * 60) / 1'000'000 - 1));
-      }
-    }
-    last_source_pts_us_ = source_pts_us;
-    observation_.last_pts_us = source_pts_us;
-    if (paused_ || probe_only_) return;
+    if (paused_) return;
     if (source_frame_index_ % 60 == 0 && !target_identity_matches(target_)) {
       terminal_failure(L"target_changed", L"capture target identity changed");
       return;
     }
-    if (first_source_pts_us_ < 0) first_source_pts_us_ = source_pts_us;
-    const auto active_pts_us = source_pts_us - first_source_pts_us_ - paused_duration_us_;
-    const auto duration_us = previous_active_pts_us_ < 0 ? 16'667 : active_pts_us - previous_active_pts_us_;
-    if (!options_.v4_mode && (active_pts_us < 0 || duration_us <= 0)) {
-      terminal_failure(L"source_stale_reuse", L"native presentation timestamp did not advance");
-      return;
-    }
     const auto texture = texture_from_surface(frame.Surface());
-    if (mp4_writer_) {
-      if (options_.v4_mode) {
-        D3D11_TEXTURE2D_DESC descriptor{};
-        texture->GetDesc(&descriptor);
-        descriptor.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-        descriptor.CPUAccessFlags = 0;
-        descriptor.MiscFlags = 0;
-        descriptor.Usage = D3D11_USAGE_DEFAULT;
-        if (!latest_texture_) {
-          winrt::check_hresult(d3d_device_->CreateTexture2D(
-              &descriptor, nullptr, latest_texture_.ReleaseAndGetAddressOf()));
-        }
-        Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
-        d3d_device_->GetImmediateContext(context.ReleaseAndGetAddressOf());
-        context->CopyResource(latest_texture_.Get(), texture.Get());
-        latest_source_sequence_ = source_frame_index_;
-        latest_source_timestamp_us_ = source_pts_us;
-        initial_surface_cv_.notify_all();
-        previous_active_pts_us_ = active_pts_us;
-        return;
-      }
-      const auto desired_frame = static_cast<std::uint64_t>(active_pts_us * 60 / 1'000'000);
-      while (latest_texture_ && output_frame_index_ < desired_frame) {
-        mp4_writer_->write(latest_texture_.Get(), output_frame_index_++);
-        ++held_frames_;
-      }
-      if (!latest_texture_) {
-        mp4_writer_->write(texture.Get(), output_frame_index_++);
-        while (output_frame_index_ <= desired_frame) {
-          mp4_writer_->write(texture.Get(), output_frame_index_++);
-          ++held_frames_;
-        }
-      } else if (output_frame_index_ == desired_frame) {
-        mp4_writer_->write(texture.Get(), output_frame_index_++);
-      }
-      D3D11_TEXTURE2D_DESC descriptor{};
-      texture->GetDesc(&descriptor);
-      descriptor.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-      descriptor.CPUAccessFlags = 0;
-      descriptor.MiscFlags = 0;
-      descriptor.Usage = D3D11_USAGE_DEFAULT;
-      if (!latest_texture_) {
-        winrt::check_hresult(d3d_device_->CreateTexture2D(
-            &descriptor, nullptr, latest_texture_.ReleaseAndGetAddressOf()));
-      }
-      Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
-      d3d_device_->GetImmediateContext(context.ReleaseAndGetAddressOf());
-      context->CopyResource(latest_texture_.Get(), texture.Get());
-      initial_surface_cv_.notify_all();
-      previous_active_pts_us_ = active_pts_us;
-      return;
+    D3D11_TEXTURE2D_DESC descriptor{};
+    texture->GetDesc(&descriptor);
+    descriptor.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    descriptor.CPUAccessFlags = 0;
+    descriptor.MiscFlags = 0;
+    descriptor.Usage = D3D11_USAGE_DEFAULT;
+    if (!latest_texture_) {
+      winrt::check_hresult(d3d_device_->CreateTexture2D(
+          &descriptor, nullptr, latest_texture_.ReleaseAndGetAddressOf()));
     }
-    const auto committed = ring_->commit(texture.Get(), source_frame_index_, active_pts_us, duration_us);
-    previous_active_pts_us_ = active_pts_us;
-
-    JsonObject event;
-    set_string(event, L"type", L"frame-committed");
-    set_string(event, L"session_id", options_.session_id);
-    set_number(event, L"delivery_sequence", static_cast<double>(committed.delivery_sequence));
-    set_number(event, L"source_frame_index", static_cast<double>(committed.source_frame_index));
-    set_number(event, L"native_pts_us", static_cast<double>(committed.native_pts_us));
-    set_number(event, L"duration_us", static_cast<double>(committed.duration_us));
-    set_number(event, L"slot_index", committed.slot_index);
-    set_number(event, L"width", committed.width);
-    set_number(event, L"height", committed.height);
-    set_number(event, L"stride", committed.stride);
-    set_string(event, L"pixel_format", L"bgra");
-    set_string(event, L"ownership_token", options_.ownership_token);
-    writer_.emit(std::move(event));
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
+    d3d_device_->GetImmediateContext(context.ReleaseAndGetAddressOf());
+    context->CopyResource(latest_texture_.Get(), texture.Get());
+    latest_source_sequence_ = source_frame_index_;
+    latest_source_timestamp_us_ = source_pts_us;
+    initial_surface_cv_.notify_all();
   } catch (const ProtocolError& error) {
     terminal_failure(widen(error.failure_code()), widen(error.what()));
   } catch (const winrt::hresult_error& error) {
@@ -418,32 +298,22 @@ void CaptureSession::on_target_closed(
     const winrt::Windows::Graphics::Capture::GraphicsCaptureItem&,
     const winrt::Windows::Foundation::IInspectable&) {
   if (!running_) return;
-  if (!options_.native_mp4) {
-    JsonObject event;
-    set_string(event, L"type", L"target-lost");
-    set_string(event, L"session_id", options_.session_id);
-    set_string(event, L"failure_code", L"target_lost");
-    writer_.emit(std::move(event));
-  }
   terminal_failure(L"target_lost", L"Windows Graphics Capture target closed");
 }
 
 void CaptureSession::terminal_failure(std::wstring_view code, std::wstring_view message) noexcept {
   if (failed_.exchange(true)) return;
   initial_surface_cv_.notify_all();
-  if (ring_) ring_->fail();
-  if (options_.v4_mode) {
-    if (code == L"source_rate_mismatch" || code == L"source_stale_reuse") code = L"target_lost";
-    if (code == L"backend_unavailable") code = L"helper_unavailable";
-    if (code == L"encoder_unavailable") code = L"hardware_encoder_unavailable";
-  }
+  if (code == L"source_rate_mismatch" || code == L"source_stale_reuse") code = L"target_lost";
+  if (code == L"backend_unavailable") code = L"helper_unavailable";
+  if (code == L"encoder_unavailable") code = L"hardware_encoder_unavailable";
   writer_.failure(options_.session_id, code, message);
 }
 
 void CaptureSession::watchdog(std::stop_token stop_token) {
   while (!stop_token.stop_requested()) {
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
-    if (!running_ || probe_only_) continue;
+    if (!running_) continue;
     bool paused = false;
     std::int64_t last_frame_qpc_us = 0;
     {

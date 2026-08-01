@@ -4,7 +4,7 @@ import CoreVideo
 import Foundation
 import VideoToolbox
 
-public struct NativeMasterResult: Sendable {
+public struct RecordingV4Result: Sendable {
     public let artifactPath: String
     public let artifactBytes: UInt64
     public let sourceUpdates: UInt64
@@ -19,12 +19,12 @@ public struct NativeMasterResult: Sendable {
     public let endedMonotonicUS: UInt64
     public let finalizedDurationUS: UInt64
     public let decodedFrames: UInt64
-    public let cadence: RecordingV4CadenceEvidence?
-    public let encoderEvidence: RecordingV4EncoderEvidence?
+    public let cadence: RecordingV4CadenceEvidence
+    public let encoderEvidence: RecordingV4EncoderEvidence
     public let audioEvidence: [RecordingV4AudioEvidence]
 
     public var dictionary: [String: Any] {
-        var value: [String: Any] = [
+        [
             "artifact_path": artifactPath,
             "artifact_bytes": artifactBytes,
             "source_updates": sourceUpdates,
@@ -53,23 +53,18 @@ public struct NativeMasterResult: Sendable {
                 "full_decode_succeeded": true,
                 "decoded_frames": decodedFrames,
             ],
+            "version": recordingV4ProtocolVersion,
+            "profile": "verified_1080p60",
+            "cadence": cadence.dictionary,
+            "encoder_evidence": encoderEvidence.dictionary,
+            "audio_evidence": audioEvidence.map(\.dictionary),
+            "audio_track_roles": audioEvidence.map { $0.role.rawValue },
         ]
-        if let cadence, let encoderEvidence {
-            value.merge([
-                "version": recordingV4ProtocolVersion,
-                "profile": "verified_1080p60",
-                "cadence": cadence.dictionary,
-                "encoder_evidence": encoderEvidence.dictionary,
-                "audio_evidence": audioEvidence.map(\.dictionary),
-                "audio_track_roles": audioEvidence.map { $0.role.rawValue },
-            ]) { _, new in new }
-        }
-        return value
     }
 }
 
-public final class NativeMasterWriter: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.storycapture.capture.native-master")
+public final class RecordingV4Writer: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "com.storycapture.capture.recording-v4")
     private let writer: AVAssetWriter
     private let input: AVAssetWriterInput
     private let adaptor: AVAssetWriterInputPixelBufferAdaptor
@@ -80,11 +75,10 @@ public final class NativeMasterWriter: @unchecked Sendable {
     private let height: Int
     private let fpsNumerator: Int
     private let fpsDenominator: Int
-    private let v4Envelope: RecordingV4EncoderEnvelope?
+    private let encoderEnvelope: RecordingV4EncoderEnvelope
     private let terminalFailureHandler: (@Sendable (HelperFailureCode, String) -> Void)?
     private var startedMonotonicUS: UInt64?
 
-    private var sourceUpdates: UInt64 = 0
     private var outputFrames: UInt64 = 0
     private var heldFrames: UInt64 = 0
     private var encoderDroppedFrames: UInt64 = 0
@@ -92,13 +86,12 @@ public final class NativeMasterWriter: @unchecked Sendable {
     private var latestPixelBuffer: CVPixelBuffer?
     private var lastOutputSlot: Int64 = -1
     private var pausedAtUS: UInt64?
-    private var totalPausedUS: UInt64 = 0
     private var terminalError: Error?
     private var finalized = false
-    private var v4Scheduler: RecordingV4SlotScheduler?
-    private var v4Timer: DispatchSourceTimer?
-    private var v4Cadence: RecordingV4CadenceEvidence?
-    private var v4AudioLedgers: [RecordingV4AudioRole: RecordingV4AudioLedger] = [:]
+    private var scheduler = RecordingV4SlotScheduler()
+    private var timer: DispatchSourceTimer?
+    private var cadence: RecordingV4CadenceEvidence?
+    private var audioLedgers: [RecordingV4AudioRole: RecordingV4AudioLedger] = [:]
 
     public init(
         artifactPath: String,
@@ -106,7 +99,7 @@ public final class NativeMasterWriter: @unchecked Sendable {
         height: Int,
         fpsNumerator: Int = 60,
         fpsDenominator: Int = 1,
-        v4Envelope: RecordingV4EncoderEnvelope? = nil,
+        encoderEnvelope: RecordingV4EncoderEnvelope,
         requestedAudioRoles: [RecordingV4AudioRole] = [],
         terminalFailureHandler: (@Sendable (HelperFailureCode, String) -> Void)? = nil
     ) throws {
@@ -121,29 +114,26 @@ public final class NativeMasterWriter: @unchecked Sendable {
         self.height = height
         self.fpsNumerator = fpsNumerator
         self.fpsDenominator = fpsDenominator
-        self.v4Envelope = v4Envelope
+        self.encoderEnvelope = encoderEnvelope
         self.terminalFailureHandler = terminalFailureHandler
-        if let v4Envelope {
-            try v4Envelope.validate()
-            guard width == 1_920, height == 1_080 else { throw HelperFailureCode.surfaceNot1080p }
-            guard Self.hardwareEncoderAvailable(width: width, height: height) else {
-                throw HelperFailureCode.hardwareEncoderUnavailable
-            }
-            v4Scheduler = RecordingV4SlotScheduler()
-            for role in Set(requestedAudioRoles) {
-                v4AudioLedgers[role] = try RecordingV4AudioLedger(
-                    role: role,
-                    sampleRate: 48_000,
-                    channels: 2
-                )
-            }
+        try encoderEnvelope.validate()
+        guard width == 1_920, height == 1_080 else { throw HelperFailureCode.surfaceNot1080p }
+        guard Self.hardwareEncoderAvailable(width: width, height: height) else {
+            throw HelperFailureCode.hardwareEncoderUnavailable
+        }
+        for role in Set(requestedAudioRoles) {
+            audioLedgers[role] = try RecordingV4AudioLedger(
+                role: role,
+                sampleRate: 48_000,
+                channels: 2
+            )
         }
         try FileManager.default.createDirectory(
             at: artifactURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         writer = try AVAssetWriter(outputURL: temporaryURL, fileType: .mp4)
-        let bitRate = v4Envelope?.targetBitrateBPS ?? max(100_000_000, width * height * 48)
+        let bitRate = encoderEnvelope.targetBitrateBPS
         let outputSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: width,
@@ -190,9 +180,7 @@ public final class NativeMasterWriter: @unchecked Sendable {
             audioInputs[role] = audioInput
         }
         guard writer.startWriting() else {
-            throw writer.error ?? (v4Envelope == nil
-                ? HelperFailureCode.backendUnavailable
-                : HelperFailureCode.encoderWarmupFailed)
+            throw writer.error ?? HelperFailureCode.encoderWarmupFailed
         }
         writer.startSession(atSourceTime: .zero)
     }
@@ -225,14 +213,10 @@ public final class NativeMasterWriter: @unchecked Sendable {
         }
     }
 
-    public func append(_ pixelBuffer: CVPixelBuffer, nowUS: UInt64? = nil) throws {
-        try append(pixelBuffer, sourceSequence: nil, sourceTimestampUS: nil, nowUS: nowUS)
-    }
-
     public func append(
         _ pixelBuffer: CVPixelBuffer,
-        sourceSequence: UInt64?,
-        sourceTimestampUS: UInt64?,
+        sourceSequence: UInt64,
+        sourceTimestampUS: UInt64,
         nowUS: UInt64? = nil
     ) throws {
         try queue.sync {
@@ -242,41 +226,19 @@ public final class NativeMasterWriter: @unchecked Sendable {
                   CVPixelBufferGetHeight(pixelBuffer) == height else {
                 throw HelperFailureCode.targetChanged
             }
-            sourceUpdates += 1
             let appendUS = nowUS ?? Self.monotonicNowUS()
             if startedMonotonicUS == nil { startedMonotonicUS = appendUS }
-            if v4Scheduler != nil {
-                guard let sourceSequence, let sourceTimestampUS else {
-                    throw HelperFailureCode.contractMismatch
-                }
-                var scheduler = v4Scheduler!
-                try scheduler.ingest(
-                    .init(sequence: sourceSequence, timestampUS: sourceTimestampUS),
-                    at: appendUS
-                ) { [self] slot, held in
-                    let output = held ? try pixelBufferForV4() : pixelBuffer
-                    try appendFrame(output, slot: Int64(slot), held: held)
-                    let acknowledged = Self.monotonicNowUS()
-                    return (appendUS, max(appendUS, acknowledged))
-                }
-                latestPixelBuffer = pixelBuffer
-                v4Scheduler = scheduler
-                startV4TimerIfNeeded()
-                return
-            }
-            let elapsedUS = activeElapsedUS(nowUS: appendUS)
-            let slot = slotForElapsedUS(elapsedUS)
-            if let latestPixelBuffer {
-                while lastOutputSlot + 1 < slot {
-                    try appendFrame(latestPixelBuffer, slot: lastOutputSlot + 1, held: true)
-                }
+            try scheduler.ingest(
+                .init(sequence: sourceSequence, timestampUS: sourceTimestampUS),
+                at: appendUS
+            ) { [self] slot, held in
+                let output = held ? try outputPixelBuffer() : pixelBuffer
+                try appendFrame(output, slot: Int64(slot), held: held)
+                let acknowledged = Self.monotonicNowUS()
+                return (appendUS, max(appendUS, acknowledged))
             }
             latestPixelBuffer = pixelBuffer
-            if lastOutputSlot < 0 {
-                try appendFrame(pixelBuffer, slot: 0, held: false)
-            } else if lastOutputSlot < slot {
-                try appendFrame(pixelBuffer, slot: slot, held: false)
-            }
+            startTimerIfNeeded()
         }
     }
 
@@ -286,26 +248,17 @@ public final class NativeMasterWriter: @unchecked Sendable {
             guard pausedAtUS == nil else { throw HelperFailureCode.contractMismatch }
             let pauseUS = nowUS ?? Self.monotonicNowUS()
             pausedAtUS = pauseUS
-            if v4Scheduler != nil {
-                var scheduler = v4Scheduler!
-                try scheduler.pause(at: pauseUS)
-                v4Scheduler = scheduler
-            }
+            try scheduler.pause(at: pauseUS)
         }
     }
 
     public func resume(nowUS: UInt64? = nil) throws {
         try queue.sync {
             try checkTerminalError()
-            guard let pausedAtUS else { throw HelperFailureCode.contractMismatch }
+            guard pausedAtUS != nil else { throw HelperFailureCode.contractMismatch }
             let resumedAtUS = nowUS ?? Self.monotonicNowUS()
-            totalPausedUS += resumedAtUS >= pausedAtUS ? resumedAtUS - pausedAtUS : 0
             self.pausedAtUS = nil
-            if v4Scheduler != nil {
-                var scheduler = v4Scheduler!
-                try scheduler.resume(at: resumedAtUS)
-                v4Scheduler = scheduler
-            }
+            try scheduler.resume(at: resumedAtUS)
         }
     }
 
@@ -318,7 +271,7 @@ public final class NativeMasterWriter: @unchecked Sendable {
             try checkTerminalError()
             guard pausedAtUS == nil else { return }
             guard startedMonotonicUS != nil else { return }
-            guard v4AudioLedgers[role] != nil else { throw HelperFailureCode.audioDeviceUnavailable }
+            guard audioLedgers[role] != nil else { throw HelperFailureCode.audioDeviceUnavailable }
             try appendAudioLedgerLocked(role: role, activePTSUS: activePTSUS, frames: frames)
         }
     }
@@ -336,7 +289,7 @@ public final class NativeMasterWriter: @unchecked Sendable {
             }
             let frames = UInt64(CMSampleBufferGetNumSamples(sampleBuffer))
             guard frames > 0 else { throw HelperFailureCode.audioFormatInvalid }
-            let ptsUS = v4Scheduler?.activeElapsedUS(at: Self.monotonicNowUS()) ?? 0
+            let ptsUS = scheduler.activeElapsedUS(at: Self.monotonicNowUS())
             let retimed = try Self.retimeAudio(sampleBuffer, ptsUS: ptsUS)
             guard audioInput.append(retimed) else {
                 terminalError = writer.error ?? HelperFailureCode.audioContinuityFailed
@@ -357,7 +310,7 @@ public final class NativeMasterWriter: @unchecked Sendable {
                 terminalError = HelperFailureCode.audioContinuityFailed
                 throw HelperFailureCode.audioContinuityFailed
             }
-            let ptsUS = v4Scheduler?.activeElapsedUS(at: Self.monotonicNowUS()) ?? 0
+            let ptsUS = scheduler.activeElapsedUS(at: Self.monotonicNowUS())
             let sampleBuffer = try Self.makeAudioSampleBuffer(buffer, ptsUS: ptsUS)
             guard audioInput.append(sampleBuffer) else {
                 terminalError = writer.error ?? HelperFailureCode.audioContinuityFailed
@@ -373,10 +326,10 @@ public final class NativeMasterWriter: @unchecked Sendable {
 
     public func configureAudio(role: RecordingV4AudioRole, sampleRate: Int, channels: Int) throws {
         try queue.sync {
-            guard v4AudioLedgers[role] != nil, outputFrames == 0 else {
+            guard audioLedgers[role] != nil, outputFrames == 0 else {
                 throw HelperFailureCode.audioFormatInvalid
             }
-            v4AudioLedgers[role] = try RecordingV4AudioLedger(
+            audioLedgers[role] = try RecordingV4AudioLedger(
                 role: role,
                 sampleRate: sampleRate,
                 channels: channels
@@ -387,7 +340,7 @@ public final class NativeMasterWriter: @unchecked Sendable {
     public func activeMediaTimeUS(nowUS: UInt64? = nil) -> UInt64 {
         queue.sync {
             let now = nowUS ?? Self.monotonicNowUS()
-            return v4Scheduler?.activeElapsedUS(at: now) ?? activeElapsedUS(nowUS: now)
+            return scheduler.activeElapsedUS(at: now)
         }
     }
 
@@ -404,42 +357,28 @@ public final class NativeMasterWriter: @unchecked Sendable {
     public func cancel() {
         queue.sync {
             guard !finalized else { return }
-            v4Timer?.cancel()
-            v4Timer = nil
+            timer?.cancel()
+            timer = nil
             writer.cancelWriting()
             try? FileManager.default.removeItem(at: temporaryURL)
             finalized = true
         }
     }
 
-    public func finish(nowUS: UInt64? = nil) async throws -> NativeMasterResult {
+    public func finish(nowUS: UInt64? = nil) async throws -> RecordingV4Result {
         let endedUS = nowUS ?? Self.monotonicNowUS()
         let durationUS: UInt64 = try queue.sync {
             try checkTerminalError()
             guard !finalized else { throw HelperFailureCode.contractMismatch }
-            guard let latestPixelBuffer else { throw HelperFailureCode.contractMismatch }
+            guard latestPixelBuffer != nil else { throw HelperFailureCode.contractMismatch }
             guard startedMonotonicUS != nil else { throw HelperFailureCode.contractMismatch }
-            let elapsedUS = v4Scheduler?.activeElapsedUS(at: endedUS) ?? activeElapsedUS(nowUS: endedUS)
-            if v4Scheduler != nil {
-                v4Timer?.cancel()
-                v4Timer = nil
-                var scheduler = v4Scheduler!
-                v4Cadence = try scheduler.finish(at: endedUS) { [self] slot, held in
-                    let submitted = Self.monotonicNowUS()
-                    try appendFrame(pixelBufferForV4(), slot: Int64(slot), held: held)
-                    return (submitted, max(submitted, Self.monotonicNowUS()))
-                }
-                v4Scheduler = scheduler
-                input.markAsFinished()
-                audioInputs.values.forEach { $0.markAsFinished() }
-                return elapsedUS
-            }
-            let finalSlot = max(0, Int64(ceil(
-                Double(elapsedUS) * Double(fpsNumerator) /
-                    (1_000_000 * Double(fpsDenominator))
-            )) - 1)
-            while lastOutputSlot < finalSlot {
-                try appendFrame(latestPixelBuffer, slot: lastOutputSlot + 1, held: true)
+            let elapsedUS = scheduler.activeElapsedUS(at: endedUS)
+            timer?.cancel()
+            timer = nil
+            cadence = try scheduler.finish(at: endedUS) { [self] slot, held in
+                let submitted = Self.monotonicNowUS()
+                try appendFrame(outputPixelBuffer(), slot: Int64(slot), held: held)
+                return (submitted, max(submitted, Self.monotonicNowUS()))
             }
             input.markAsFinished()
             audioInputs.values.forEach { $0.markAsFinished() }
@@ -450,16 +389,12 @@ public final class NativeMasterWriter: @unchecked Sendable {
         }
         guard writer.status == .completed else {
             try? FileManager.default.removeItem(at: temporaryURL)
-            throw writer.error ?? (v4Envelope == nil
-                ? HelperFailureCode.backendUnavailable
-                : HelperFailureCode.artifactFinalizeFailed)
+            throw writer.error ?? HelperFailureCode.artifactFinalizeFailed
         }
         let decodedFrames = try await Self.decodeFrameCount(at: temporaryURL)
         guard decodedFrames == outputFrames else {
             try? FileManager.default.removeItem(at: temporaryURL)
-            throw v4Envelope == nil
-                ? HelperFailureCode.contractMismatch
-                : HelperFailureCode.outputFrameCountMismatch
+            throw HelperFailureCode.outputFrameCountMismatch
         }
         if FileManager.default.fileExists(atPath: artifactURL.path) {
             try FileManager.default.removeItem(at: artifactURL)
@@ -470,24 +405,20 @@ public final class NativeMasterWriter: @unchecked Sendable {
         guard bytes > 0 else { throw HelperFailureCode.backendUnavailable }
         finalized = true
         return try queue.sync {
-            let encoderEvidence: RecordingV4EncoderEvidence?
-            if let v4Envelope {
-                let average = max(1, Int((Double(bytes) * 8_000_000 / Double(max(1, durationUS))).rounded()))
-                encoderEvidence = try RecordingV4EncoderEvidence(
-                    envelope: v4Envelope,
-                    averageBitrateBPS: average,
-                    peakBitrateBPS: max(average, v4Envelope.targetBitrateBPS)
-                )
-            } else {
-                encoderEvidence = nil
-            }
-            let audioEvidence = v4AudioLedgers.values
+            guard let cadence else { throw HelperFailureCode.frameLedgerInvalid }
+            let average = max(1, Int((Double(bytes) * 8_000_000 / Double(max(1, durationUS))).rounded()))
+            let encoderEvidence = try RecordingV4EncoderEvidence(
+                envelope: encoderEnvelope,
+                averageBitrateBPS: average,
+                peakBitrateBPS: max(average, encoderEnvelope.targetBitrateBPS)
+            )
+            let audioEvidence = audioLedgers.values
                 .map { $0.evidence(activeDurationUS: durationUS) }
                 .sorted { $0.role.rawValue < $1.role.rawValue }
-            return NativeMasterResult(
+            return RecordingV4Result(
                 artifactPath: artifactURL.path,
                 artifactBytes: bytes,
-                sourceUpdates: v4Cadence?.sourceUpdates ?? sourceUpdates,
+                sourceUpdates: cadence.sourceUpdates,
                 outputFrames: outputFrames,
                 heldFrames: heldFrames,
                 encoderDroppedFrames: encoderDroppedFrames,
@@ -499,7 +430,7 @@ public final class NativeMasterWriter: @unchecked Sendable {
                 endedMonotonicUS: endedUS,
                 finalizedDurationUS: durationUS,
                 decodedFrames: decodedFrames,
-                cadence: v4Cadence,
+                cadence: cadence,
                 encoderEvidence: encoderEvidence,
                 audioEvidence: audioEvidence
             )
@@ -510,42 +441,19 @@ public final class NativeMasterWriter: @unchecked Sendable {
         guard input.isReadyForMoreMediaData else {
             backpressureEvents += 1
             encoderDroppedFrames += 1
-            let failure: HelperFailureCode = v4Scheduler == nil
-                ? .submittedFrameDropped
-                : .encoderBackpressure
+            let failure = HelperFailureCode.encoderBackpressure
             terminalError = failure
             throw failure
         }
         let pts = CMTime(value: slot * Int64(fpsDenominator), timescale: CMTimeScale(fpsNumerator))
         guard adaptor.append(pixelBuffer, withPresentationTime: pts) else {
             encoderDroppedFrames += 1
-            terminalError = writer.error ?? (v4Scheduler == nil
-                ? HelperFailureCode.submittedFrameDropped
-                : HelperFailureCode.encoderRejectedFrame)
+            terminalError = writer.error ?? HelperFailureCode.encoderRejectedFrame
             throw terminalError!
         }
         lastOutputSlot = slot
         outputFrames += 1
         if held { heldFrames += 1 }
-    }
-
-    private func activeElapsedUS(nowUS: UInt64) -> UInt64 {
-        guard let startedMonotonicUS else { return 0 }
-        let pausedUS: UInt64
-        if let pausedAtUS {
-            pausedUS = totalPausedUS + (nowUS >= pausedAtUS ? nowUS - pausedAtUS : 0)
-        } else {
-            pausedUS = totalPausedUS
-        }
-        let wallUS = nowUS >= startedMonotonicUS ? nowUS - startedMonotonicUS : 0
-        return wallUS >= pausedUS ? wallUS - pausedUS : 0
-    }
-
-    private func slotForElapsedUS(_ elapsedUS: UInt64) -> Int64 {
-        Int64(
-            Double(elapsedUS) * Double(fpsNumerator) /
-                (1_000_000 * Double(fpsDenominator))
-        )
     }
 
     private func checkTerminalError() throws {
@@ -557,38 +465,36 @@ public final class NativeMasterWriter: @unchecked Sendable {
         activePTSUS: UInt64,
         frames: UInt64
     ) throws {
-        guard var ledger = v4AudioLedgers[role] else {
+        guard var ledger = audioLedgers[role] else {
             throw HelperFailureCode.audioDeviceUnavailable
         }
         try ledger.append(ptsUS: activePTSUS, frames: frames)
-        v4AudioLedgers[role] = ledger
+        audioLedgers[role] = ledger
     }
 
-    private func pixelBufferForV4() throws -> CVPixelBuffer {
+    private func outputPixelBuffer() throws -> CVPixelBuffer {
         guard let latestPixelBuffer else { throw HelperFailureCode.frameSlotMissing }
         return latestPixelBuffer
     }
 
-    private func startV4TimerIfNeeded() {
-        guard v4Scheduler != nil, v4Timer == nil else { return }
+    private func startTimerIfNeeded() {
+        guard timer == nil else { return }
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now(), repeating: .milliseconds(8), leeway: .milliseconds(1))
-        timer.setEventHandler { [weak self] in self?.advanceV4Clock() }
-        v4Timer = timer
+        timer.setEventHandler { [weak self] in self?.advanceClock() }
+        self.timer = timer
         timer.resume()
     }
 
-    private func advanceV4Clock() {
-        guard terminalError == nil, pausedAtUS == nil, v4Scheduler != nil else { return }
-        var scheduler = v4Scheduler!
+    private func advanceClock() {
+        guard terminalError == nil, pausedAtUS == nil else { return }
         let now = Self.monotonicNowUS()
         do {
             try scheduler.advance(to: now) { [self] slot, held in
                 let submitted = Self.monotonicNowUS()
-                try appendFrame(pixelBufferForV4(), slot: Int64(slot), held: held)
+                try appendFrame(outputPixelBuffer(), slot: Int64(slot), held: held)
                 return (submitted, max(submitted, Self.monotonicNowUS()))
             }
-            v4Scheduler = scheduler
         } catch {
             terminalError = error
             timerFailureCleanup()
@@ -598,8 +504,8 @@ public final class NativeMasterWriter: @unchecked Sendable {
     }
 
     private func timerFailureCleanup() {
-        v4Timer?.cancel()
-        v4Timer = nil
+        timer?.cancel()
+        timer = nil
     }
 
     private static func monotonicNowUS() -> UInt64 {

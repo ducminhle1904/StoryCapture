@@ -44,28 +44,6 @@ function request(command, requestID, version) {
   });
 }
 
-const hello = await request("hello", "packaged-v2-hello", 2);
-if (
-  hello.data?.backend_id !== "screen-capture-kit" ||
-  hello.data?.supports_native_timestamps !== true ||
-  hello.data?.supports_physical_pixels !== true
-) {
-  throw new Error("packaged ScreenCaptureKit helper reported an invalid capability contract");
-}
-const nativeMaster = await request("hello", "packaged-v3-hello", 3);
-if (
-  nativeMaster.version !== 3 ||
-  nativeMaster.data?.backend_id !== "screen-capture-kit" ||
-  nativeMaster.data?.backend_version !== "3.0.0" ||
-  nativeMaster.data?.supports_native_master !== true ||
-  nativeMaster.data?.supports_hardware_h264 !== true ||
-  nativeMaster.data?.supports_cfr_held_frames !== true ||
-  nativeMaster.data?.supports_atomic_finalization !== true ||
-  nativeMaster.data?.encoder?.id !== "videotoolbox-h264" ||
-  nativeMaster.data?.encoder?.hardware_accelerated !== true
-) {
-  throw new Error("packaged ScreenCaptureKit helper reported an invalid V3 native-master contract");
-}
 const recordingV4 = await request("hello", "packaged-v4-hello", 4);
 if (
   recordingV4.version !== 4 ||
@@ -92,4 +70,4 @@ if (!incompatibleRejected) {
   throw new Error("packaged ScreenCaptureKit helper did not reject an incompatible protocol");
 }
 await request("shutdown", "packaged-v4-shutdown", 4);
-process.stdout.write("packaged ScreenCaptureKit helper signature and V2/V3/V4 protocols passed\n");
+process.stdout.write("packaged ScreenCaptureKit helper signature and V4 protocol passed\n");

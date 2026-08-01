@@ -17,8 +17,7 @@ namespace storycapture::wgc {
 class NativeMp4Writer final {
  public:
   NativeMp4Writer(ID3D11Device* device, std::wstring output_path, std::uint32_t width,
-                  std::uint32_t height, std::uint32_t target_bitrate_bps = 24'000'000,
-                  bool measure_bitrate = false);
+                  std::uint32_t height, std::uint32_t target_bitrate_bps);
   ~NativeMp4Writer();
 
   NativeMp4Writer(const NativeMp4Writer&) = delete;
@@ -44,7 +43,6 @@ class NativeMp4Writer final {
   std::uint64_t artifact_bytes_{};
   std::uint32_t average_bitrate_bps_{};
   std::uint32_t peak_bitrate_bps_{};
-  bool measure_bitrate_{};
   DWORD stream_index_{};
   bool mf_started_{};
   bool finalized_{};

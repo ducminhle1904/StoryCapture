@@ -126,13 +126,12 @@ std::wstring require_hardware_h264_encoder() { return select_hardware_h264_encod
 
 NativeMp4Writer::NativeMp4Writer(ID3D11Device* device, std::wstring output_path,
                                  std::uint32_t width, std::uint32_t height,
-                                 std::uint32_t target_bitrate_bps, bool measure_bitrate)
+                                 std::uint32_t target_bitrate_bps)
     : output_path_(std::move(output_path)),
       temporary_path_(output_path_ + L".partial"),
       width_(width),
       height_(height),
       target_bitrate_bps_(target_bitrate_bps),
-      measure_bitrate_(measure_bitrate),
       device_(device) {
   if (output_path_.empty() || width_ == 0 || height_ == 0 || width_ % 2 != 0 || height_ % 2 != 0 ||
       target_bitrate_bps_ == 0) {
@@ -246,11 +245,9 @@ void NativeMp4Writer::finalize() {
   if (error || artifact_bytes_ == 0) {
     throw ProtocolError("artifact_finalize_failed", "finalized MP4 is empty or unreadable");
   }
-  if (measure_bitrate_) {
-    const auto bitrate = measure_encoded_bitrate(output_path_);
-    average_bitrate_bps_ = bitrate.average_bps;
-    peak_bitrate_bps_ = bitrate.peak_bps;
-  }
+  const auto bitrate = measure_encoded_bitrate(output_path_);
+  average_bitrate_bps_ = bitrate.average_bps;
+  peak_bitrate_bps_ = bitrate.peak_bps;
   finalized_ = true;
 }
 

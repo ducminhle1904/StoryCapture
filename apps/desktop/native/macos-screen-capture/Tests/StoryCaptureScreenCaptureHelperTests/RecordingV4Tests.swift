@@ -7,8 +7,7 @@ final class RecordingV4Tests: XCTestCase {
     func testControllerRejectsUnknownProtocolFailClosed() async throws {
         let pipe = Pipe()
         let controller = ScreenCaptureHelperController(
-            control: ControlChannel(handle: pipe.fileHandleForWriting),
-            packets: BinaryPacketChannel()
+            control: ControlChannel(handle: pipe.fileHandleForWriting)
         )
         _ = await controller.handle(.init(version: 5, requestID: "bad", command: .hello))
         try pipe.fileHandleForWriting.close()
@@ -27,7 +26,7 @@ final class RecordingV4Tests: XCTestCase {
         XCTAssertEqual(command.command, .warmup)
         XCTAssertEqual(command.payload?.requestedAudioRoles, [.microphone, .system])
         XCTAssertEqual(command.payload?.encoderEnvelope?.targetBitrateBPS, 20_000_000)
-        XCTAssertNotEqual(recordingV4ProtocolVersion, nativeMasterProtocolVersion)
+        XCTAssertEqual(HelperCommand(requestID: "default", command: .hello).version, 4)
     }
 
     func testExact60HzSlotsHoldsAndSourceLedger() throws {
@@ -156,7 +155,7 @@ final class RecordingV4Tests: XCTestCase {
     }
 
     func testV4WriterFinalizesHardwareH264WithCadenceEvidence() async throws {
-        guard NativeMasterWriter.hardwareEncoderAvailable() else {
+        guard RecordingV4Writer.hardwareEncoderAvailable() else {
             throw XCTSkip("VideoToolbox hardware H.264 is unavailable")
         }
         let directory = FileManager.default.temporaryDirectory
@@ -170,11 +169,11 @@ final class RecordingV4Tests: XCTestCase {
             maximumBitrateBPS: 32_000_000,
             safetyHeadroomRatio: 0.25
         )
-        let writer = try NativeMasterWriter(
+        let writer = try RecordingV4Writer(
             artifactPath: directory.appendingPathComponent("video.mp4").path,
             width: 1_920,
             height: 1_080,
-            v4Envelope: envelope,
+            encoderEnvelope: envelope,
             requestedAudioRoles: [.microphone]
         )
         let pixelBuffer = try makePixelBuffer(width: 1_920, height: 1_080)
@@ -193,8 +192,8 @@ final class RecordingV4Tests: XCTestCase {
         try await Task.sleep(nanoseconds: 35_000_000)
         let result = try await writer.finish()
         XCTAssertEqual(result.outputFrames, result.decodedFrames)
-        XCTAssertEqual(result.cadence?.ledger.count, Int(result.outputFrames))
-        XCTAssertNotNil(result.encoderEvidence)
+        XCTAssertEqual(result.cadence.ledger.count, Int(result.outputFrames))
+        XCTAssertEqual(result.encoderEvidence.envelope.encoderID, "videotoolbox-h264")
         XCTAssertEqual(result.audioEvidence.first?.role, .microphone)
         XCTAssertEqual(result.audioEvidence.first?.codec, "aac")
         let asset = AVURLAsset(url: directory.appendingPathComponent("video.mp4"))
@@ -213,11 +212,11 @@ final class RecordingV4Tests: XCTestCase {
             safetyHeadroomRatio: 0.25
         )
         XCTAssertThrowsError(
-            try NativeMasterWriter(
+            try RecordingV4Writer(
                 artifactPath: "/tmp/should-not-exist.mp4",
                 width: 1_280,
                 height: 720,
-                v4Envelope: envelope
+                encoderEnvelope: envelope
             )
         ) { XCTAssertEqual($0 as? HelperFailureCode, .surfaceNot1080p) }
     }

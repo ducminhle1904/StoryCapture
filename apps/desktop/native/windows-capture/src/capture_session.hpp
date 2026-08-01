@@ -16,7 +16,6 @@
 #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
 
 #include "capture_types.hpp"
-#include "frame_ring.hpp"
 #include "native_mp4_writer.hpp"
 #include "protocol.hpp"
 #include "target_resolver.hpp"
@@ -25,7 +24,7 @@ namespace storycapture::wgc {
 
 class CaptureSession final {
  public:
-  CaptureSession(CaptureOptions options, EventWriter& writer, bool probe_only);
+  CaptureSession(RecordingV4Options options, EventWriter& writer);
   ~CaptureSession();
 
   CaptureSession(const CaptureSession&) = delete;
@@ -37,9 +36,7 @@ class CaptureSession final {
   void resume();
   void stop();
 
-  [[nodiscard]] ProbeObservation observation() const;
-  [[nodiscard]] const NativeFrameRing* ring() const noexcept { return ring_.get(); }
-  [[nodiscard]] NativeCaptureEvidence finalize_native_mp4();
+  [[nodiscard]] RecordingV4Evidence finalize();
   [[nodiscard]] std::wstring gpu_identity() const;
   [[nodiscard]] std::wstring adapter_luid() const;
   [[nodiscard]] std::wstring hardware_fingerprint() const;
@@ -56,16 +53,14 @@ class CaptureSession final {
   void write_v4_slot(std::uint64_t slot, std::int64_t submitted_at_us);
   std::int64_t qpc_us() const noexcept;
 
-  CaptureOptions options_;
+  RecordingV4Options options_;
   EventWriter& writer_;
-  bool probe_only_{};
   ResolvedCaptureTarget target_;
   Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter_;
   Microsoft::WRL::ComPtr<ID3D11Device> d3d_device_;
   winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice winrt_device_{nullptr};
   winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool frame_pool_{nullptr};
   winrt::Windows::Graphics::Capture::GraphicsCaptureSession capture_session_{nullptr};
-  std::unique_ptr<NativeFrameRing> ring_;
   std::unique_ptr<NativeMp4Writer> mp4_writer_;
   Microsoft::WRL::ComPtr<ID3D11Texture2D> latest_texture_;
   winrt::event_token frame_token_{};
@@ -81,9 +76,6 @@ class CaptureSession final {
   std::int64_t last_frame_qpc_us_{};
   std::int64_t pause_started_qpc_us_{};
   std::int64_t paused_duration_us_{};
-  std::int64_t first_source_pts_us_{-1};
-  std::int64_t last_source_pts_us_{-1};
-  std::int64_t previous_active_pts_us_{-1};
   std::uint64_t source_frame_index_{};
   std::uint64_t output_frame_index_{};
   std::uint64_t held_frames_{};
@@ -95,7 +87,6 @@ class CaptureSession final {
   std::vector<std::unique_ptr<WasapiAudioCapture>> audio_captures_;
   std::int64_t started_monotonic_us_{};
   std::int64_t ended_monotonic_us_{};
-  ProbeObservation observation_;
 };
 
 }  // namespace storycapture::wgc
