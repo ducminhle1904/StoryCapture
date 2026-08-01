@@ -8,8 +8,6 @@ import { pluginHandlers } from "./plugin";
 import { postProductionHandlers } from "./post-production";
 import { previewHandlers } from "./preview";
 import { projectsHandlers } from "./projects";
-import { recordingHandlers } from "./recording";
-import { recordingFailedBundleHandlers } from "./recording-failed-bundle-actions";
 import { recordingMasterDecoderHandlers } from "./recording-master-decoder";
 import { recordingV4Handlers } from "./recording-v4";
 import { renderHandlers } from "./render";
@@ -25,9 +23,7 @@ export const handlers = {
   ...settingsHandlers,
   ...logsHandlers,
   ...updatesHandlers,
-  ...recordingHandlers,
   ...recordingV4Handlers,
-  ...recordingFailedBundleHandlers,
   ...recordingMasterDecoderHandlers,
   ...previewHandlers,
   ...pickerHandlers,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { RecordingStepTimingSidecar } from "@/ipc/trajectory";
+import type { RecordingStepTimingSidecar } from "@/ipc/recording-step-timing";
 
 import type { SoundClip, TimelineSlice } from "./timeline-slice";
 import {
@@ -10,7 +10,7 @@ import {
 } from "./voiceover-timeline";
 
 const TIMING: RecordingStepTimingSidecar = {
-  version: 1,
+  version: 4,
   recordingPath: "/recording.mp4",
   storyHash: "story",
   timebase: "recording-ms",

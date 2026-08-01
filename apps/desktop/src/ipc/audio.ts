@@ -24,7 +24,5 @@ export function listAudioInputs(): Promise<AudioInputInfo[]> {
  *  resolves to cpal's `default_input_device` at capture-start. */
 export const AUDIO_DEFAULT_SENTINEL = "default";
 
-/** Picker option used when the user wants no audio. UI value is null;
- *  mapped to `undefined` in the start_recording payload (absent field
- *  → silent track). */
+/** Picker option used when the user wants no audio. */
 export type AudioPickerValue = string | null;

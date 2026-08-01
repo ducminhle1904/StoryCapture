@@ -18,14 +18,6 @@
       "types": "./src/export-composition.ts",
       "import": "./src/export-composition.ts"
     },
-    "./recording-v2": {
-      "types": "./src/recording-v2.ts",
-      "import": "./src/recording-v2.ts"
-    },
-    "./recording-v3": {
-      "types": "./src/recording-v3.ts",
-      "import": "./src/recording-v3.ts"
-    },
     "./recording-v4": {
       "types": "./src/recording-v4.ts",
       "import": "./src/recording-v4.ts"

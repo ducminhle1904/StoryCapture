@@ -26,7 +26,7 @@ import type {
   ActionPointer,
   ActionScrollTiming,
   ActionTarget,
-} from "../action-timeline";
+} from "../automation-action";
 import type { CursorTimingSize } from "../cursor-timing";
 import { readJson, writeJson } from "../json-store";
 import { type FrontendLogPayload, logFromFrontend } from "../log-store";

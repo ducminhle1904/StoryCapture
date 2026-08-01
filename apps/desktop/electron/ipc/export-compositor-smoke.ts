@@ -11,10 +11,6 @@ import { app, type BrowserWindow } from "electron";
 import { ffmpegExecutablePath } from "./export-binaries";
 import { createExportCompositorHost } from "./export-compositor-host";
 import { type ExportPipelineSmokeEvidence, runExportPipelineSmoke } from "./export-e2e-smoke";
-import {
-  type PackagedRecordingSmokeEvidence,
-  runPackagedRecordingSmoke,
-} from "./recording-artifact-smoke";
 
 const OUTPUT_WIDTH = 320;
 const OUTPUT_HEIGHT = 180;
@@ -44,7 +40,6 @@ interface SmokeSuccess {
   mainRenderer: MainRendererEvidence;
   compositor: CompositorEvidence;
   pipeline: ExportPipelineSmokeEvidence;
-  recording: PackagedRecordingSmokeEvidence;
 }
 
 interface SmokeFailure {
@@ -353,7 +348,6 @@ async function runSmoke(
     throw new Error(`Main renderer load failed: ${mainLoadFailures.join("; ")}`);
   }
   const exportsDir = path.join(app.getPath("userData"), "exports");
-  const recording = await runPackagedRecordingSmoke(path.join(exportsDir, "recording-smoke"));
   const videoPath = path.join(exportsDir, "export-compositor-artifact-smoke.mp4");
   const actionsPath = path.join(exportsDir, "export-compositor-artifact-smoke.actions.json");
   await createVideoFixture(videoPath);
@@ -396,7 +390,6 @@ async function runSmoke(
       loadFailures,
     },
     pipeline,
-    recording,
   };
 }
 

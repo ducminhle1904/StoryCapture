@@ -2,34 +2,9 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { app } from "electron";
-import { actionsSidecarPath } from "../action-timeline";
 import { readJson, writeJson } from "../json-store";
 import { pathExists } from "./projects";
 import { type EffectPreset, presetStorePath, type SoundLibraryEntry } from "./shared";
-
-export function sidecarPath(
-  recordingPath: string,
-  suffix: "actions" | "trajectory" | "steps",
-): string {
-  if (suffix === "actions") return actionsSidecarPath(recordingPath);
-  const ext = suffix === "steps" ? ".steps.json" : `.${suffix}.json`;
-  return /\.[^/.]+$/.test(recordingPath)
-    ? recordingPath.replace(/\.[^/.]+$/, ext)
-    : `${recordingPath}${ext}`;
-}
-
-export async function readRecordingSidecar(
-  recordingPath: string,
-  suffix: "actions" | "trajectory" | "steps",
-) {
-  const file = sidecarPath(recordingPath, suffix);
-  try {
-    return JSON.parse(await fs.readFile(file, "utf8")) as unknown;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
-  }
-}
 
 export async function readPresets(scope: string): Promise<EffectPreset[]> {
   return readJson<EffectPreset[]>(presetStorePath(scope), []);

@@ -20,7 +20,7 @@ afterEach(() => resetStore());
 describe("D-04 double-start guard", () => {
   it("only fires the IPC call once when the handler is invoked twice synchronously", async () => {
     const invoke = vi.fn(async () => {
-      // Simulate a slow start_recording that hasn't resolved yet.
+      // Simulate a slow Recording V4 start that hasn't resolved yet.
       await new Promise((r) => setTimeout(r, 20));
       return "session-1";
     });

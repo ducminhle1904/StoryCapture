@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { RecordingNativeBrowserSurface } from "./recording-native-browser-surface";
+import { RecordingV4BrowserSurface } from "./recording-v4-browser-surface";
 
 const dimensions = {
   logical_width: 960,
@@ -53,10 +53,10 @@ function fakeWindow(capturedSize = { width: 1920, height: 1080 }) {
   };
 }
 
-describe("native recording BrowserWindow surface", () => {
+describe("Recording V4 BrowserWindow surface", () => {
   it("stays hidden until load and derives exact platform identities", async () => {
     const window = fakeWindow();
-    const surface = new RecordingNativeBrowserSurface({
+    const surface = new RecordingV4BrowserSurface({
       url: "https://example.test",
       dimensions,
       env: { STORYCAPTURE_DEV_APP: "1" },
@@ -86,7 +86,7 @@ describe("native recording BrowserWindow surface", () => {
   it("keeps a desktop CSS viewport on a smaller Retina surface", async () => {
     const window = fakeWindow();
 
-    const surface = new RecordingNativeBrowserSurface({
+    const surface = new RecordingV4BrowserSurface({
       url: "https://example.test",
       dimensions,
       contentViewport: { width: 1280, height: 720 },
@@ -100,7 +100,7 @@ describe("native recording BrowserWindow surface", () => {
 
   it("samples quality references at requested output resolution", async () => {
     const window = fakeWindow({ width: 2560, height: 1440 });
-    const surface = new RecordingNativeBrowserSurface({
+    const surface = new RecordingV4BrowserSurface({
       url: "https://example.test",
       dimensions: {
         ...dimensions,
@@ -121,7 +121,7 @@ describe("native recording BrowserWindow surface", () => {
   it("rejects persistent partitions before creating a window", () => {
     expect(
       () =>
-        new RecordingNativeBrowserSurface({
+        new RecordingV4BrowserSurface({
           url: "https://example.test",
           dimensions,
           partition: "persist:recording",

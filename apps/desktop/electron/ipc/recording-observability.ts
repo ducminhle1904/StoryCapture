@@ -7,7 +7,7 @@ import {
 
 export type RecordingLogLevel = "debug" | "info" | "warn" | "error";
 
-export type RecordingLogEventNameV2 =
+export type RecordingLogEventNameV4 =
   | "recording.session.created"
   | "recording.lifecycle.transition"
   | "recording.preflight.completed"
@@ -89,12 +89,12 @@ export interface RecordingLogContext {
   artifact_relpath?: string;
 }
 
-export interface RecordingLogEventV2 extends RecordingLogContext {
-  schema_version: 2;
+export interface RecordingLogEventV4 extends RecordingLogContext {
+  schema_version: 4;
   redaction_version: 1;
   emitted_at: string;
   level: RecordingLogLevel;
-  event: RecordingLogEventNameV2;
+  event: RecordingLogEventNameV4;
   process_sequence: number;
   session_sequence?: number;
   error?: { name: string; message: string; stack?: string };
@@ -103,7 +103,7 @@ export interface RecordingLogEventV2 extends RecordingLogContext {
 
 export interface RecordingLogInput {
   level?: RecordingLogLevel;
-  event: RecordingLogEventNameV2;
+  event: RecordingLogEventNameV4;
   context?: RecordingLogContext;
   details?: Record<string, unknown>;
   error?: unknown;
@@ -146,7 +146,7 @@ async function writeObservabilityFallback(
   }
 }
 
-function sanitizedError(error: unknown): RecordingLogEventV2["error"] {
+function sanitizedError(error: unknown): RecordingLogEventV4["error"] {
   if (error === undefined || error === null) return undefined;
   if (error instanceof Error) {
     return {
@@ -212,7 +212,7 @@ function sanitizedContext(context: RecordingLogContext): RecordingLogContext {
 
 export async function recordEngineLog(
   input: RecordingLogInput,
-): Promise<RecordingLogEventV2 | null> {
+): Promise<RecordingLogEventV4 | null> {
   if (!structuredLoggingEnabled()) return null;
   const context = sanitizedContext(input.context ?? {});
   processSequence += 1;
@@ -220,8 +220,8 @@ export async function recordEngineLog(
   const details = input.details
     ? (redactDiagnosticValue(input.details) as Record<string, DiagnosticJsonValue>)
     : undefined;
-  const event: RecordingLogEventV2 = {
-    schema_version: 2,
+  const event: RecordingLogEventV4 = {
+    schema_version: 4,
     redaction_version: 1,
     emitted_at: new Date().toISOString(),
     level: input.level ?? "info",

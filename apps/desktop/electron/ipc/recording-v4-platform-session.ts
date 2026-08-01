@@ -30,9 +30,9 @@ import {
 import { probeRecording } from "./media-probe";
 import { SequentialMasterDecoder } from "./recording-master-decoder";
 import {
-  RecordingNativeBrowserSurface,
-  type RecordingNativeBrowserSurfaceOptions,
-} from "./recording-native-browser-surface";
+  RecordingV4BrowserSurface,
+  type RecordingV4BrowserSurfaceOptions,
+} from "./recording-v4-browser-surface";
 import {
   RecordingV4BundleFinalizer,
   type RecordingV4ArtifactProbe,
@@ -338,7 +338,7 @@ async function runProcess(command: string, args: string[]): Promise<void> {
 
 export function recordingV4SurfaceOptions(
   request: RecordingV4PlatformSessionInput["request"],
-): RecordingNativeBrowserSurfaceOptions {
+): RecordingV4BrowserSurfaceOptions {
   if (!request.source_url || !Number.isSafeInteger(request.logical_width) ||
     !Number.isSafeInteger(request.logical_height) || request.logical_width <= 0 || request.logical_height <= 0 ||
     request.logical_width / request.logical_height !== 16 / 9) throw new Error("Invalid V4 author-preview source");
@@ -357,8 +357,8 @@ export function recordingV4SurfaceOptions(
   };
 }
 
-async function createSurface(input: RecordingV4PlatformSessionInput): Promise<RecordingNativeBrowserSurface> {
-  const surface = new RecordingNativeBrowserSurface(recordingV4SurfaceOptions(input.request));
+async function createSurface(input: RecordingV4PlatformSessionInput): Promise<RecordingV4BrowserSurface> {
+  const surface = new RecordingV4BrowserSurface(recordingV4SurfaceOptions(input.request));
   await surface.load();
   const reference = await surface.captureReference(0);
   await fs.mkdir(path.join(input.workspacePath, "evidence"), { recursive: true });
@@ -366,7 +366,7 @@ async function createSurface(input: RecordingV4PlatformSessionInput): Promise<Re
   return surface;
 }
 
-function macTargetIdentity(surface: RecordingNativeBrowserSurface): { identity: RecordingV4TargetIdentity; native: MacRecordingV4NativeTarget } {
+function macTargetIdentity(surface: RecordingV4BrowserSurface): { identity: RecordingV4TargetIdentity; native: MacRecordingV4NativeTarget } {
   const target = surface.macTarget();
   if (target.kind !== "window" || !target.windowID || !target.ownerPID ||
     !target.ownerBundleID || !target.mediaSourceID) throw new Error("macOS V4 requires a window target");

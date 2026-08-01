@@ -8,8 +8,7 @@ import { useProjectRecordings } from "@/ipc/projects";
 import type {
   CaptureRect,
   RecordingStepTimingSidecar,
-  RecordingTrajectory,
-} from "@/ipc/trajectory";
+} from "@/ipc/recording-step-timing";
 
 export type PreviewSurfaceProps =
   | {
@@ -19,7 +18,6 @@ export type PreviewSurfaceProps =
       width?: number;
       height?: number;
       actions?: RecordingActions | null;
-      trajectory?: RecordingTrajectory | null;
       stepTiming?: RecordingStepTimingSidecar | null;
       captureRect?: CaptureRect | null;
     }
@@ -38,7 +36,6 @@ export function PreviewSurface(props: PreviewSurfaceProps) {
         width={props.width}
         height={props.height}
         actions={props.actions}
-        trajectory={props.trajectory}
         stepTiming={props.stepTiming}
         captureRect={props.captureRect}
       />

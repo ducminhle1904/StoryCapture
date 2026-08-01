@@ -8,11 +8,8 @@ import {
   type ActionCursorTiming,
   type ActionInputTiming,
   type ActionTarget,
-  type ActionTimelineEvent,
-  actionsSidecarPath,
-} from "../action-timeline";
+} from "../automation-action";
 import { estimateCursorTravelDelayMs, initialCursorPoint } from "../cursor-timing";
-import { RecordingMediaClock } from "../recording-media-clock";
 import { RecordingPauseGate } from "../recording-pause-gate";
 import { AUTOMATION_RECORDING_TAIL_DURATION_MS } from "../recording-tail";
 import type { ParsedCommand } from "../story-parser";
@@ -47,26 +44,17 @@ vi.mock("./capture-preview", () => ({
   targetsPathFor: (storyPath: string) => `${storyPath}.targets.json`,
 }));
 
-vi.mock("./recording", () => ({
-  stopRecording: vi.fn(),
-}));
-
 vi.mock("../recording-observability", () => ({
   recordEngineLog: vi.fn(async () => null),
 }));
 
 import { recordEngineLog } from "../recording-observability";
-import { authorSession } from "./capture-preview";
-import { stopRecording } from "./recording";
 import { recordingSessions } from "./shared";
 import {
   commandContributesCursorEvent,
   commandGetsPreActionPacing,
   executeParsedCommand,
-  launchAutomationCommand,
-  rebaseActionEventsToFirstCursorInteraction,
   runStoryCommandsInBrowser,
-  writeRecordingActionsSidecarBestEffort,
 } from "./story-runner";
 
 const tempDirs: string[] = [];
@@ -137,47 +125,6 @@ function fakeContents(targets: ActionTarget[]) {
           : { status: "not_ready", reason: "not_found" };
       }
       return latestTarget;
-    }
-    if (script.includes("crypto.subtle.digest")) return typeProbe(script, typedValue);
-    if (script.includes("focusTypeTarget(resolved, null)")) replaceOnNextInsert = true;
-    return true;
-  });
-  return {
-    getURL: () => "http://localhost.test",
-    loadURL: vi.fn(),
-    getOwnerBrowserWindow: () => ({
-      getContentBounds: () => ({ width: 1280, height: 800 }),
-    }),
-    sendInputEvent,
-    insertText: vi.fn((text: string) => {
-      typedValue = replaceOnNextInsert ? text : typedValue + text;
-      replaceOnNextInsert = false;
-    }),
-    executeJavaScript,
-    capturePage: vi.fn(async () => ({
-      isEmpty: () => false,
-      toPNG: () => Buffer.from("png"),
-    })),
-    isDestroyed: () => false,
-  };
-}
-
-function fakeContentsByLabel(targets: Record<string, ActionTarget>) {
-  const sendInputEvent = vi.fn();
-  let typedValue = "";
-  let replaceOnNextInsert = false;
-  const executeJavaScript = vi.fn(async (script: string) => {
-    if (script.includes("resolvedTargetGeometry")) {
-      for (const [label, actionTarget] of Object.entries(targets)) {
-        if (script.includes(label)) {
-          return script.includes("resolvedTargetReadiness")
-            ? { status: "ready", target: actionTarget }
-            : actionTarget;
-        }
-      }
-      return script.includes("resolvedTargetReadiness")
-        ? { status: "not_ready", reason: "not_found" }
-        : null;
     }
     if (script.includes("crypto.subtle.digest")) return typeProbe(script, typedValue);
     if (script.includes("focusTypeTarget(resolved, null)")) replaceOnNextInsert = true;
@@ -869,64 +816,6 @@ describe("story browser cursor pacing", () => {
     expect(prepareCalls).toBe(1);
   });
 
-  it("rebases recorded cursor events to the first visible interaction", () => {
-    const sourceEvents: ActionTimelineEvent[] = [
-      {
-        step_id: null,
-        ordinal: 3,
-        verb: "type",
-        t_start_ms: 900,
-        t_action_ms: 900,
-        t_end_ms: 1400,
-        target: target("Email", { x: 460, y: 320 }),
-        secondary_target: null,
-        pointer: null,
-        cursor_timing: {
-          motion_preset: "natural",
-          start_ms: 900,
-          arrival_ms: 1220,
-          travel_ms: 320,
-          dwell_ms: 0,
-        },
-        input_timing: {
-          kind: "type",
-          down_ms: 1400,
-          up_ms: 1400,
-          action_ms: 1400,
-          text_start_ms: 1400,
-          text_end_ms: 1400,
-        },
-      },
-      {
-        step_id: null,
-        ordinal: 4,
-        verb: "click",
-        t_start_ms: 2100,
-        t_action_ms: 2100,
-        t_end_ms: 2250,
-        target: target("Sign in", { x: 460, y: 470 }),
-        secondary_target: null,
-        pointer: { button: "left", effect: "click" },
-      },
-    ];
-
-    const events = rebaseActionEventsToFirstCursorInteraction(sourceEvents);
-
-    expect(events.map((event) => [event.t_start_ms, event.t_action_ms, event.t_end_ms])).toEqual([
-      [0, 0, 500],
-      [1200, 1200, 1350],
-    ]);
-    expect(events[0]?.cursor_timing).toMatchObject({
-      start_ms: 0,
-      arrival_ms: 320,
-      travel_ms: 320,
-    });
-    expect(events[0]?.input_timing).toMatchObject({
-      action_ms: 500,
-      text_start_ms: 500,
-      text_end_ms: 500,
-    });
-  });
 
   it("waits for cursor travel before sending recorded click input", async () => {
     const size = { width: 1280, height: 800 };
@@ -1342,170 +1231,5 @@ describe("story browser cursor pacing", () => {
     expect(JSON.stringify(targetFailure)).not.toContain("Missing");
   });
 
-  it("logs an actions sidecar write failure without changing the legacy outcome", async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-sidecar-failure-"));
-    tempDirs.push(dir);
-    const blockedParent = path.join(dir, "not-a-directory");
-    await fs.writeFile(blockedParent, "blocked");
-    const mediaClock = new RecordingMediaClock({ fpsNum: 60, fpsDen: 1 });
-    mediaClock.commitFrame(true);
-    const session = {
-      id: "recording-sidecar-failure",
-      outputPath: path.join(blockedParent, "recording.mp4"),
-      target: { kind: "author_preview", stream_id: "author-preview" },
-      width: 1280,
-      height: 800,
-      frameCrop: null,
-      mediaClock,
-    } as never;
-    const event: ActionTimelineEvent = {
-      step_id: null,
-      ordinal: 1,
-      verb: "click",
-      t_start_ms: 0,
-      t_action_ms: 1,
-      t_end_ms: 2,
-      target: null,
-      secondary_target: null,
-      pointer: null,
-    };
 
-    await expect(writeRecordingActionsSidecarBestEffort(session, [event])).resolves.toBeUndefined();
-
-    expect(recordEngineLog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        level: "warn",
-        event: "recording.sidecar.write_failed",
-        context: {
-          session_id: "recording-sidecar-failure",
-          phase: "actions_sidecar",
-          reason_code: "write_failed",
-        },
-        details: { sidecar_kind: "actions", event_count: 1 },
-      }),
-    );
-  });
-
-  it("excludes non-interaction targets from recorded action sidecars", async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-actions-"));
-    tempDirs.push(dir);
-    const outputPath = path.join(dir, "recording");
-    const contents = fakeContentsByLabel({
-      Login: target("Login", { x: 640, y: 170 }),
-      "EMAIL ADDRESS": target("EMAIL ADDRESS", { x: 460, y: 320 }),
-      PASSWORD: target("PASSWORD", { x: 460, y: 390 }),
-      "SIGN IN": target("SIGN IN", { x: 460, y: 470 }),
-    });
-    vi.mocked(authorSession).mockReturnValue({
-      window: { webContents: contents },
-    } as never);
-    const mediaClock = new RecordingMediaClock({ fpsNum: 60, fpsDen: 1 });
-    for (let frame = 0; frame < 240; frame += 1) mediaClock.commitFrame(true);
-    recordingSessions.set("recording-1", {
-      id: "recording-1",
-      projectFolder: dir,
-      outputPath,
-      target: { kind: "author_preview" },
-      width: 1280,
-      height: 800,
-      outputWidth: 1280,
-      outputHeight: 800,
-      fps: 60,
-      startedAt: Date.now(),
-      paused: false,
-      lifecycle: "recording",
-      mediaClock,
-      pauseGate: new RecordingPauseGate(),
-      eventTarget: contents,
-      eventChannelId: null,
-      heartbeat: undefined,
-      captureTimer: null,
-      framesDir: dir,
-      frameSeq: 240,
-      framesDropped: 0,
-      skippedTicks: 0,
-      encoderBackpressureEvents: 0,
-      sourceFramesReceived: 0,
-      captureInFlight: null,
-      audioPath: null,
-      frameCrop: null,
-      requestedFps: 60,
-    } as never);
-    vi.mocked(stopRecording).mockClear();
-
-    const run = launchAutomationCommand(
-      {
-        streamId: "author-preview",
-        recordingSessionId: "recording-1",
-        projectFolder: dir,
-        storySource: `story "Demo" {
-scene "Login" {
-  text-overlay "Sign in securely" 2000ms # @id=11111111-1111-4111-8111-111111111111
-  wait-for heading "Login" timeout 10ms
-  type field "EMAIL ADDRESS" "demo@example.com"
-  type field "PASSWORD" "password"
-  click button "SIGN IN"
-}
-}`,
-      },
-      { isDestroyed: () => false, send: vi.fn() } as never,
-    );
-
-    await vi.runAllTimersAsync();
-    const outcome = await run;
-
-    expect(outcome).toMatchObject({
-      story: {
-        total_steps: 5,
-        succeeded: 5,
-        failed: 0,
-        exit_reason: "completed",
-        failed_ordinal: null,
-      },
-      recording: { status: "ready_to_finalize", result: null },
-    });
-    expect(stopRecording).not.toHaveBeenCalled();
-    await expect(fs.stat(`${outputPath}.steps.json`)).resolves.toBeDefined();
-
-    const sidecar = JSON.parse(await fs.readFile(actionsSidecarPath(outputPath), "utf8"));
-    expect(sidecar.version).toBe(2);
-    expect(sidecar.cursor_motion_preset).toBe("natural");
-    expect(
-      sidecar.events.map((event: { verb: string; target: { label: string } | null }) => ({
-        verb: event.verb,
-        label: event.target?.label,
-      })),
-    ).toEqual([
-      { verb: "type", label: "EMAIL ADDRESS" },
-      { verb: "type", label: "PASSWORD" },
-      { verb: "click", label: "SIGN IN" },
-    ]);
-    expect(
-      sidecar.events.every(
-        (event: { cursor_timing?: unknown; input_timing?: unknown }) =>
-          event.cursor_timing && event.input_timing,
-      ),
-    ).toBe(true);
-
-    const stepTimingPath = `${outputPath}.steps.json`;
-    const stepTiming = JSON.parse(await fs.readFile(stepTimingPath, "utf8"));
-    expect(stepTiming).toMatchObject({
-      version: 1,
-      recordingPath: outputPath,
-      storyHash: expect.any(String),
-      timebase: "recording-ms",
-      status: "completed",
-      captureRect: { x: 0, y: 0, width: 1280, height: 800 },
-    });
-    expect(stepTiming.steps).toHaveLength(5);
-    expect(stepTiming.steps[0]).toMatchObject({
-      ordinal: 1,
-      stepId: "11111111-1111-4111-8111-111111111111",
-      sceneName: "Login",
-      verb: "text-overlay",
-      status: "succeeded",
-      target: null,
-      confidence: "high",
-    });
-  });
 });

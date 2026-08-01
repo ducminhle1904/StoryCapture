@@ -4,9 +4,9 @@
  * tracing log file (target `storycapture::frontend`).
  *
  * ```ts
- * try { await invoke("start_recording", args); }
+ * try { await invoke("recording_v4_start", args); }
  * catch (err) {
- *   frontendLog.error("RecorderStartButton", "start_recording IPC failed", {
+ *   frontendLog.error("RecorderStartButton", "Recording V4 IPC failed", {
  *     fields: { project_id: id }, error: err,
  *   });
  * }

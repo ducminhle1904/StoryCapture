@@ -11,7 +11,7 @@ import type {
   RecordingV4FailureCode,
   RecordingV4TargetIdentity,
 } from "@storycapture/shared-types/recording-v4";
-import type { WindowsCaptureTarget } from "./windows-capture-protocol";
+import type { WindowsRecordingV4Target } from "./recording-v4-native-target";
 
 export const WINDOWS_RECORDING_V4_PROTOCOL_VERSION = 4 as const;
 export const WINDOWS_RECORDING_V4_BACKEND_ID = "windows-graphics-capture" as const;
@@ -37,7 +37,7 @@ export interface WindowsRecordingV4Capabilities {
 export interface WindowsRecordingV4StartOptions {
   session_id: string;
   output_path: string;
-  target: WindowsCaptureTarget;
+  target: WindowsRecordingV4Target;
   target_identity: RecordingV4TargetIdentity;
   include_cursor: boolean;
   requested_audio_roles: RecordingV4AudioRole[];

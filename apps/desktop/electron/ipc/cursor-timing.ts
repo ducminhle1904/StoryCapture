@@ -4,7 +4,7 @@ import type {
   ActionInputTiming,
   ActionPoint,
   ActionTarget,
-} from "./action-timeline";
+} from "./automation-action";
 
 export interface CursorTimingSize {
   width: number;

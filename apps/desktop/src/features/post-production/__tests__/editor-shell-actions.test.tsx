@@ -15,8 +15,7 @@ const ipcMocks = vi.hoisted(() => ({
   useProjectRecordings: vi.fn(),
   useRecordingActions: vi.fn(),
   useRecordingV4Sidecars: vi.fn(),
-  useRecordingStepTiming: vi.fn(),
-  useRecordingTrajectory: vi.fn(),
+  recordingV4StepTimingSidecar: vi.fn(),
 }));
 const fsMocks = vi.hoisted(() => ({
   exists: vi.fn(),
@@ -54,11 +53,7 @@ vi.mock("@/ipc/actions", () => ({
 
 vi.mock("@/ipc/recording-v4-sidecars", () => ({
   useRecordingV4Sidecars: ipcMocks.useRecordingV4Sidecars,
-}));
-
-vi.mock("@/ipc/trajectory", () => ({
-  useRecordingStepTiming: ipcMocks.useRecordingStepTiming,
-  useRecordingTrajectory: ipcMocks.useRecordingTrajectory,
+  recordingV4StepTimingSidecar: ipcMocks.recordingV4StepTimingSidecar,
 }));
 
 vi.mock("@/components/preview-surface", () => ({
@@ -143,8 +138,7 @@ beforeEach(() => {
     isLoading: false,
     isError: false,
   });
-  ipcMocks.useRecordingStepTiming.mockReturnValue({ data: null, isLoading: false });
-  ipcMocks.useRecordingTrajectory.mockReturnValue({ data: null, isLoading: false });
+  ipcMocks.recordingV4StepTimingSidecar.mockReturnValue(null);
 });
 
 describe("EditorShell toolbar actions", () => {
@@ -323,7 +317,6 @@ describe("EditorShell toolbar actions", () => {
       isLoading: false,
       isError: false,
     });
-
     render(
       <MemoryRouter>
         <EditorShell storyId="story-1" />
@@ -524,23 +517,25 @@ describe("EditorShell toolbar actions", () => {
       isSuccess: true,
       isError: false,
     });
-    ipcMocks.useRecordingStepTiming.mockReturnValue({
-      data: {
-        steps: [
-          {
-            ordinal: 1,
-            stepId: "caption-step",
-            sceneName: "Scene",
-            verb: "text-overlay",
-            startMs: 2_000,
-            endMs: 5_000,
-            durationMs: 3_000,
-            status: "succeeded",
-            confidence: "high",
-          },
-        ],
-      },
-      isLoading: false,
+    ipcMocks.recordingV4StepTimingSidecar.mockReturnValue({
+      version: 4,
+      recordingPath: "/recordings/new.mp4",
+      storyHash: "session-v4",
+      timebase: "recording-ms",
+      status: "completed",
+      steps: [
+        {
+          ordinal: 1,
+          stepId: "caption-step",
+          sceneName: "Scene",
+          verb: "text-overlay",
+          startMs: 2_000,
+          endMs: 5_000,
+          durationMs: 3_000,
+          status: "succeeded",
+          confidence: "high",
+        },
+      ],
     });
 
     render(
@@ -637,6 +632,28 @@ describe("EditorShell toolbar actions", () => {
       },
       isLoading: false,
       isError: false,
+    });
+
+    ipcMocks.recordingV4StepTimingSidecar.mockReturnValue({
+      version: 4,
+      recordingPath: "/recordings/action-timed.mp4",
+      captureRect: { x: 0, y: 0, width: 1920, height: 1080 },
+      storyHash: "session-v4",
+      timebase: "recording-ms",
+      status: "completed",
+      steps: [
+        {
+          ordinal: 1,
+          stepId: "step-1",
+          sceneName: "Recorded story",
+          verb: "click",
+          startMs: 100,
+          endMs: 240,
+          durationMs: 140,
+          status: "succeeded",
+          confidence: "high",
+        },
+      ],
     });
 
     render(

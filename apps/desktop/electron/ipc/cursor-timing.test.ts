@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ActionTarget } from "./action-timeline";
+import type { ActionTarget } from "./automation-action";
 import {
   cursorPointForTarget,
   estimateCursorTravelDelayMs,

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
 
-import type { ActionTarget } from "./action-timeline";
+import type { ActionTarget } from "./automation-action";
 import {
   type InteractionObservation,
   InteractionReadinessError,

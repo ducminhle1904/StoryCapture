@@ -2,7 +2,7 @@
  * Pure producer that turns a story + recording sidecars into initial timeline clips.
  */
 
-import type { ExportRecordingSourceV2 } from "@storycapture/shared-types/recording-v2";
+import type { ExportRecordingSourceV4 } from "@storycapture/shared-types/export-composition";
 import {
   RECORDING_V4_CURSOR_COORDINATE_HEIGHT,
   RECORDING_V4_CURSOR_COORDINATE_WIDTH,
@@ -19,14 +19,12 @@ import {
   highlightEnabled,
   type StoryPolishDoc,
 } from "@/features/editor/polish-sidecar";
-import type { RecordingActions } from "@/ipc/actions";
 import type { ParseResult } from "@/ipc/parse";
 import type { RecordingInfo } from "@/ipc/projects";
 import type {
   RecordingStepTiming,
   RecordingStepTimingSidecar,
-  RecordingTrajectory,
-} from "@/ipc/trajectory";
+} from "@/ipc/recording-step-timing";
 import type {
   AnnotationClip,
   CursorClip,
@@ -44,10 +42,8 @@ import { styleDefaults } from "./text-style";
 export interface BuildTimelineInput {
   story: ParseResult | null;
   recording: RecordingInfo;
-  actions?: RecordingV4ActionSidecar | RecordingActions | null;
+  actions?: RecordingV4ActionSidecar | null;
   cursor?: RecordingV4CursorSidecar | null;
-  /** Removed from the V4 path; retained until the legacy-consumer deletion phase. */
-  trajectory?: RecordingTrajectory | null;
   polish?: StoryPolishDoc | null;
   stepTiming?: RecordingStepTimingSidecar | null;
 }
@@ -229,26 +225,24 @@ function sourceSize(input: BuildTimelineInput): VideoClip["sourceSize"] {
   return width && height ? { width, height } : undefined;
 }
 
-function recordingSourceMetadata(recording: RecordingInfo): ExportRecordingSourceV2 | undefined {
+function recordingSourceMetadata(recording: RecordingInfo): ExportRecordingSourceV4 | undefined {
   if (
     !recording.bundle_path ||
     !recording.master_path ||
-    !recording.proxy_path ||
     !recording.cadence_evidence_path ||
     !recording.quality_evidence_path ||
     !recording.exact_source_fps ||
     !recording.source_frame_count ||
     !recording.width ||
     !recording.height ||
-    (recording.quality_verdict !== "passed" && recording.quality_verdict !== "degraded")
+    recording.quality_verdict !== "passed"
   ) {
     return undefined;
   }
   return {
-    version: 2,
+    version: 4,
     bundle_path: recording.bundle_path,
     master_path: recording.master_path,
-    proxy_path: recording.proxy_path,
     cadence_evidence_path: recording.cadence_evidence_path,
     quality_evidence_path: recording.quality_evidence_path,
     exact_source_fps: recording.exact_source_fps,

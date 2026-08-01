@@ -1,6 +1,5 @@
 import type { RecordingV4CursorKind } from "@storycapture/shared-types/recording-v4";
 import type { ActionPoint, ActionTimelineEvent, RecordingActions } from "@/ipc/actions";
-import type { RecordingTrajectory } from "@/ipc/trajectory";
 import {
   CURSOR_CLICK_EFFECT_MAX_ACTIVE_FEEDBACK,
   type CursorClickEffectConfig,
@@ -214,26 +213,4 @@ function withClickFeedback(
   }
   clickFeedback.reverse();
   return { ...sample, clickFeedback, cursorScale };
-}
-
-export function sampleTrajectoryCursor(
-  trajectory: RecordingTrajectory | null,
-  relativeMs: number,
-): VirtualCursorSample | null {
-  const frames = trajectory?.frames ?? [];
-  if (frames.length === 0) return null;
-  let best = frames[0];
-  let bestDistance = Math.abs(best.t_ms - relativeMs);
-  for (const frame of frames) {
-    const distance = Math.abs(frame.t_ms - relativeMs);
-    if (distance > bestDistance) continue;
-    best = frame;
-    bestDistance = distance;
-  }
-  return {
-    x: best.x,
-    y: best.y,
-    clickFeedback: [],
-    cursorScale: 1,
-  };
 }

@@ -3,7 +3,7 @@ import type {
   CaptureRect,
   RecordingStepTiming,
   RecordingStepTimingSidecar,
-} from "@/ipc/trajectory";
+} from "@/ipc/recording-step-timing";
 import { samplePreparedVirtualCursor, sampleVirtualCursor } from "../preview/virtual-cursor-path";
 import type { AnnotationClip, CursorClip, TextAnchor, Vec2 } from "./timeline-slice";
 import type { VirtualCursorSchedule } from "./virtual-cursor-scheduler";

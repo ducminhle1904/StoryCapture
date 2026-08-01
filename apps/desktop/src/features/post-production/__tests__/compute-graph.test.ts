@@ -312,21 +312,20 @@ describe("computeGraph", () => {
     });
   });
 
-  it("serializes V2 bundle metadata so preview stays on proxy and export can decode master", () => {
+  it("serializes Recording V4 bundle metadata for verified master decoding", () => {
     useEditorStore.setState({
       tracks: {
         video: [
           {
-            id: "strict-v2",
+            id: "recording-v4",
             trackId: "video",
             startMs: 0,
             durationMs: 5_000,
-            sourcePath: "/take.sc-recording/proxy/video.mp4",
+            sourcePath: "/take.sc-recording/master/video.mp4",
             recordingSource: {
-              version: 2,
+              version: 4,
               bundle_path: "/take.sc-recording",
-              master_path: "/take.sc-recording/master/video.mkv",
-              proxy_path: "/take.sc-recording/proxy/video.mp4",
+              master_path: "/take.sc-recording/master/video.mp4",
               cadence_evidence_path: "/take.sc-recording/evidence/cadence.json",
               quality_evidence_path: "/take.sc-recording/evidence/quality.json",
               exact_source_fps: { numerator: 60, denominator: 1 },
@@ -347,10 +346,10 @@ describe("computeGraph", () => {
       (node) => node.type === "source",
     );
     expect(source).toMatchObject({
-      path: "/take.sc-recording/proxy/video.mp4",
+      path: "/take.sc-recording/master/video.mp4",
       recording_source: {
-        master_path: "/take.sc-recording/master/video.mkv",
-        proxy_path: "/take.sc-recording/proxy/video.mp4",
+        version: 4,
+        master_path: "/take.sc-recording/master/video.mp4",
       },
     });
   });

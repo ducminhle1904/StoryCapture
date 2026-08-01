@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import type { Stats } from "node:fs";
 import fs from "node:fs/promises";
 
-import type { RecordingRational } from "@storycapture/shared-types/recording-v2";
+import type { RecordingV4Rational } from "@storycapture/shared-types/recording-v4";
 
 import { ffmpegExecutablePath, ffprobeExecutablePath } from "./export-binaries";
 
@@ -38,9 +38,9 @@ export type RecordingProbeResult =
       color: RecordingProbeColor;
       container: string | null;
       bitrate: number | null;
-      real_frame_rate: RecordingRational | null;
-      average_frame_rate: RecordingRational | null;
-      stream_time_base: RecordingRational | null;
+      real_frame_rate: RecordingV4Rational | null;
+      average_frame_rate: RecordingV4Rational | null;
+      stream_time_base: RecordingV4Rational | null;
       declared_frames: number | null;
       counted_frames: number | null;
       frames: RecordingProbeFrame[];
@@ -106,7 +106,7 @@ function finiteNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function parseProbeRational(value: unknown): RecordingRational | null {
+export function parseProbeRational(value: unknown): RecordingV4Rational | null {
   if (typeof value !== "string") return null;
   const match = value.match(/^(-?\d+)\/(-?\d+)$/);
   if (!match) return null;

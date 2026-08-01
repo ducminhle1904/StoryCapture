@@ -9,18 +9,9 @@ import type {
   RecordedInputLandmarkKind,
 } from "../action-landmarks";
 import {
-  type ActionCursorTiming,
-  type ActionInputTiming,
   type ActionScrollTiming,
   type ActionTarget,
-  type ActionTimelineEvent,
-  actionsSidecarPath,
-  actionTimelineEventFromStep,
-  deriveActionCaptureRect,
-  recordingActionsFromSession,
-  writeActionsSidecarAtomic,
-} from "../action-timeline";
-import { resolveCursorSyncMode } from "../cursor-sync-mode";
+} from "../automation-action";
 import {
   type CursorActionTimingPlan,
   type CursorTimingSize,
@@ -37,20 +28,12 @@ import {
   observeInteractionTarget,
   waitForInteractionReadiness,
 } from "../interaction-readiness";
-import { readJson, writeJsonAtomic } from "../json-store";
+import { readJson } from "../json-store";
 import { sameNavigationUrl } from "../navigation-url";
 import { userDataPath } from "../paths";
 import { recordEngineLog } from "../recording-observability";
 import { recordingV4AutomationSurface } from "../recording-v4-automation-surface";
 import { RecordingPauseCancelledError } from "../recording-pause-gate";
-import {
-  requireStrictBrowserRecordingReadiness,
-  setStrictBrowserRecordingActions,
-  strictBrowserRecordingClockMs,
-  strictBrowserRecordingContents,
-  strictBrowserRecordingInputCoordinateScale,
-  strictBrowserRecordingSession,
-} from "../recording-strict-browser-lifecycle";
 import {
   prepareSimulatorTypeTargetScript,
   setSimulatorTargetValueScript,
@@ -64,17 +47,11 @@ import {
 import { type ParsedCommand, parsedCommands, parseStorySource } from "../story-parser";
 import {
   authorSession,
-  captureAutomationRecordingTail,
-  ensureRecordingFramesCoverElapsedTime,
   invalidateAuthorPreviewPaintForContents,
   normalizedTargetRecord,
-  recordingCaptureStateSnapshot,
-  recordingFrameCommitBudgetMs,
-  requestRecordingFrameCommit,
   storyBrowserExecutionProfile,
   targetsPathFor,
 } from "./capture-preview";
-import { sidecarPath } from "./post-production";
 import {
   authorPreviewSessions,
   channelIdFrom,
@@ -85,8 +62,6 @@ import {
   EXPORTS_DIRNAME,
   hostLog,
   type ParsedCommandResult,
-  type RecordingSession,
-  recordingSessions,
   resolveElementTarget,
   type SimulatorStepFrame,
   type StoryBrowserExecutionProfile,
@@ -279,10 +254,6 @@ function captureStateSnapshot(
   } catch {
     return { capture_state: "unavailable" };
   }
-}
-
-function recordingFrameClockMs(session: RecordingSession): number {
-  return Math.max(0, Math.round(session.mediaClock.snapshot().durationUs / 1000));
 }
 
 async function waitForRecordingDelay(
@@ -1307,158 +1278,6 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
   };
 }
 
-export async function writeRecordingActionsSidecarBestEffort(
-  session: RecordingSession,
-  events: ActionTimelineEvent[],
-  options: {
-    cursorMotionPreset?: ActionCursorTiming["motion_preset"];
-    strict?: boolean;
-  } = {},
-): Promise<void> {
-  if (events.length === 0) return;
-  const file = actionsSidecarPath(session.outputPath);
-  const syncMode = resolveCursorSyncMode();
-  try {
-    const authoritativeEvents = events.filter((event) => event.input_landmarks?.action).length;
-    const invalidOrderingEvents = events.filter((event) => {
-      const arrival = event.cursor_path?.arrival.pts_us;
-      const action = event.input_landmarks?.action?.pts_us;
-      const frame = event.presentation?.first_post_input_frame?.pts_us;
-      return (
-        arrival != null && action != null && (arrival > action || (frame != null && action > frame))
-      );
-    }).length;
-    if (syncMode === "shadow") {
-      void recordEngineLog({
-        event: "recording.cursor.shadow_compared",
-        context: { session_id: session.id, phase: "actions_sidecar" },
-        details: {
-          event_count: events.length,
-          authoritative_event_count: authoritativeEvents,
-          invalid_ordering_event_count: invalidOrderingEvents,
-        },
-      });
-    }
-    await writeActionsSidecarAtomic(
-      file,
-      recordingActionsFromSession(session, events, {
-        cursorMotionPreset: options.cursorMotionPreset,
-        version: syncMode === "unified" ? 3 : 2,
-      }),
-    );
-  } catch (error) {
-    void recordEngineLog({
-      level: "warn",
-      event: "recording.sidecar.write_failed",
-      context: {
-        session_id: session.id,
-        phase: "actions_sidecar",
-        reason_code: "write_failed",
-      },
-      details: { sidecar_kind: "actions", event_count: events.length },
-      error,
-    });
-    if (options.strict || syncMode === "unified") throw error;
-  }
-}
-
-interface RecordingStepTiming {
-  ordinal: number;
-  stepId: string | null;
-  sceneName: string;
-  verb: string;
-  startMs: number;
-  endMs: number;
-  durationMs: number;
-  status: "succeeded" | "failed";
-  cursor: { x: number; y: number } | null;
-  target: {
-    selector: string | null;
-    bbox: { x: number; y: number; w: number; h: number };
-    matchKind: "primary";
-  } | null;
-  confidence: "high" | "low";
-}
-
-async function writeRecordingStepTimingSidecarBestEffort(
-  session: RecordingSession,
-  source: string,
-  steps: RecordingStepTiming[],
-  status: "completed" | "failed" | "partial",
-): Promise<void> {
-  const file = sidecarPath(session.outputPath, "steps");
-  try {
-    await writeJsonAtomic(file, {
-      version: 1,
-      recordingPath: session.outputPath,
-      captureRect: deriveActionCaptureRect(session),
-      storyHash: storyHash(source),
-      timebase: "recording-ms",
-      status,
-      steps,
-    });
-  } catch (error) {
-    void recordEngineLog({
-      level: "warn",
-      event: "recording.sidecar.write_failed",
-      context: {
-        session_id: session.id,
-        phase: "step_timing_sidecar",
-        reason_code: "write_failed",
-      },
-      details: { sidecar_kind: "step_timing", step_count: steps.length, status },
-      error,
-    });
-  }
-}
-
-export function rebaseActionEventsToFirstCursorInteraction(
-  events: ActionTimelineEvent[],
-): ActionTimelineEvent[] {
-  const first = events[0];
-  if (!first) return events;
-  const offsetMs = Math.max(0, Math.min(first.t_start_ms, first.t_action_ms));
-  if (offsetMs <= 0) return events;
-  return events.map((event) => ({
-    ...event,
-    t_start_ms: Math.max(0, event.t_start_ms - offsetMs),
-    t_action_ms: Math.max(0, event.t_action_ms - offsetMs),
-    t_end_ms: Math.max(0, event.t_end_ms - offsetMs),
-    ...(event.cursor_timing
-      ? { cursor_timing: rebaseCursorTiming(event.cursor_timing, offsetMs) }
-      : {}),
-    ...(event.input_timing
-      ? { input_timing: rebaseInputTiming(event.input_timing, offsetMs) }
-      : {}),
-  }));
-}
-
-function rebaseCursorTiming(timing: ActionCursorTiming, offsetMs: number): ActionCursorTiming {
-  const startMs = Math.max(0, timing.start_ms - offsetMs);
-  const arrivalMs = Math.max(0, timing.arrival_ms - offsetMs);
-  return {
-    ...timing,
-    start_ms: startMs,
-    arrival_ms: arrivalMs,
-    travel_ms: Math.max(0, arrivalMs - startMs),
-  };
-}
-
-function rebaseInputTiming(timing: ActionInputTiming, offsetMs: number): ActionInputTiming {
-  return {
-    ...timing,
-    action_ms: Math.max(0, timing.action_ms - offsetMs),
-    ...(timing.down_ms != null ? { down_ms: Math.max(0, timing.down_ms - offsetMs) } : {}),
-    ...(timing.up_ms != null ? { up_ms: Math.max(0, timing.up_ms - offsetMs) } : {}),
-    ...(timing.text_start_ms != null
-      ? { text_start_ms: Math.max(0, timing.text_start_ms - offsetMs) }
-      : {}),
-    ...(timing.text_end_ms != null
-      ? { text_end_ms: Math.max(0, timing.text_end_ms - offsetMs) }
-      : {}),
-  };
-}
-
 export async function launchAutomationCommand(args: Record<string, unknown>, sender: WebContents) {
   const onEvent = channelIdFrom(args.onEvent);
   const source = String(args.storySource ?? "");
@@ -1466,11 +1285,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
   const parsedStory = parseStorySource(source).ast;
   const commands = (parsedStory?.scenes.flatMap((scene) => scene.commands) ??
     []) as ParsedCommand[];
-  const sceneNames =
-    parsedStory?.scenes.flatMap((scene) => scene.commands.map(() => scene.name)) ?? [];
   const streamId = typeof args.streamId === "string" ? args.streamId : null;
-  const recordingSessionId =
-    typeof args.recordingSessionId === "string" ? args.recordingSessionId : null;
   const recordingV4SessionId =
     typeof args.recordingV4SessionId === "string" ? args.recordingV4SessionId : null;
   const recordingV4Surface = recordingV4SessionId
@@ -1479,9 +1294,6 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
   if (recordingV4SessionId && !recordingV4Surface) {
     throw new Error(`Recording V4 automation surface ${recordingV4SessionId} is unavailable.`);
   }
-  const strictSessionAtLaunch = recordingSessionId
-    ? strictBrowserRecordingSession(recordingSessionId)
-    : null;
   sendChannel(sender, onEvent, {
     json: JSON.stringify({
       type: "story_started",
@@ -1496,7 +1308,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
     }),
   });
   const ownedWindow =
-    streamId == null && !strictSessionAtLaunch && !recordingV4Surface
+    streamId == null && !recordingV4Surface
       ? new BrowserWindow({
           show: false,
           width: 1280,
@@ -1512,23 +1324,14 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       : null;
   const contents =
     recordingV4Surface?.contents ??
-    (recordingSessionId ? strictBrowserRecordingContents(recordingSessionId) : null) ??
     (streamId ? authorSession(streamId).window.webContents : ownedWindow?.webContents);
   if (!contents) throw new Error("browser session unavailable for automation");
   const targets = { version: 1, steps: {} };
-  const recordingSessionAtLaunch = recordingSessionId
-    ? recordingSessions.get(recordingSessionId)
-    : null;
-  const actionEvents: ActionTimelineEvent[] = [];
-  const stepTimings: RecordingStepTiming[] = [];
   const actionStepStartMs = new Map<number, number>();
   const actionRunStartedAt =
-    strictSessionAtLaunch?.startedAt ?? recordingSessionAtLaunch?.startedAt ??
-    (recordingV4Surface ? Date.now() - recordingV4Surface.currentMediaTimeMs() : Date.now());
+    recordingV4Surface ? Date.now() - recordingV4Surface.currentMediaTimeMs() : Date.now();
   const currentRecordingClockMs = () =>
-    recordingV4Surface?.currentMediaTimeMs() ??
-    (recordingSessionId ? strictBrowserRecordingClockMs(recordingSessionId) : null) ??
-    (recordingSessionAtLaunch ? recordingFrameClockMs(recordingSessionAtLaunch) : 0);
+    recordingV4Surface?.currentMediaTimeMs() ?? 0;
   const recordV4Action = (
     action: Parameters<NonNullable<typeof recordingV4Surface>["recordAction"]>[0],
   ) => {
@@ -1556,20 +1359,10 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
     );
   };
   const executionProfile = storyBrowserExecutionProfile({
-    captureRecordingFrames: Boolean(recordingSessionId || recordingV4Surface),
+    captureRecordingFrames: Boolean(recordingV4Surface),
     captureSize: recordingV4Surface
       ? recordingV4Surface.cursorCoordinateSize
-      : strictSessionAtLaunch
-      ? {
-          width: strictSessionAtLaunch.request.dimensions.physical_width,
-          height: strictSessionAtLaunch.request.dimensions.physical_height,
-        }
-      : recordingSessionAtLaunch
-        ? {
-            width: recordingSessionAtLaunch.width,
-            height: recordingSessionAtLaunch.height,
-          }
-        : undefined,
+      : undefined,
   });
   const failureFrameDir = userDataPath("automation-runs", randomUUID(), "diagnostics");
   let result: Awaited<ReturnType<typeof runStoryCommandsInBrowser>>;
@@ -1583,41 +1376,14 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       targets,
       executionProfile,
       failureFrameDir,
-      recordingSessionId,
-      recordingClockMs:
-        strictSessionAtLaunch || recordingSessionAtLaunch || recordingV4Surface
-          ? currentRecordingClockMs
-          : undefined,
-      inputCoordinateScale:
-        recordingV4Surface?.inputCoordinateScale ??
-        (strictSessionAtLaunch
-          ? (strictBrowserRecordingInputCoordinateScale(strictSessionAtLaunch.id) ?? undefined)
-          : undefined),
-      requireRecordingReadiness: strictSessionAtLaunch
-        ? (state) => requireStrictBrowserRecordingReadiness(strictSessionAtLaunch.id, state)
-        : undefined,
-      actionLandmarks: recordingSessionAtLaunch?.actionLandmarks,
-      requestFrameCommit: recordingSessionAtLaunch
-        ? () => requestRecordingFrameCommit(recordingSessionAtLaunch)
-        : undefined,
-      frameSyncTimeoutMs: recordingSessionAtLaunch
-        ? recordingFrameCommitBudgetMs(recordingSessionAtLaunch)
-        : undefined,
-      captureStateSnapshot: recordingSessionAtLaunch
-        ? () => recordingCaptureStateSnapshot(recordingSessionAtLaunch)
-        : undefined,
-      pauseGate: strictSessionAtLaunch?.pauseGate ?? recordingSessionAtLaunch?.pauseGate,
-      shouldCancel: strictSessionAtLaunch
-        ? () => strictBrowserRecordingSession(strictSessionAtLaunch.id) !== strictSessionAtLaunch
-        : recordingSessionAtLaunch
-          ? () => recordingSessions.get(recordingSessionAtLaunch.id) !== recordingSessionAtLaunch
-          : recordingV4Surface
-            ? () => !recordingV4Surface.isActive()
-            : undefined,
+      recordingSessionId: recordingV4SessionId,
+      recordingClockMs: recordingV4Surface ? currentRecordingClockMs : undefined,
+      inputCoordinateScale: recordingV4Surface?.inputCoordinateScale,
+      shouldCancel: recordingV4Surface ? () => !recordingV4Surface.isActive() : undefined,
       hooks: {
         onCursorSample: ({ point }) => recordV4CursorSample(point),
         onStepStarted: (ordinal, command) => {
-          if (strictSessionAtLaunch || recordingSessionAtLaunch || recordingV4Surface) {
+          if (recordingV4Surface) {
             actionStepStartMs.set(ordinal, currentRecordingClockMs());
           }
           recordV4Action({
@@ -1647,7 +1413,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
           timing,
         }) => {
           const fallbackStepEndedAtMs =
-            strictSessionAtLaunch || recordingSessionAtLaunch || recordingV4Surface
+            recordingV4Surface
               ? currentRecordingClockMs()
               : Math.max(0, Date.now() - actionRunStartedAt);
           const stepEndedAtMs = timing?.stepEndedAtMs ?? fallbackStepEndedAtMs;
@@ -1660,44 +1426,6 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
             stepEndedAtMs,
             timing?.actionAtMs ?? stepStartedAtMs + Math.max(0, actionDurationMs),
           );
-          if (strictSessionAtLaunch || recordingSessionAtLaunch) {
-            stepTimings.push({
-              ordinal,
-              stepId: command.step_id ?? null,
-              sceneName: sceneNames[ordinal - 1] ?? "Unknown scene",
-              verb: command.verb,
-              startMs: stepStartedAtMs,
-              endMs: stepEndedAtMs,
-              durationMs: Math.max(0, stepEndedAtMs - stepStartedAtMs),
-              status: "succeeded",
-              cursor: stepResult.cursor ?? null,
-              target: stepResult.target
-                ? {
-                    selector: targetSelector(command.target),
-                    bbox: stepResult.target.bounds,
-                    matchKind: "primary",
-                  }
-                : null,
-              confidence: "high",
-            });
-          }
-          if (recordingSessionId && stepResult.target && commandContributesCursorEvent(command)) {
-            actionEvents.push(
-              actionTimelineEventFromStep({
-                ordinal,
-                command,
-                stepStartedAtMs,
-                actionAtMs,
-                stepEndedAtMs,
-                target: stepResult.target,
-                pointer: stepResult.pointer ?? undefined,
-                scrollTiming: timing?.scrollTiming ?? null,
-                cursorTiming: timing?.cursorTiming ?? null,
-                inputTiming: timing?.inputTiming ?? null,
-                landmarks: timing?.landmarks ?? null,
-              }),
-            );
-          }
           recordV4Action({
             step_id: command.step_id ?? null,
             ordinal,
@@ -1774,26 +1502,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
             timing: null,
             error_message: error instanceof Error ? error.message : String(error),
           });
-          const stepStartedAtMs = actionStepStartMs.get(ordinal);
           actionStepStartMs.delete(ordinal);
-          if ((strictSessionAtLaunch || recordingSessionAtLaunch) && stepStartedAtMs != null) {
-            const stepEndedAtMs = currentRecordingClockMs();
-            if (command) {
-              stepTimings.push({
-                ordinal,
-                stepId: command.step_id ?? null,
-                sceneName: sceneNames[ordinal - 1] ?? "Unknown scene",
-                verb: command.verb,
-                startMs: stepStartedAtMs,
-                endMs: stepEndedAtMs,
-                durationMs: Math.max(0, stepEndedAtMs - stepStartedAtMs),
-                status: "failed",
-                cursor: null,
-                target: null,
-                confidence: "low",
-              });
-            }
-          }
           const errorMessage = error instanceof Error ? error.message : String(error);
           const diagnostics = automationFailureDiagnostics(error);
           sendChannel(sender, onEvent, {
@@ -1810,48 +1519,6 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
     });
   } finally {
     if (ownedWindow && !ownedWindow.isDestroyed()) ownedWindow.destroy();
-  }
-  const strictRecordingSession = recordingSessionId
-    ? strictBrowserRecordingSession(recordingSessionId)
-    : null;
-  const recordingSession = recordingSessionId ? recordingSessions.get(recordingSessionId) : null;
-  let recordingOutcome:
-    | { status: "ready_to_finalize"; result: null }
-    | { status: "already_finalized"; result: null }
-    | { status: "not_requested"; result: null } = recordingSessionId
-    ? { status: "already_finalized", result: null }
-    : { status: "not_requested", result: null };
-  if (recordingSession?.captureTimer) {
-    clearInterval(recordingSession.captureTimer);
-    await captureAutomationRecordingTail(recordingSession);
-    await ensureRecordingFramesCoverElapsedTime(recordingSession);
-  }
-  if (recordingSessionId && strictRecordingSession) {
-    setStrictBrowserRecordingActions(
-      recordingSessionId,
-      actionEvents,
-      executionProfile.cursorMotionPreset,
-    );
-    recordingOutcome = { status: "ready_to_finalize", result: null };
-  } else if (recordingSessionId && recordingSessions.has(recordingSessionId)) {
-    if (recordingSession) {
-      await writeRecordingStepTimingSidecarBestEffort(
-        recordingSession,
-        source,
-        stepTimings,
-        result.exitReason === "completed"
-          ? "completed"
-          : result.exitReason === "failed"
-            ? "failed"
-            : "partial",
-      );
-    }
-    if (recordingSession) {
-      await writeRecordingActionsSidecarBestEffort(recordingSession, actionEvents, {
-        cursorMotionPreset: executionProfile.cursorMotionPreset,
-      });
-    }
-    recordingOutcome = { status: "ready_to_finalize", result: null };
   }
   sendChannel(sender, onEvent, {
     json: JSON.stringify({
@@ -1874,7 +1541,6 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       exit_reason: result.exitReason,
       failed_ordinal: failedOrdinal,
     },
-    recording: recordingOutcome,
   };
 }
 

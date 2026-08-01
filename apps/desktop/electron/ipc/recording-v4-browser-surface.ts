@@ -1,21 +1,32 @@
 import { randomUUID } from "node:crypto";
-import type { RecordingDimensionsV2 } from "@storycapture/shared-types/recording-v2";
 import { BrowserWindow, type NativeImage, type WebContents } from "electron";
 
 import identity from "../identity.json";
-import type { MacScreenCaptureTarget } from "./macos-screen-capture-backend";
-import type { WindowsCaptureTarget } from "./windows-capture-protocol";
+import type {
+  MacRecordingV4SurfaceTarget,
+  WindowsRecordingV4Target,
+} from "./recording-v4-native-target";
 
-export interface RecordingNativeBrowserSurfaceOptions {
+export interface RecordingV4BrowserSurfaceOptions {
   url: string;
-  dimensions: RecordingDimensionsV2;
+  dimensions: RecordingV4SurfaceDimensions;
   contentViewport?: { width: number; height: number };
   partition?: string;
   env?: NodeJS.ProcessEnv;
   windowFactory?: (options: Electron.BrowserWindowConstructorOptions) => BrowserWindow;
 }
 
-export interface RecordingQualityReferenceSample {
+export interface RecordingV4SurfaceDimensions {
+  logical_width: number;
+  logical_height: number;
+  capture_dpr: number;
+  physical_width: number;
+  physical_height: number;
+  requested_output_width: number;
+  requested_output_height: number;
+}
+
+export interface RecordingV4QualityReferenceSample {
   frame_index: number;
   pixels: Buffer;
   width: number;
@@ -41,7 +52,7 @@ function windowsHandle(handle: Buffer): string {
   return value.toString();
 }
 
-export class RecordingNativeBrowserSurface {
+export class RecordingV4BrowserSurface {
   readonly window: BrowserWindow;
   readonly contents: WebContents;
   private readonly zoomFactor: number;
@@ -61,11 +72,11 @@ export class RecordingNativeBrowserSurface {
     };
   }
 
-  constructor(private readonly options: RecordingNativeBrowserSurfaceOptions) {
+  constructor(private readonly options: RecordingV4BrowserSurfaceOptions) {
     const dimensions = options.dimensions;
-    const partition = options.partition ?? `recording-native-${randomUUID()}`;
+    const partition = options.partition ?? `recording-v4-${randomUUID()}`;
     if (partition.startsWith("persist:")) {
-      throw new Error("Strict native recording requires an isolated browser partition");
+      throw new Error("Recording V4 requires an isolated browser partition");
     }
     this.window = (
       options.windowFactory ?? ((browserOptions) => new BrowserWindow(browserOptions))
@@ -119,7 +130,7 @@ export class RecordingNativeBrowserSurface {
     this.window.show();
   }
 
-  macTarget(): MacScreenCaptureTarget {
+  macTarget(): MacRecordingV4SurfaceTarget {
     const mediaSourceID = this.window.getMediaSourceId();
     const env = this.options.env ?? process.env;
     return {
@@ -131,7 +142,7 @@ export class RecordingNativeBrowserSurface {
     };
   }
 
-  windowsTarget(): WindowsCaptureTarget {
+  windowsTarget(): WindowsRecordingV4Target {
     return {
       kind: "window",
       hwnd: windowsHandle(this.window.getNativeWindowHandle()),
@@ -141,7 +152,7 @@ export class RecordingNativeBrowserSurface {
     };
   }
 
-  async captureReference(frameIndex: number): Promise<RecordingQualityReferenceSample> {
+  async captureReference(frameIndex: number): Promise<RecordingV4QualityReferenceSample> {
     if (!Number.isSafeInteger(frameIndex) || frameIndex < 0) {
       throw new Error("recording quality reference frame index must be non-negative");
     }

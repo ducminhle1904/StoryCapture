@@ -6,14 +6,9 @@ import path from "node:path";
 import type { ExportPreflightArgs } from "@storycapture/shared-types";
 import { app, dialog, type IpcMainInvokeEvent, shell } from "electron";
 import { DEV_RELAUNCH_EXIT_CODE, isDevRuntime } from "../../runtime";
-import { readRecordingActionsSidecar } from "../action-sidecar-reader";
 import { readJson, writeJson } from "../json-store";
 import { logFromFrontend } from "../log-store";
 import { userDataPath } from "../paths";
-import {
-  pauseStrictBrowserRecording,
-  resumeStrictBrowserRecording,
-} from "../recording-strict-browser-lifecycle";
 import { sessionId } from "../session";
 import type { InvokeEnvelope } from "../types";
 import { checkElectronUpdate, getPendingUpdateInfo, installElectronUpdate } from "../update-store";
@@ -37,7 +32,6 @@ import {
   startAuthorPreviewSession,
   startCaptureStream,
   startPreviewStream,
-  startRecording,
   stopAuthorPreviewSession,
   stopCaptureStream,
   stopPreviewStream,
@@ -77,7 +71,6 @@ import {
   presetExport,
   presetImport,
   readPresets,
-  readRecordingSidecar,
   soundLibraryList,
 } from "./post-production";
 import {
@@ -92,7 +85,6 @@ import {
   timelineSave,
   updateProjectWorkflow,
 } from "./projects";
-import { setRecordingAudio, stopRecording } from "./recording";
 import {
   emptySessionRollup,
   keyDelete,
@@ -119,7 +111,6 @@ import {
   fsResources,
   type OpenDialogSpec,
   pluginLogLevel,
-  recordingSessions,
   restoreElectronWindowState,
   type SaveDialogSpec,
   saveElectronWindowState,
@@ -174,40 +165,6 @@ export async function handleLegacyInvoke(
         preferred: "software",
         encoders: [{ encoder: "software", available: true, fallback_reason: null }],
       };
-    case "start_recording":
-      return startRecording(
-        (args as { args?: unknown } | undefined)?.args,
-        (args as { onEvent?: unknown } | undefined)?.onEvent,
-        event.sender,
-      );
-    case "electron_recording_set_audio":
-      return setRecordingAudio(args);
-    case "stop_recording":
-      return stopRecording(
-        (args as { session?: { id?: string } | undefined } | undefined)?.session,
-      );
-    case "pause_recording": {
-      const id = String((args as { session?: { id?: string } } | undefined)?.session?.id ?? "");
-      if (await pauseStrictBrowserRecording(id)) return { status: "paused" };
-      const session = recordingSessions.get(id);
-      if (!session) throw new Error(`recording session ${id} not found`);
-      session.paused = true;
-      session.lifecycle = "paused";
-      session.mediaClock.pause();
-      session.pauseGate.pause();
-      return { status: session.lifecycle };
-    }
-    case "resume_recording": {
-      const id = String((args as { session?: { id?: string } } | undefined)?.session?.id ?? "");
-      if (await resumeStrictBrowserRecording(id)) return { status: "recording" };
-      const session = recordingSessions.get(id);
-      if (!session) throw new Error(`recording session ${id} not found`);
-      session.paused = false;
-      session.lifecycle = "recording";
-      session.mediaClock.resume();
-      session.pauseGate.resume();
-      return { status: session.lifecycle };
-    }
     case "launch_automation":
       return launchAutomationCommand((args ?? {}) as Record<string, unknown>, event.sender);
     case "start_preview_stream":
@@ -457,27 +414,6 @@ export async function handleLegacyInvoke(
       await timelineSave(String(payload?.storyId ?? ""), String(payload?.layoutJson ?? ""));
       return null;
     }
-    case "get_recording_actions":
-      return readRecordingActionsSidecar(
-        String(
-          (args as { args?: { recording_path?: string } } | undefined)?.args?.recording_path ?? "",
-        ),
-        (args as { args?: { actions_path?: string | null } } | undefined)?.args?.actions_path,
-      );
-    case "get_recording_trajectory":
-      return readRecordingSidecar(
-        String(
-          (args as { args?: { recording_path?: string } } | undefined)?.args?.recording_path ?? "",
-        ),
-        "trajectory",
-      );
-    case "get_recording_step_timing":
-      return readRecordingSidecar(
-        String(
-          (args as { args?: { recording_path?: string } } | undefined)?.args?.recording_path ?? "",
-        ),
-        "steps",
-      );
     case "preset_list":
       return readPresets(String((args as { scope?: string } | undefined)?.scope ?? "project"));
     case "preset_import":

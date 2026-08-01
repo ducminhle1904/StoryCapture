@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RecordingActions } from "@/ipc/actions";
-import type { RecordingStepTimingSidecar } from "@/ipc/trajectory";
+import type { RecordingStepTimingSidecar } from "@/ipc/recording-step-timing";
 import { useEditorStore } from "../state/store";
 import type { UndoableAction } from "../undo/actions";
 import { COALESCE_IDLE_MS, Coalescer } from "../undo/coalesce";
@@ -44,7 +44,7 @@ const ACTIONS: RecordingActions = {
 };
 
 const STEP_TIMING: RecordingStepTimingSidecar = {
-  version: 1,
+  version: 4,
   recordingPath: "/tmp/demo.mp4",
   storyHash: "hash",
   timebase: "recording-ms",

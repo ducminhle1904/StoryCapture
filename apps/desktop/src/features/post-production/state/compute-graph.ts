@@ -35,7 +35,10 @@ import {
 } from "@storycapture/shared-types";
 import type { RecordingActions } from "../../../ipc/actions";
 import type { ExportResolution } from "../../../ipc/export";
-import type { CaptureRect, RecordingStepTimingSidecar } from "../../../ipc/trajectory";
+import type {
+  CaptureRect,
+  RecordingStepTimingSidecar,
+} from "../../../ipc/recording-step-timing";
 import { normalizeCursorClickEffect } from "./cursor-click-effect";
 import type { ExportFormState } from "./export-slice";
 import { type EditorBackgroundKind, readEditorBackground } from "./store";
@@ -156,7 +159,7 @@ function videoSource(clip: VideoClip): VideoNode | null {
     type: "source",
     id: deterministicNodeId(clip.id, "source"),
     clip_id: clip.id,
-    path: clip.recordingSource?.proxy_path ?? clip.sourcePath,
+    path: clip.sourcePath,
     pts_offset_ms: safeTimelineMs(clip.startMs),
     timeline_start_ms: safeTimelineMs(clip.startMs),
     duration_ms: safeTimelineMs(clip.durationMs),

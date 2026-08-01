@@ -28,7 +28,7 @@
 
 import { EXPORT_FOREGROUND_SCALE_DEFAULT } from "@storycapture/shared-types";
 import type { RecordingActions } from "@/ipc/actions";
-import type { CaptureRect, RecordingStepTimingSidecar } from "@/ipc/trajectory";
+import type { CaptureRect, RecordingStepTimingSidecar } from "@/ipc/recording-step-timing";
 import { type EditorBackgroundKind, useEditorStore } from "../state/store";
 import type { Clip, SoundClip, TrackId } from "../state/timeline-slice";
 

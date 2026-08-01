@@ -25,8 +25,7 @@ import type { RecordingActions } from "@/ipc/actions";
 import type {
   CaptureRect,
   RecordingStepTimingSidecar,
-  RecordingTrajectory,
-} from "@/ipc/trajectory";
+} from "@/ipc/recording-step-timing";
 import { frontendLog } from "@/lib/log";
 import { computeGraph } from "../state/compute-graph";
 import {
@@ -76,7 +75,7 @@ import { CanonicalPreviewAdapter, fitCanonicalCompositionRect } from "./canonica
 import { PresentedMediaClock } from "./presented-media-clock";
 import { SequentialPreviewMediaController } from "./sequential-preview-media-controller";
 import { TransportControls } from "./transport-controls";
-import { samplePreparedVirtualCursor, sampleTrajectoryCursor } from "./virtual-cursor-path";
+import { samplePreparedVirtualCursor } from "./virtual-cursor-path";
 
 type PreviewOutputMode = "native-video" | "composited-canvas";
 
@@ -168,7 +167,6 @@ export interface PreviewPlayerProps {
   height?: number;
   outputMode?: PreviewOutputMode;
   actions?: RecordingActions | null;
-  trajectory?: RecordingTrajectory | null;
   stepTiming?: RecordingStepTimingSidecar | null;
   captureRect?: CaptureRect | null;
 }
@@ -588,7 +586,6 @@ export function PreviewPlayer({
   height = 1080,
   outputMode = DEFAULT_PREVIEW_OUTPUT_MODE,
   actions = null,
-  trajectory = null,
   stepTiming = null,
   captureRect = null,
 }: PreviewPlayerProps) {
@@ -636,7 +633,6 @@ export function PreviewPlayer({
   const cursorClipsRef = useRef<CursorClip[]>([]);
   const cursorSchedulesRef = useRef(new Map<string, VirtualCursorSchedule | null>());
   const resolvedZoomMotionsRef = useRef<ResolvedZoomMotion[]>([]);
-  const trajectoryRef = useRef<RecordingTrajectory | null>(trajectory);
   const durationMsRef = useRef(0);
 
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
@@ -862,7 +858,6 @@ export function PreviewPlayer({
         return;
       }
       const cursor = cursorRef.current;
-      const currentTrajectory = trajectoryRef.current;
       if (!cursor) {
         hideCursorOverlay();
         return;
@@ -887,9 +882,7 @@ export function PreviewPlayer({
             clip.preserveFullMotion ? relativeTimelineMs : relativeMs,
             clip.clickEffect,
           )
-        : clip.trajectoryKind === "trajectory"
-          ? sampleTrajectoryCursor(currentTrajectory, relativeMs)
-          : null;
+        : null;
       const src = cursorSkinSrc(clip.skin);
       if (!sample || !src) {
         hideCursorOverlay();
@@ -1144,11 +1137,10 @@ export function PreviewPlayer({
   useEffect(() => {
     cursorClipsRef.current = cursorClips;
     cursorSchedulesRef.current = cursorSchedules;
-    trajectoryRef.current = trajectory;
     const playheadMs = useEditorStore.getState().playheadMs;
     applyPreviewZoom(playheadMs);
     renderCursorOverlay(playheadMs);
-  }, [applyPreviewZoom, cursorClips, cursorSchedules, renderCursorOverlay, trajectory]);
+  }, [applyPreviewZoom, cursorClips, cursorSchedules, renderCursorOverlay]);
 
   useEffect(() => {
     resolvedZoomMotionsRef.current = resolvedZoomMotions;

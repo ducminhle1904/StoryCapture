@@ -59,7 +59,6 @@ describe("recordEngineLog", () => {
   it("keeps production record-engine paths off the application text sink", async () => {
     const producerFiles = [
       "electron/ipc/legacy/capture-preview.ts",
-      "electron/ipc/legacy/recording.ts",
       "electron/ipc/legacy/story-runner.ts",
     ];
     const sources = await Promise.all(
@@ -93,7 +92,7 @@ describe("recordEngineLog", () => {
     );
 
     const events = await readStructuredEvents();
-    expect(events.every((event) => event.schema_version === 2)).toBe(true);
+    expect(events.every((event) => event.schema_version === 4)).toBe(true);
     expect(events.map((event) => event.process_sequence)).toEqual([1, 2, 3]);
     expect(events.map((event) => event.session_sequence)).toEqual([1, 2, 3]);
     expect(events.map((event) => event.phase)).toEqual(["created", "ready", "terminal"]);

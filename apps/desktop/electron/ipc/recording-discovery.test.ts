@@ -107,7 +107,7 @@ describe("Recording V4 discovery", () => {
   it("ignores loose MP4 files and non-completed bundles", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-discovery-v4-"));
     roots.push(root);
-    await fs.writeFile(path.join(root, "legacy.mp4"), "legacy");
+    await fs.writeFile(path.join(root, "unrelated.mp4"), "unrelated");
     const bundle = path.join(root, "failed.sc-recording");
     await fs.mkdir(bundle, { recursive: true });
     await fs.writeFile(path.join(bundle, "manifest.json"), JSON.stringify({

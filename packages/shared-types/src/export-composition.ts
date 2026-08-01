@@ -4,12 +4,25 @@
  * effects surface uses bigint timestamps and is not safe to stringify.
  */
 
-import type { ExportRecordingSourceV2 } from "./recording-v2";
+import type { RecordingV4Rational } from "./recording-v4";
 
 export const EXPORT_COMPOSITION_SCHEMA_VERSION = 5 as const;
 export const EXPORT_FOREGROUND_SCALE_MIN = 0.7;
 export const EXPORT_FOREGROUND_SCALE_MAX = 1;
 export const EXPORT_FOREGROUND_SCALE_DEFAULT = 0.85;
+
+export interface ExportRecordingSourceV4 {
+  version: 4;
+  bundle_path: string;
+  master_path: string;
+  cadence_evidence_path: string;
+  quality_evidence_path: string;
+  exact_source_fps: RecordingV4Rational;
+  source_frame_count: number;
+  master_width: number;
+  master_height: number;
+  quality_verdict: "passed";
+}
 
 export function isValidExportForegroundScale(value: unknown): value is number {
   return (
@@ -246,8 +259,8 @@ export type ExportVideoNodeBase =
       source_width?: number;
       source_height?: number;
       source_time_map?: ExportSourceTimelineMap;
-      /** V2 recording bundle metadata. Missing on legacy compositions. */
-      recording_source?: ExportRecordingSourceV2 | null;
+      /** Canonical Recording V4 source metadata. */
+      recording_source?: ExportRecordingSourceV4 | null;
     }
   | {
       type: "zoom-pan";

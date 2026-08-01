@@ -1,6 +1,6 @@
 import type { WebContents } from "electron";
 
-import type { ActionTarget } from "./action-timeline";
+import type { ActionTarget } from "./automation-action";
 import { simulatorTargetReadinessScript } from "./simulator-dom";
 import type { TargetVisibilityDiagnostics } from "./target-visibility";
 

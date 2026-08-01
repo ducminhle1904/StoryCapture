@@ -3,9 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import slugify from "@sindresorhus/slugify";
 import { readJson, writeJson, writeJsonAtomic } from "../json-store";
-import { cleanupPartialRecordingBundles } from "../recording-bundle";
 import { discoverProjectRecordings } from "../recording-discovery";
-import { cleanupExpiredFailedRecordingBundles } from "../recording-failed-bundle-retention";
 import {
   ASSETS_DIRNAME,
   type CreateProjectArgs,
@@ -168,8 +166,6 @@ export async function updateProjectWorkflow(
 export async function listProjectRecordings(id: string) {
   const project = await findProject(id);
   const exportsDir = projectPaths(project.folder_path).exportsDir;
-  await cleanupPartialRecordingBundles(exportsDir);
-  await cleanupExpiredFailedRecordingBundles(exportsDir);
   return discoverProjectRecordings(exportsDir);
 }
 

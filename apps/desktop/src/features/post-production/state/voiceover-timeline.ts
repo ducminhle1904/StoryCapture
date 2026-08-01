@@ -1,4 +1,4 @@
-import type { RecordingStepTimingSidecar } from "@/ipc/trajectory";
+import type { RecordingStepTimingSidecar } from "@/ipc/recording-step-timing";
 
 import { useEditorStore } from "./store";
 import type { SoundClip, TimelineSlice } from "./timeline-slice";

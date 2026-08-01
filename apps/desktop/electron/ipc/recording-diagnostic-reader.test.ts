@@ -10,7 +10,7 @@ let input: string;
 
 function event(sequence: number, name: string, overrides: Record<string, unknown> = {}) {
   return {
-    schema_version: 2,
+    schema_version: 4,
     redaction_version: 1,
     emitted_at: new Date(1_700_000_000_000 + sequence * 10).toISOString(),
     level: "info",

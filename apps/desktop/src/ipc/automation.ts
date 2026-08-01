@@ -1,8 +1,6 @@
 /** Automation IPC wrappers. */
 
-import type { AutomationRecordingOutcomeV2 } from "@storycapture/shared-types/recording-v2";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import type { RecordingCompletedResult } from "@/ipc/encode";
 import { DEFAULT_RECORDING_PACING, type RecordingPacingProfile } from "@/state/output-prefs";
 
 /**
@@ -92,13 +90,6 @@ export interface LaunchAutomationArgs {
    */
   chromeHiding?: boolean;
   pacingProfile?: RecordingPacingProfile;
-  /**
-   * Attach an active recording session to the DSL run. When set, the host
-   * auto-stops the matching recording at story end (normal, error, or
-   * channel close), so the encoder sidecar finalizes cleanly without the
-   * UI having to call `stopRecording` itself.
-   */
-  recordingSessionId?: string;
   /** Attach to the host-owned V4 author-preview without transferring finalization ownership. */
   recordingV4SessionId?: string;
 }
@@ -123,11 +114,8 @@ export interface AutomationStoryOutcome {
   failed_ordinal: number | null;
 }
 
-export type AutomationRecordingOutcome = AutomationRecordingOutcomeV2<RecordingCompletedResult>;
-
 export interface AutomationRunOutcome {
   story: AutomationStoryOutcome;
-  recording: AutomationRecordingOutcome;
 }
 
 export async function launchAutomation(
@@ -152,7 +140,6 @@ export async function launchAutomation(
     onEvent: channel,
     chromeHiding: args.chromeHiding ?? false,
     pacingProfile: args.pacingProfile ?? DEFAULT_RECORDING_PACING,
-    recordingSessionId: args.recordingSessionId ?? null,
     recordingV4SessionId: args.recordingV4SessionId ?? null,
     recordingDisplay: args.recordingDisplay ?? null,
     recordingViewport: args.recordingViewport ?? null,

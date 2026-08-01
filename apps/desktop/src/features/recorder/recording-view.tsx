@@ -357,7 +357,6 @@ export function RecordingView({
         source_frame_count: liveEvidence && "output_frames" in liveEvidence
           ? liveEvidence.output_frames
           : null,
-        certified_tier: null,
         quality_verdict: "passed",
         validation: { status: "valid" },
       });

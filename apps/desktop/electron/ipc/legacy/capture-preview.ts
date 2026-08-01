@@ -1,9 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import type { StartRecordingArgs } from "@storycapture/shared-types";
 import {
   app,
   BrowserWindow,
@@ -13,7 +11,7 @@ import {
   screen,
   type WebContents,
 } from "electron";
-import { type FrameSyncOutcome, RecordingActionLandmarkRecorder } from "../action-landmarks";
+import type { FrameSyncOutcome } from "../action-landmarks";
 import {
   type CursorTimingSize,
   HOST_CURSOR_DEFAULT_MIN_LEAD_MS,
@@ -22,28 +20,19 @@ import {
 } from "../cursor-timing";
 import { ffmpegExecutablePath } from "../export-binaries";
 import { readJson } from "../json-store";
-import { RecordingMediaClock } from "../recording-media-clock";
 import { recordEngineLog } from "../recording-observability";
-import { RecordingPauseGate } from "../recording-pause-gate";
 import {
-  type RecordingFitMode,
-  type RecordingOutputResolution,
-  type RecordingPadColor,
-  type RecordingQualityPreset,
-  type RecordingScaleAlgo,
   recordingQualityArgs,
   recordingRawVideoInputArgs,
   recordingVideoFilters,
-  resolveRecordingOutput,
 } from "../recording-pipeline";
-import { startStrictBrowserRecording } from "../recording-strict-browser-lifecycle";
 import {
   AUTOMATION_RECORDING_MAX_PADDING_MS,
   recordingFrameCountForElapsedMs,
   recordingTailFrameDelaysMs,
 } from "../recording-tail";
 import { type ParsedCommand, parseStorySource } from "../story-parser";
-import { recordingEncoderFailure, recordingErrorCode } from "./recording-errors";
+import { recordingEncoderFailure } from "./recording-errors";
 import {
   type AuthorPreviewSession,
   type AuthorSnapshotEntry,
@@ -57,7 +46,6 @@ import {
   type DialogFilterSpec,
   displayById,
   displayInfo,
-  EXPORTS_DIRNAME,
   eventListeners,
   type FrameCropRect,
   hostLog,
@@ -506,7 +494,7 @@ export async function startCaptureStream(
       ? ({ kind: "display", display_id: args.display_id } as CaptureTarget)
       : defaultCaptureTarget());
   if (isAuthorPreviewTarget(target)) {
-    throw new Error("author_preview is only supported by start_recording");
+    throw new Error("author_preview is not supported by generic capture streams");
   }
   const fps = clampFps(args?.fps_target);
   const { width, height } = dimensionsForTarget(target);
@@ -1845,195 +1833,4 @@ export async function pickerStampStepId(raw: Record<string, unknown>) {
   await fs.writeFile(tempPath, JSON.stringify(targets, null, 2), "utf8");
   await fs.rename(tempPath, targetsPath);
   return { step_id: stepId, was_freshly_stamped: wasFreshlyStamped };
-}
-
-export async function startRecording(raw: unknown, onEvent: unknown, sender: WebContents) {
-  const args = raw as {
-    project_folder?: string;
-    target?: CaptureTarget;
-    width?: number;
-    height?: number;
-    fps?: number;
-    audio_device_id?: string | null;
-    frame_crop?: FrameCropRect | null;
-    output_resolution?: RecordingOutputResolution | null;
-    fit_mode?: RecordingFitMode | null;
-    pad_color?: RecordingPadColor | null;
-    quality_preset?: RecordingQualityPreset | null;
-    scale_algo?: RecordingScaleAlgo | null;
-    contract_version?: 2;
-    delivery_policy?: "strict" | "best_effort";
-    certified_tier?: StartRecordingArgs["certified_tier"];
-    capture_contract?: StartRecordingArgs["capture_contract"];
-  };
-  if (!args.project_folder) throw new Error("project_folder required");
-  const id = randomUUID();
-  const eventChannelId = channelIdFrom(onEvent);
-  const fps = clampFps(args.fps);
-  const requestedFps = positiveNumber(args.fps, fps);
-  const target = args.target ?? defaultCaptureTarget();
-  const width = clampDimension(args.width, 1280);
-  const height = clampDimension(args.height, 720);
-  if (args.delivery_policy === "strict") {
-    const url =
-      target.kind === "author_preview"
-        ? authorSession(target.stream_id).window.webContents.getURL()
-        : "";
-    return startStrictBrowserRecording(args as StartRecordingArgs, onEvent, sender, url);
-  }
-  const output = resolveRecordingOutput(width, height, {
-    outputResolution: args.output_resolution,
-    fitMode: args.fit_mode,
-    padColor: args.pad_color,
-    qualityPreset: args.quality_preset,
-    scaleAlgo: args.scale_algo,
-  });
-  const framesDir = path.join(os.tmpdir(), "storycapture-electron-recordings", id);
-  await fs.mkdir(framesDir, { recursive: true });
-  const exportsDir = path.join(args.project_folder, EXPORTS_DIRNAME);
-  await fs.mkdir(exportsDir, {
-    recursive: true,
-  });
-  const stamp = new Date().toISOString().replaceAll(/[:.]/g, "-");
-  const outputPath = path.join(exportsDir, `recording-${stamp}.mp4`);
-  let heartbeatSeq = 0;
-  const heartbeat = setInterval(() => {
-    heartbeatSeq += 1;
-    sendChannel(sender, eventChannelId, {
-      type: "heartbeat",
-      seq: heartbeatSeq,
-    });
-  }, 2000);
-  heartbeat.unref?.();
-  const session: RecordingSession = {
-    id,
-    projectFolder: args.project_folder,
-    outputPath,
-    target,
-    width,
-    height,
-    outputWidth: output.outputWidth,
-    outputHeight: output.outputHeight,
-    fps,
-    startedAt: Date.now(),
-    paused: false,
-    lifecycle: "recording",
-    mediaClock: new RecordingMediaClock({ fpsNum: fps, fpsDen: 1 }),
-    actionLandmarks: new RecordingActionLandmarkRecorder(),
-    paintSequence: 0,
-    pauseGate: new RecordingPauseGate(),
-    eventTarget: sender,
-    eventChannelId,
-    heartbeat,
-    captureTimer: null,
-    framesDir,
-    frameSeq: 0,
-    framesDropped: 0,
-    skippedTicks: 0,
-    encoderBackpressureEvents: 0,
-    sourceFramesReceived: 0,
-    captureInFlight: null,
-    audioPath: null,
-    frameCrop: args.frame_crop ?? null,
-    requestedFps,
-    effectiveFps: fps,
-    lateFrames: 0,
-    captureDurationMs: [],
-    streaming: target.kind === "author_preview" && !args.audio_device_id,
-    ffmpegProcess: null,
-    ffmpegDone: null,
-    encoderBackpressured: false,
-    encoderError: null,
-    latestAuthorPreviewImage: null,
-    authorPaintHandler: null,
-    fitMode: output.fitMode,
-    padColor: output.padColor,
-    qualityPreset: output.qualityPreset,
-    scaleAlgo: output.scaleAlgo,
-  };
-  void recordEngineLog({
-    event: "recording.session.created",
-    context: {
-      session_id: id,
-      backend_id: recordingBackendId(target),
-      phase: "recording",
-    },
-    details: {
-      target_kind: target.kind,
-      width,
-      height,
-      requested_fps: requestedFps,
-      effective_fps: fps,
-      streaming: session.streaming,
-    },
-  });
-  void recordEngineLog({
-    event: "recording.backend.selected",
-    context: {
-      session_id: id,
-      backend_id: recordingBackendId(target),
-      phase: "recording",
-    },
-    details: { target_kind: target.kind },
-  });
-  if (session.streaming) {
-    try {
-      await startAuthorPreviewRecordingStream(session);
-      session.captureTimer = setInterval(
-        () => {
-          scheduleRecordingFrame(session);
-        },
-        Math.max(1000 / fps, 16),
-      );
-      session.captureTimer.unref?.();
-    } catch (error) {
-      clearInterval(heartbeat);
-      session.ffmpegProcess?.kill("SIGKILL");
-      await fs.rm(framesDir, { recursive: true, force: true });
-      const encoderErrorCode = recordingErrorCode(error);
-      void recordEngineLog({
-        level: "error",
-        event: "recording.terminal",
-        context: {
-          session_id: id,
-          backend_id: recordingBackendId(target),
-          phase: "start",
-          reason_code: "preview_start_failed",
-        },
-        details: {
-          outcome: "failed",
-          target_kind: target.kind,
-          ...(encoderErrorCode ? { encoder_error_code: encoderErrorCode } : {}),
-        },
-        error,
-      });
-      throw error;
-    }
-  } else {
-    session.captureTimer = setInterval(
-      () => {
-        scheduleRecordingFrame(session);
-      },
-      Math.max(1000 / fps, 16),
-    );
-    session.captureTimer.unref?.();
-    await captureRecordingFrame(session);
-  }
-  recordingSessions.set(id, session);
-  if (target.kind === "author_preview") {
-    void recordEngineLog({
-      event: "recording.preview.started",
-      context: {
-        session_id: id,
-        backend_id: recordingBackendId(target),
-        phase: "recording",
-      },
-      details: { width, height, effective_fps: fps },
-    });
-  }
-  sendChannel(sender, eventChannelId, {
-    type: "capture-status",
-    json: JSON.stringify({ type: "started", session_id: id }),
-  });
-  return { id };
 }

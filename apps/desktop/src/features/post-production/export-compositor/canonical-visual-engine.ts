@@ -7,19 +7,8 @@ import {
   readRecordingV4ActionSidecar,
   readRecordingV4CursorSidecar,
 } from "@storycapture/shared-types/recording-v4";
-import type { RecordingActions } from "@/ipc/action-sidecar";
-import type { RecordingTrajectory } from "@/ipc/trajectory";
-
-import {
-  samplePreparedVirtualCursor,
-  sampleTrajectoryCursor,
-  type VirtualCursorSample,
-} from "../preview/virtual-cursor-path";
+import type { VirtualCursorSample } from "../preview/virtual-cursor-path";
 import { textFontCss } from "../state/text-style";
-import {
-  buildVirtualCursorSchedule,
-  type VirtualCursorSchedule,
-} from "../state/virtual-cursor-scheduler";
 import { CanonicalImageAssetPool } from "./canonical-assets";
 import {
   CanonicalCanvasSceneRenderer,
@@ -29,7 +18,6 @@ import {
   canonicalCommandSnapshot,
   type ExportResamplingQuality,
 } from "./canvas-scene-renderer";
-import { parseExportCursorSidecar } from "./cursor-sidecar";
 import type { CanonicalSourceMode } from "./media-source-pool";
 import { CanonicalMediaSourcePool, canonicalAssetUrl } from "./media-source-pool";
 import {
@@ -51,9 +39,7 @@ type CursorNode = Extract<ExportVideoNode, { type: "cursor-overlay" }>;
 
 interface CursorRuntime {
   node: CursorNode;
-  schedule: VirtualCursorSchedule | null;
-  trajectory: RecordingTrajectory | null;
-  recordingV4: PreparedRecordingV4Cursor | null;
+  recordingV4: PreparedRecordingV4Cursor;
 }
 
 export type CanonicalCursorSidecarLoader = (path: string) => Promise<unknown>;
@@ -63,25 +49,6 @@ export const loadCanonicalCursorSidecar: CanonicalCursorSidecarLoader = async (p
   if (!response.ok) throw new Error(`failed to load canonical cursor sidecar: ${path}`);
   return response.json();
 };
-
-export function canonicalTargetBoundsFromActions(
-  actions: RecordingActions,
-): Map<string, ExportRect> {
-  const boundsByStepId = new Map<string, ExportRect>();
-  const capture = actions.capture_rect;
-  const width = Math.max(1, capture.width);
-  const height = Math.max(1, capture.height);
-  for (const event of actions.events) {
-    if (!event.step_id || !event.target?.bounds || boundsByStepId.has(event.step_id)) continue;
-    boundsByStepId.set(event.step_id, {
-      x: (event.target.bounds.x - capture.x) / width,
-      y: (event.target.bounds.y - capture.y) / height,
-      w: event.target.bounds.w / width,
-      h: event.target.bounds.h / height,
-    });
-  }
-  return boundsByStepId;
-}
 
 export interface CanonicalVisualEngineOptions {
   context?: CanvasRenderingContext2D;
@@ -211,71 +178,32 @@ export class CanonicalVisualEngine implements CanonicalVisualEnginePort {
       for (const node of nodesOf(graph, "cursor-overlay").sort(
         (a, b) => a.t_start_ms - b.t_start_ms || a.clip_id.localeCompare(b.clip_id),
       )) {
-        if (node.trajectory.kind === "png-sequence") {
-          cursorRuntimes.push({ node, schedule: null, trajectory: null, recordingV4: null });
-          continue;
-        }
         if (!node.trajectory.path) {
           throw new Error(`canonical cursor sidecar path is missing: ${node.id}`);
         }
-        if (node.trajectory.kind === "recording-v4") {
-          if (!node.trajectory.actions_path) {
-            throw new Error(`canonical Recording V4 actions path is missing: ${node.id}`);
-          }
-          const [cursorValue, actionsValue] = await Promise.all([
-            this.cursorSidecarLoader(node.trajectory.path),
-            this.cursorSidecarLoader(node.trajectory.actions_path),
-          ]);
-          const cursor = readRecordingV4CursorSidecar(cursorValue);
-          const actions = readRecordingV4ActionSidecar(actionsValue);
-          if (!cursor) {
-            throw new Error(
-              `canonical Recording V4 cursor sidecar is invalid: ${node.trajectory.path}`,
-            );
-          }
-          if (!actions) {
-            throw new Error(
-              `canonical Recording V4 actions sidecar is invalid: ${node.trajectory.actions_path}`,
-            );
-          }
-          for (const [stepId, bounds] of recordingV4TargetBounds(actions)) {
-            if (!targetBoundsByStepId.has(stepId)) targetBoundsByStepId.set(stepId, bounds);
-          }
-          cursorRuntimes.push({
-            node,
-            schedule: null,
-            trajectory: null,
-            recordingV4: prepareRecordingV4Cursor(actions, cursor),
-          });
-          continue;
+        if (node.trajectory.kind !== "recording-v4" || !node.trajectory.actions_path) {
+          throw new Error(`canonical cursor node is not Recording V4: ${node.id}`);
         }
-        const parsed = parseExportCursorSidecar(
-          await this.cursorSidecarLoader(node.trajectory.path),
-        );
-        if (node.trajectory.kind === "actions" && parsed.kind !== "actions") {
-          throw new Error(`canonical cursor actions sidecar is invalid: ${node.trajectory.path}`);
-        }
-        if (node.trajectory.kind === "trajectory" && parsed.kind !== "trajectory") {
+        const [cursorValue, actionsValue] = await Promise.all([
+          this.cursorSidecarLoader(node.trajectory.path),
+          this.cursorSidecarLoader(node.trajectory.actions_path),
+        ]);
+        const cursor = readRecordingV4CursorSidecar(cursorValue);
+        const actions = readRecordingV4ActionSidecar(actionsValue);
+        if (!cursor) {
           throw new Error(
-            `canonical cursor trajectory sidecar is invalid: ${node.trajectory.path}`,
+            `canonical Recording V4 cursor sidecar is invalid: ${node.trajectory.path}`,
           );
         }
-        if (parsed.kind === "actions") {
-          for (const [stepId, bounds] of canonicalTargetBoundsFromActions(parsed.sidecar)) {
-            if (!targetBoundsByStepId.has(stepId)) targetBoundsByStepId.set(stepId, bounds);
-          }
+        if (!actions) {
+          throw new Error(
+            `canonical Recording V4 actions sidecar is invalid: ${node.trajectory.actions_path}`,
+          );
         }
-        cursorRuntimes.push({
-          node,
-          schedule:
-            parsed.kind === "actions"
-              ? buildVirtualCursorSchedule(parsed.sidecar, node.motion_preset, {
-                  preserveFullMotion: node.preserve_full_motion,
-                })
-              : null,
-          trajectory: parsed.kind === "trajectory" ? parsed.sidecar : null,
-          recordingV4: null,
-        });
+        for (const [stepId, bounds] of recordingV4TargetBounds(actions)) {
+          if (!targetBoundsByStepId.has(stepId)) targetBoundsByStepId.set(stepId, bounds);
+        }
+        cursorRuntimes.push({ node, recordingV4: prepareRecordingV4Cursor(actions, cursor) });
       }
       await loadCanonicalTextFonts(graph, this.fontSet);
       if (generation !== this.generation) {
@@ -308,17 +236,11 @@ export class CanonicalVisualEngine implements CanonicalVisualEnginePort {
     const cursorSamples = new Map<string, VirtualCursorSample | null>();
     for (const runtime of this.cursorRuntimes) {
       const activeMediaTimeUs = cursorActiveMediaTimeUs(runtime.node, timeMs);
-      const sample = runtime.recordingV4
-        ? sampleRecordingV4Cursor(runtime.recordingV4, activeMediaTimeUs, runtime.node.click_effect)
-        : runtime.schedule
-          ? samplePreparedVirtualCursor(
-              runtime.schedule,
-              activeMediaTimeUs / 1_000,
-              runtime.node.click_effect,
-            )
-          : runtime.trajectory
-            ? sampleTrajectoryCursor(runtime.trajectory, activeMediaTimeUs / 1_000)
-            : null;
+      const sample = sampleRecordingV4Cursor(
+        runtime.recordingV4,
+        activeMediaTimeUs,
+        runtime.node.click_effect,
+      );
       cursorSamples.set(runtime.node.id, sample);
     }
     const scene = evaluateScene(graph, timeMs, {

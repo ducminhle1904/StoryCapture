@@ -5,18 +5,6 @@
 // host side in apps/desktop/electron/ipc.ts.
 
 import type {
-  RecordingCadenceEvidenceV2,
-  RecordingCaptureContractV2,
-  RecordingCertifiedTier,
-  RecordingDeliveryPolicy,
-  RecordingResultV2,
-} from "./recording-v2";
-import type {
-  RecordingCadenceEvidenceV3,
-  RecordingNativePreflightV3,
-  RecordingResultV3,
-} from "./recording-v3";
-import type {
   RecordingV4AudioRole,
   RecordingV4Command,
   RecordingV4Event,
@@ -25,8 +13,6 @@ import type {
   RecordingV4TargetIdentity,
 } from "./recording-v4";
 
-export type * from "./recording-v2";
-export type * from "./recording-v3";
 export type * from "./recording-v4";
 
 /** user-defined commands **/
@@ -804,47 +790,6 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
-  /**
-   * Start an end-to-end recording.
-   */
-  async startRecording(
-    args: StartRecordingArgs,
-    onEvent: TAURI_CHANNEL<RecordingEvent>,
-  ): Promise<Result<RecordingSessionId, AppError>> {
-    try {
-      return { status: "ok", data: await TAURI_INVOKE("start_recording", { args, onEvent }) };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  async pauseRecording(session: RecordingSessionId): Promise<Result<null, AppError>> {
-    try {
-      return { status: "ok", data: await TAURI_INVOKE("pause_recording", { session }) };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  async resumeRecording(session: RecordingSessionId): Promise<Result<null, AppError>> {
-    try {
-      return { status: "ok", data: await TAURI_INVOKE("resume_recording", { session }) };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  async stopRecording(
-    session: RecordingSessionId,
-    onEvent: TAURI_CHANNEL<RecordingEvent>,
-  ): Promise<Result<RecordingStopResult, AppError>> {
-    try {
-      return { status: "ok", data: await TAURI_INVOKE("stop_recording", { session, onEvent }) };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
   async startRecordingV4(
     args: StartRecordingV4Args,
     onEvent: TAURI_CHANNEL<RecordingV4Event>,
@@ -958,47 +903,6 @@ export const commands = {
   async listProjectRecordings(args: ProjectIdArg): Promise<Result<RecordingInfoDto[], AppError>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("list_project_recordings", { args }) };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  async getRecordingActions(
-    args: GetRecordingActionsArgs,
-  ): Promise<Result<ActionTimelineDto | null, AppError>> {
-    try {
-      return { status: "ok", data: await TAURI_INVOKE("get_recording_actions", { args }) };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  /**
-   * Load the trajectory sidecar that lives alongside an MP4.
-   *
-   * Returns `Ok(None)` when the sidecar does not exist (older
-   * recording or trajectory recorder skipped this session).
-   */
-  async getRecordingTrajectory(
-    args: GetRecordingTrajectoryArgs,
-  ): Promise<Result<TrajectoryDto | null, AppError>> {
-    try {
-      return { status: "ok", data: await TAURI_INVOKE("get_recording_trajectory", { args }) };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  /**
-   * Load `<recording>.steps.json`, the recording-relative timing sidecar
-   * emitted by `launch_automation` for Record & Polish runs.
-   * Returns `Ok(None)` for older recordings or manual recording sessions.
-   */
-  async getRecordingStepTiming(
-    args: GetRecordingTrajectoryArgs,
-  ): Promise<Result<RecordingStepTimingSidecarDto | null, AppError>> {
-    try {
-      return { status: "ok", data: await TAURI_INVOKE("get_recording_step_timing", { args }) };
     } catch (e) {
       if (e instanceof Error) throw e;
       else return { status: "error", error: e as any };
@@ -1777,20 +1681,7 @@ export type AppError =
   | { kind: "NotFound"; message: string }
   | { kind: "InvalidArgument"; message: string }
   | { kind: "Internal"; message: string }
-  | { kind: "UnavailableOnBackend"; message: string }
-  /**
-   * Another `start_recording` is already in-flight. The global
-   * `compare_exchange` guard at the command entry returns this when a
-   * concurrent caller beats the current one. Frontend treats this as a
-   * benign no-op (retry is the user clicking Start again).
-   */
-  | { kind: "AlreadyStarting" }
-  /**
-   * FFmpeg did not open the audio FIFO within the 2s handshake
-   * window. Surfaces the failure instead of dangling the AudioCaptureStream
-   * start on a pipe that FFmpeg will never read.
-   */
-  | { kind: "FifoHandshakeTimeout" };
+  | { kind: "UnavailableOnBackend"; message: string };
 export type AppInfo = {
   version: string;
   platform: string;
@@ -2112,14 +2003,6 @@ export type EncodeResultDto = {
   quality_preset?: QualityPresetDto;
   encoder_input?: "author_preview_raw_bgra_pipe" | "png_sequence";
 };
-export type RecordingCompletedResult =
-  | EncodeResultDto
-  | (RecordingResultV2 & { status: "completed" })
-  | (RecordingResultV3 & { status: "completed" });
-export type RecordingStopResult =
-  | RecordingCompletedResult
-  | (RecordingResultV2 & { status: "quality_failed" })
-  | (RecordingResultV3 & { status: "quality_failed" });
 export type EncoderOptionsDto = {
   container?: ContainerDto | null;
   codec?: CodecDto | null;
@@ -2227,8 +2110,6 @@ export type GeneralSettings = {
   autosave_interval_sec: number;
   dock_progress_badge: boolean;
 };
-export type GetRecordingActionsArgs = { recording_path: string };
-export type GetRecordingTrajectoryArgs = { recording_path: string };
 export type HardwareEncoderDto =
   | "video-toolbox-h264"
   | "video-toolbox-hevc"
@@ -2481,53 +2362,6 @@ export type QualityPresetDto = "high" | "lossless";
 export type RateControlDto = "auto" | "cbr" | "vbr" | "crf" | "cq";
 export type RecordingDisplayPlacementDto = { x: number; y: number };
 /**
- * Unified recording event from capture / encode progress and terminal results.
- */
-export type RecordingEvent =
-  | { type: "capture-status"; json: string }
-  | { type: "encode-progress"; progress: EncodeProgressDto }
-  /**
-   * Emitted periodically from the capture pipeline when the
-   * byte-bounded queue has dropped frames. `total` is the lifetime
-   * count for this session; `delta` is the count since the last
-   * event (always >= 1 when an event fires).
-   */
-  | { type: "frames-dropped"; total: number; delta: number }
-  | { type: "completed"; result: RecordingCompletedResult }
-  | {
-      type: "preflight";
-      result: import("./recording-v2").RecordingPreflightV2Dto | RecordingNativePreflightV3;
-    }
-  | {
-      type: "readiness";
-      state:
-        | "source_ready"
-        | "first_frame_committed"
-        | "pre_input_frame_committed"
-        | "global_ready"
-        | "target_ready"
-        | "initial_surface_received";
-    }
-  | { type: "live-evidence"; evidence: RecordingCadenceEvidenceV2 | RecordingCadenceEvidenceV3 }
-  | { type: "verifying"; progress: number }
-  | {
-      type: "quality-failed";
-      result:
-        | (RecordingResultV2 & { status: "quality_failed" })
-        | (RecordingResultV3 & { status: "quality_failed" });
-    }
-  | { type: "failed"; message: string }
-  /**
-   * Mic/audio negotiation failed or the device vanished mid-session.
-   * Recording continues video-only.
-   */
-  | { type: "audio-unavailable"; reason: string }
-  /**
-   * Periodic liveness signal from the host so the renderer can detect
-   * state-sync drift (>5s missed => offer Force Stop).
-   */
-  | { type: "heartbeat"; seq: number | bigint };
-/**
  * File-system metadata for a single `.mp4` under `<project>/exports/`.
  */
 export type RecordingInfoDto = {
@@ -2545,7 +2379,7 @@ export type RecordingInfoDto = {
         status: "invalid";
         reason: "empty" | "not_file" | "missing" | "timeout" | "unsupported_or_corrupt";
       };
-  version?: 2 | 3 | 4;
+  version?: 4;
   master_path?: string | null;
   proxy_path?: string | null;
   cadence_evidence_path?: string | null;
@@ -2554,13 +2388,11 @@ export type RecordingInfoDto = {
   cursor_path?: string | null;
   microphone_audio_path?: string | null;
   system_audio_path?: string | null;
-  exact_source_fps?: import("./recording-v2").RecordingRational | null;
+  exact_source_fps?: import("./recording-v4").RecordingV4Rational | null;
   source_frame_count?: number | null;
-  certified_tier?: RecordingCertifiedTier | null;
-  quality_verdict?: import("./recording-v2").RecordingQualityVerdict;
+  quality_verdict?: "passed";
   bundle_path?: string | null;
 };
-export type RecordingSessionId = { id: string };
 export type RecordingV4SessionId = { id: string };
 export type RecordingStepTimingDto = {
   ordinal: number;
@@ -2726,49 +2558,6 @@ export type StartCaptureTargetArgs = {
   fps_target: number;
   pixel_format: PixelFormatDto;
   queue_cap_bytes: bigint | null;
-};
-export type StartRecordingArgs = {
-  project_folder: string;
-  /**
-   * Capture target DTO.
-   */
-  target: CaptureTargetDto;
-  width: number;
-  height: number;
-  fps: number;
-  /** Missing on legacy callers and therefore interpreted as best-effort. */
-  contract_version?: 2;
-  delivery_policy?: RecordingDeliveryPolicy;
-  certified_tier?: RecordingCertifiedTier | null;
-  capture_contract?: RecordingCaptureContractV2 | null;
-  /**
-   * Optional mic device.
-   */
-  audio_device_id?: string | null;
-  /**
-   * Optional per-recording cursor toggle.
-   */
-  include_cursor?: boolean | null;
-  output_resolution?: OutputResolutionDto | null;
-  fit_mode?: FitModeDto | null;
-  pad_color?: PadColorDto | null;
-  quality_preset?: QualityPresetDto | null;
-  scale_algo?: ScaleAlgoDto | null;
-  /**
-   * First-frame wait budget in milliseconds. Defaults to 3000 when `None`.
-   */
-  first_frame_timeout_ms?: bigint | null;
-  /**
-   * Force a keyframe every N seconds. `None` keeps FFmpeg's default GOP.
-   */
-  keyframe_interval_sec?: number | null;
-  /**
-   * Optional frame-relative crop applied to each captured frame before
-   * encoding. `basis_w/h` may describe the full logical window size this
-   * crop was measured against, allowing capture backends to scale it to the
-   * actual native frame size.
-   */
-  frame_crop?: FrameCropRectDto | null;
 };
 export type StartRecordingV4Args = {
   project_path: string;
