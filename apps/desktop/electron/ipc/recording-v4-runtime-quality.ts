@@ -80,8 +80,7 @@ export function stableColorChannelDelta(
   assertFrame(actual, width, height);
   const margin = Math.min(64, Math.max(4, Math.floor(Math.min(width, height) / 16)));
   const stride = Math.min(64, Math.max(8, Math.floor(Math.min(width, height) / 16)));
-  let maximumDelta = 0;
-  let samples = 0;
+  const deltas: number[] = [];
   for (let y = margin; y < height - margin; y += stride) {
     for (let x = margin; x < width - margin; x += stride) {
       const colors = [-2, 0, 2].flatMap((deltaY) =>
@@ -91,17 +90,15 @@ export function stableColorChannelDelta(
         Math.max(...colors.map((color) => color[channel])) -
         Math.min(...colors.map((color) => color[channel]));
       if (Math.max(channelRange("blue"), channelRange("green"), channelRange("red")) > 2) continue;
-      maximumDelta = Math.max(
-        maximumDelta,
+      deltas.push(
         maximumColorDelta(
           sampleBgra(reference, width, height, x, y),
           sampleBgra(actual, width, height, x, y),
         ),
       );
-      samples += 1;
     }
   }
-  if (samples > 0) return maximumDelta;
+  if (deltas.length > 0) return percentile(deltas, 0.5);
   const centerX = Math.floor(width / 2);
   const centerY = Math.floor(height / 2);
   return maximumColorDelta(

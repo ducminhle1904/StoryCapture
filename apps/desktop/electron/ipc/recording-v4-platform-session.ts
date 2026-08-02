@@ -310,7 +310,7 @@ export function recordingV4RuntimeProfile(
     platform,
     calibration: {
       source: "built_in_profile",
-      encoder_id: "hardware-h264",
+      encoder_id: platform === "darwin" ? "videotoolbox-h264" : "media-foundation-hardware-h264",
       minimum_required_bitrate_bps: 10_000_000,
       sustained_bitrate_bps: 25_000_000,
       peak_bitrate_bps: 30_000_000,

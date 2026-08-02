@@ -44,4 +44,12 @@ describe("Recording V4 runtime quality metrics", () => {
     }
     expect(stableColorChannelDelta(reference, actual, 256, 256)).toBe(3);
   });
+
+  it("reports representative stable color instead of isolated codec outliers", () => {
+    const reference = frame(256, 256);
+    const actual = frame(256, 256, 254);
+    actual.fill(252, (128 * 256 + 128) * 4, (128 * 256 + 128) * 4 + 3);
+
+    expect(stableColorChannelDelta(reference, actual, 256, 256)).toBe(1);
+  });
 });

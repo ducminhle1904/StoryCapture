@@ -91,12 +91,21 @@ recorder.
 - Cadence `source_updates + held_frames` must equal `output_frames`.
   `source_updates` counts non-held ledger entries, not every source callback;
   multiple callbacks inside one output slot may supersede each other.
+- The built-in encoder profile must use the helper's exact native identifier:
+  `videotoolbox-h264` on macOS and `media-foundation-hardware-h264` on Windows.
+  A generic alias fails the helper's strict encoder-envelope validation.
 - Runtime V4 quality uses `recording-v4-runtime-quality.ts` for marker-free
-  author content. Deterministic fixtures use their declared marker bounds and
-  chroma sample manifest.
+  author content. Stable-region color fidelity is the median channel delta, so
+  localized H.264 quantization does not masquerade as a frame-wide color shift.
+  Deterministic fixtures use their declared marker bounds and chroma sample
+  manifest.
 - Native helper resolution must use `isPackagedRuntime(app)`. The generated
   `.electron-dev` bundle is a development runtime and loads helpers from the
   source build even though Electron reports `app.isPackaged` as true.
+- Electron main/preload builds must bundle runtime imports from workspace
+  TypeScript packages. `build-electron.mjs` rejects any external
+  `@storycapture/*` import because packaged Node cannot strip types beneath
+  `app.asar/node_modules`.
 - `test:e2e:recording-v4-helper` builds the unpacked application and verifies
   packaged helper signing, protocol, and V4 capabilities. It does not exercise
   live capture, encoder creation, MP4 finalization/full decode, or sustained

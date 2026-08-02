@@ -19,10 +19,10 @@ const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
 
 const target = { kind: "author_preview" as const, stable_id: "target-1", process_id: 42, initial_title: "Preview" };
-const envelope = { source: "built_in_profile" as const, encoder_id: "hardware-h264",
+const envelope = { source: "built_in_profile" as const, encoder_id: "videotoolbox-h264",
   minimum_bitrate_bps: 10_000_000, target_bitrate_bps: 20_000_000,
   maximum_bitrate_bps: 30_000_000, safety_headroom_ratio: 0.2 };
-const encoder = { encoder_id: "hardware-h264", hardware_accelerated: true as const,
+const encoder = { encoder_id: "videotoolbox-h264", hardware_accelerated: true as const,
   requested_bitrate_bps: 20_000_000, average_bitrate_bps: 19_000_000,
   peak_bitrate_bps: 25_000_000, envelope };
 const cadence: RecordingV4CadenceEvidence = {
@@ -83,7 +83,7 @@ async function fixture(overrides: Partial<RecordingV4PlatformDependencies> = {})
   const dependencies: RecordingV4PlatformDependencies = {
     platform: "darwin",
     runtimeProfile: { platform: "darwin", calibration: { source: "built_in_profile",
-      encoder_id: "hardware-h264", minimum_required_bitrate_bps: 10_000_000,
+      encoder_id: "videotoolbox-h264", minimum_required_bitrate_bps: 10_000_000,
       sustained_bitrate_bps: 25_000_000, peak_bitrate_bps: 30_000_000 },
       safety_headroom_ratio: 0.2, quality: { full_frame_luma_ssim: 0.99,
         text_edge_roi_ssim: 0.99, edge_spread_increase_px: 1, color_channel_delta: 1 } },
@@ -113,10 +113,17 @@ async function fixture(overrides: Partial<RecordingV4PlatformDependencies> = {})
 }
 
 describe("Recording V4 host platform integration", () => {
-  it("uses a built-in runtime profile without external certification", () => {
+  it("uses each platform's native hardware encoder in the built-in runtime profile", () => {
     expect(recordingV4RuntimeProfile("darwin")).toMatchObject({
       platform: "darwin",
-      calibration: { source: "built_in_profile", encoder_id: "hardware-h264" },
+      calibration: { source: "built_in_profile", encoder_id: "videotoolbox-h264" },
+    });
+    expect(recordingV4RuntimeProfile("win32")).toMatchObject({
+      platform: "win32",
+      calibration: {
+        source: "built_in_profile",
+        encoder_id: "media-foundation-hardware-h264",
+      },
     });
   });
 
